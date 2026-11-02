@@ -8,8 +8,10 @@ Reads threats/TM-*.md and vocabulary.yaml through the repository's validate.py
   <out>/threats/index.html  the catalog: a sortable, filterable table and
                             every entry rendered in full
 
-The output directory is replaced atomically, so a web server pointed at it
-never serves a half-written tree.
+Each page is written to a staging file inside the output directory and moved
+into place with an atomic rename, so a web server pointed at the directory
+never serves a half-written page. Files from an earlier build that the new one
+does not produce are removed.
 
 Usage:
     python3 build.py [--repo-root DIR] [--out DIR]
@@ -263,16 +265,30 @@ def git_commit(repo_root: Path) -> str:
         return "unknown"
 
 
-def publish(staging: Path, out: Path) -> None:
-    """Swap `staging` into place as `out` with at most a momentary gap."""
-    old = out.with_name(out.name + ".old")
-    if old.exists():
-        shutil.rmtree(old)
-    if out.exists():
-        out.rename(old)
-    staging.rename(out)
-    if old.exists():
-        shutil.rmtree(old)
+STAGING = ".staging"
+
+
+def publish(pages: dict[str, str], out: Path) -> None:
+    """Write each page under out/.staging, move it into place atomically,
+    then remove stale files from earlier builds and the staging directory."""
+    staging = out / STAGING
+    if staging.exists():
+        shutil.rmtree(staging)
+    for rel, content in pages.items():
+        src = staging / rel
+        src.parent.mkdir(parents=True, exist_ok=True)
+        src.write_text(content, encoding="utf-8")
+    for rel in pages:
+        dst = out / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        (staging / rel).replace(dst)
+    shutil.rmtree(staging)
+    keep = {out / rel for rel in pages}
+    for path in sorted(out.rglob("*"), reverse=True):
+        if path.is_file() and path not in keep:
+            path.unlink()
+        elif path.is_dir() and not any(path.iterdir()):
+            path.rmdir()
 
 
 def main() -> int:
@@ -300,15 +316,14 @@ def main() -> int:
         return 1
 
     out = args.out.resolve()
-    staging = out.with_name(out.name + ".tmp")
-    if staging.exists():
-        shutil.rmtree(staging)
-    (staging / "threats").mkdir(parents=True)
-    (staging / "index.html").write_text(landing.replace("<!-- site.css -->", css), encoding="utf-8")
-    (staging / "threats" / "index.html").write_text(
-        build_catalog(entries, vocab, css, git_commit(repo_root), repo_root), encoding="utf-8"
+    out.mkdir(parents=True, exist_ok=True)
+    publish(
+        {
+            "index.html": landing.replace("<!-- site.css -->", css),
+            "threats/index.html": build_catalog(entries, vocab, css, git_commit(repo_root), repo_root),
+        },
+        out,
     )
-    publish(staging, out)
     print(f"built {out}: landing page and {len(entries)} threats")
     return 0
 

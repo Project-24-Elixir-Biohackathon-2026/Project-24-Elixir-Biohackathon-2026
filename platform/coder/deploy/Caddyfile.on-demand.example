@@ -21,13 +21,14 @@ http://127.0.0.1:5555 {
 }
 
 # The apex: the static site (landing page at /, threat catalog at /threats/,
-# built by platform/site/build.py) and, for every other path, the Coder
-# dashboard (/workspaces, /login, /api, ...).
+# built by the sync timer into /srv/sperange-site, which the caddy user can
+# read; /home/ubuntu is not readable for it) and, for every other path, the
+# Coder dashboard (/workspaces, /login, /api, ...).
 sperange.example.org {
 	tls {
 		on_demand
 	}
-	root * /home/ubuntu/sperange/platform/site/dist
+	root * /srv/sperange-site
 	@site path / /threats /threats/*
 	handle @site {
 		file_server

@@ -36,7 +36,9 @@ def test_rebuild_replaces_output(tmp_path):
     (out / "stale.html").write_text("old")
     assert build(REPO, out).returncode == 0
     assert not (out / "stale.html").exists()
-    assert not out.with_name("dist.tmp").exists() and not out.with_name("dist.old").exists()
+    assert not (out / ".staging").exists()
+    assert sorted(p.relative_to(out).as_posix() for p in out.rglob("*") if p.is_file()) == [
+        "index.html", "threats/index.html"]
 
 
 def test_invalid_catalog_stops_the_build(tmp_path):

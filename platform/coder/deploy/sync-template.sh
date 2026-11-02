@@ -10,8 +10,8 @@
 #   SPE_TEMPLATE_NAME  Coder template name, e.g. spe-testbed
 #   SPE_AGENT_URL      Coder URL as seen from the SPE VMs, e.g. http://10.0.2.50:7080
 #   CODER_URL, CODER_SESSION_TOKEN   Coder API access (long-lived token)
-#   SPE_SITE_DIR       (optional) where the site is built; default
-#                      $SPE_REPO_DIR/platform/site/dist, which the Caddyfile serves
+#   SPE_SITE_DIR       where the site is built, the Caddyfile's root (e.g.
+#                      /srv/sperange-site); default $SPE_REPO_DIR/platform/site/dist
 set -euo pipefail
 cd "$SPE_REPO_DIR"
 git fetch --quiet origin "$SPE_BRANCH"

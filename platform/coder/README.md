@@ -216,14 +216,16 @@ OpenWebUI uses; it reaches Ansible through the workspace build environment.
 
 ```bash
 sudo apt install -y caddy        # or the official Caddy apt repo for a current version
-sudo apt install -y python3-yaml python3-markdown && python3 platform/site/build.py   # the static site
+sudo apt install -y python3-yaml python3-markdown         # for the static site
+sudo mkdir -p /srv/sperange-site && sudo chown ubuntu:ubuntu /srv/sperange-site
+python3 platform/site/build.py --out /srv/sperange-site    # the sync timer repeats this (SPE_SITE_DIR)
 sudo cp platform/coder/deploy/Caddyfile.example /etc/caddy/Caddyfile
 sudo $EDITOR /etc/caddy/Caddyfile           # zone, ACME directory, EAB
 sudo systemctl reload caddy
 journalctl -u caddy -f                      # certificate obtained?
 ```
 
-On the apex, Caddy serves `/` and `/threats/` from `platform/site/dist` (the
+On the apex, Caddy serves `/` and `/threats/` from `/srv/sperange-site` (the
 landing page with the Workspaces and Threats entrances, and the threat catalog)
 and proxies every other path to Coder, whose dashboard lives at `/workspaces`.
 Coder's access URL stays `https://<zone>`. The sync timer (step 7) rebuilds the
@@ -261,7 +263,7 @@ First push by hand, then let the timer keep it in sync with `main`:
 ```bash
 coder tokens create --name sync --lifetime 8760h       # copy the token
 sudo install -m 600 -o ubuntu platform/coder/deploy/sync.env.example /etc/sperange/sync.env
-sudo $EDITOR /etc/sperange/sync.env         # token, <private-ip>
+sudo $EDITOR /etc/sperange/sync.env         # token, <private-ip>, SPE_SITE_DIR
 sudo cp platform/coder/deploy/sperange-sync.{service,timer} /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl start sperange-sync.service  # first push

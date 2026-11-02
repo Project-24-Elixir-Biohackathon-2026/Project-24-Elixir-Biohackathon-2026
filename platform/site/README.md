@@ -17,18 +17,21 @@ built directory and proxies everything else to Coder
 ```bash
 sudo apt install -y python3-yaml python3-markdown     # the only dependencies
 python3 platform/site/build.py                        # writes platform/site/dist/
-python3 platform/site/build.py --out /srv/sperange-site
+python3 platform/site/build.py --out /srv/sperange-site   # the portal VM's layout
 python3 -m http.server -d platform/site/dist 8000     # look at it locally
 ```
 
-The build refuses to run when the catalog does not validate, and it replaces
-`dist/` as a whole, so the web server never serves a half-written tree. The
+The build refuses to run when the catalog does not validate, and it moves each
+page into place with an atomic rename and removes files of earlier builds, so
+the web server never serves a half-written page. The
 catalog page is self-contained: sorting, the status and entry-point filters
 and the search are a few lines of inline JavaScript, no framework.
 
 On the portal VM, `platform/coder/deploy/sync-template.sh` rebuilds the site on
-every run of the sync timer (every 5 minutes), after pulling `main`. A merged
-change to `threats/` is live within minutes, like a merged testbed preset.
+every run of the sync timer (every 5 minutes), after pulling `main`, into
+`SPE_SITE_DIR` (`/srv/sperange-site`, owned by `ubuntu`: Caddy's user cannot
+read under `/home/ubuntu`). A merged change to `threats/` is live within
+minutes, like a merged testbed preset.
 
 Tests: `platform/dev/tests/test_site_build.py` builds into a temporary
 directory and checks that a broken catalog stops the build.
