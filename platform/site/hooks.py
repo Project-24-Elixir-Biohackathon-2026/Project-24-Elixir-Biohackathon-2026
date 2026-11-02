@@ -3,7 +3,8 @@
 - on_config: point docs_dir at the repository's threats/ (SPE_REPO_ROOT, or
   this repository) and build the navigation: Overview, Threats, Vocabulary.
 - on_files: validate the catalog with validate.py (a problem stops the
-  build), then generate the overview page and the vocabulary page.
+  build), then generate the overview page and the vocabulary page, and add
+  the catalog table's script and stylesheet from assets/.
 - on_page_markdown: show an entry's frontmatter on its page: the description
   under the heading, then status, entry points, assets and STRIDE; and a link
   to the entry's source file at the end.
@@ -16,7 +17,8 @@ from pathlib import Path
 from mkdocs.exceptions import PluginError
 from mkdocs.structure.files import File
 
-ROOT = Path(os.environ.get("SPE_REPO_ROOT") or Path(__file__).resolve().parents[2])
+HERE = Path(__file__).resolve().parent
+ROOT = Path(os.environ.get("SPE_REPO_ROOT") or HERE.parents[1])
 sys.path.insert(0, str(ROOT))
 import validate  # noqa: E402  (the repository's validator)
 
@@ -49,6 +51,9 @@ def on_files(files, config):
     vocab, entries = _catalog()
     files.append(File.generated(config, "index.md", content=overview(vocab, entries)))
     files.append(File.generated(config, "vocabulary.md", content=vocabulary_page(vocab)))
+    for name in ("catalog.js", "catalog.css"):
+        files.append(File.generated(
+            config, f"assets/catalog/{name}", content=(HERE / "assets" / name).read_text(encoding="utf-8")))
     return files
 
 
@@ -102,6 +107,10 @@ def overview(vocab, entries) -> str:
     out += [
         "## All threats",
         "",
+        "Click a column to sort; the controls filter the rows.",
+        "",
+        '<div class="catalog-table" markdown="block">',
+        "",
         "| ID | Name | Status | Entry points | Assets | STRIDE |",
         "|---|---|---|---|---|---|",
     ]
@@ -111,7 +120,7 @@ def overview(vocab, entries) -> str:
             f"| [{m['id']}]({e.path.name}) | [{m['name']}]({e.path.name}) | `{m['status']}` "
             f"| {codes(m['entry-points'])} | {codes(m['assets'])} | {codes(m['stride'])} |"
         )
-    out.append("")
+    out += ["", "</div>", ""]
     return "\n".join(out)
 
 

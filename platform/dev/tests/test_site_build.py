@@ -35,6 +35,8 @@ def test_builds_landing_and_catalog(tmp_path):
         assert "hypothesised" in text or "reproduced" in text or "mitigated" in text
         assert f'href="{path.stem}/"' in overview or f'href="../{path.stem}/"' in overview or path.stem in overview
     assert (out / "threats" / "vocabulary" / "index.html").is_file()
+    assert (out / "threats" / "assets" / "catalog" / "catalog.js").is_file()
+    assert 'class="catalog-table"' in overview and "catalog/catalog.js" in overview
     assert not (out / "threats" / "TEMPLATE").exists()
     assert sorted(p.name for p in out.iterdir()) == ["index.html", "threats"]
 

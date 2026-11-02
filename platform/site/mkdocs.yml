@@ -39,10 +39,15 @@ theme:
 extra:
   homepage: /
   generator: false
+extra_css:
+  - assets/catalog/catalog.css
+extra_javascript:
+  - assets/catalog/catalog.js
 markdown_extensions:
   - admonition
   - attr_list
   - def_list
+  - md_in_html
   - tables
   - toc:
       permalink: true

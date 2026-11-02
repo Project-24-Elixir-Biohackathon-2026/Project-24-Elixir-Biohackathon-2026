@@ -13,6 +13,7 @@ two paths from the built directory and proxies everything else to Coder
 | `build.py` | Validates the catalog with the repository's `validate.py`, writes the landing page, runs `mkdocs build` |
 | `mkdocs.yml` | The catalog site: theme, navigation features, `docs_dir` is `threats/` itself |
 | `hooks.py` | MkDocs hooks: validation, the generated Overview and Vocabulary pages, each entry's frontmatter shown on its page |
+| `assets/catalog.js`, `assets/catalog.css` | Sorting and filtering of the Overview's table, added to the site by `hooks.py` |
 | `landing/index.html` | The landing page; `<!-- site.css -->` is replaced by the stylesheet at build time |
 | `static/site.css` | The landing page's stylesheet |
 | `dist/` | Build output, ignored by git: `index.html` and `threats/` |
@@ -26,7 +27,8 @@ python3 -m http.server -d platform/site/dist 8000           # look at it locally
 ```
 
 The catalog: the Overview page groups the entries by status and lists them
-all in one table; each entry is its own page with the navigation on the left
+all in one table that sorts by any column and filters by text, status or
+entry point; each entry is its own page with the navigation on the left
 (Overview, every threat, Vocabulary) and the entry's sections on the right.
 The entry's description and its status, entry points, assets and STRIDE
 categories appear under the heading, taken from the frontmatter. `threats/`
