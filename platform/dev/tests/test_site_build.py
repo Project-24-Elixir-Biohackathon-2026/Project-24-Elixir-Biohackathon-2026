@@ -39,7 +39,8 @@ def test_builds_landing_and_catalog(tmp_path):
         assert page.is_file(), page
     assert 'href="../metadata/status/"' in (out / "threats" / entries[0].stem / "index.html").read_text()
     status_page = (out / "threats" / "metadata" / "status" / "index.html").read_text()
-    assert "<table>" in status_page and "TM-001" not in status_page
+    article = status_page[status_page.index("<article"):status_page.index("</article>")]
+    assert "<table>" in article and "TM-001" not in article  # a value table, no entry links
     assert (out / "threats" / "assets" / "catalog" / "catalog.js").is_file()
     assert 'class="catalog-table"' in overview and "catalog/catalog.js" in overview
     assert not (out / "threats" / "TEMPLATE").exists()
