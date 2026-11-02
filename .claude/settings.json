@@ -2,7 +2,7 @@
   "env": {
     "AGENT_CONTEXT_BUDGET": "150000",
     "AGENT_AUTO_CONTINUE": "1",
-    "AGENT_CHAIN_MAX": "5"
+    "AGENT_CHAIN_MAX": "10"
   },
   "hooks": {
     "SessionStart": [
@@ -39,5 +39,9 @@
         ]
       }
     ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "f=\"$CLAUDE_PROJECT_DIR/.methodology/shared/claude/statusline.sh\"; [ -x \"$f\" ] && exec \"$f\"; cat >/dev/null; echo 'methodology: no status line (.methodology/ not initialised)'"
   }
 }

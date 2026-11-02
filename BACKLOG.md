@@ -1,8 +1,23 @@
 # Backlog
 
-Deferred items with no slice yet. One line each: the item, where it came from (PR, review thread, spec), and
-why it waits. The PR that fixes an item deletes its line. See
+Deferred items with no slice yet. One item each, about three lines at most: the item, where it came from (PR, review
+thread, spec), and why it waits. An item that needs more points to its proposal in `docs/proposals/`. The PR
+that fixes an item deletes its line. See
 `.methodology/shared/guides/development-workflow.md`, *Deferred items land somewhere durable*.
+
+## Next
+
+Due soon, on any track: what someone said to do "in the next session", and what waits on the user. Every session
+start reads this section; keep it short.
+
+<!-- - <item> — from <investigation / review / handoff>; <waits on the user: what> | <due: why soon>. -->
+
+- Bring `impl/agui-chat-sessions-2-sidebar` (#10) and `impl/canary-eval-ladder-1-scoring` (#3) onto the new
+  `.methodology` pin (`172eae3`): each takes `main` at a clean point, by merge (pushed branches aren't rewritten
+  here, *Overrides*), then `git submodule update --init .methodology` — from the methodology update of 2026-11-02;
+  due: both still run the old scripts (`continue.sh`, no `next-session.sh --resume`).
+
+## Unscheduled
 
 <!-- - <item> — from <PR #n / review thread / spec Inputs for>, waits because <reason>. -->
 
