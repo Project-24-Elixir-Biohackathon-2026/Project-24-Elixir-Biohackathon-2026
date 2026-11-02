@@ -139,21 +139,13 @@ History apart, large documents, growth, the clarification template and the layou
 Where this repo deviates from a shared guide, one line each: "In this repo, X instead of `<guide>`, *Section*,
 because Z." This file wins over the guides in `.methodology/shared/guides/`.
 
-- In this repo, **the user merges every PR** instead of `development-workflow.md`, *Review and merge*, and
-  *Development workflow* below (merge it yourself after the review round), because the fork has no CI checks
-  yet (`BACKLOG.md`), so a human gate stays on each merge. The merge is a gate (`development-workflow.md`,
-  *Gates*): once the local review round (*Reviewers*) is addressed and the checks below pass, hand off, post one
-  comment on the PR saying it is ready to merge, and end with `next-session.sh --end --blocked <PR>`, or, with
-  the next unit's handoff already on `main`, `--end --blocked <PR> <branch> <handoff>`. The user merges and
-  removes `waiting-on-user`, which clears it. So the loop has two human gates, the spec's `approved` and each
-  PR's merge, not the one *Working Conventions* names.
 - In this repo, **the checks before a merge are the DCO app, the unit's test commands run locally (*Running
   things*) and `sync-agents.py --check`** instead of `forge-github.md`, *Before a merge* (tests, lint, DCO and
   `pr-checks.yml` in CI), because the fork has no workflows yet (`BACKLOG.md`). The PR body says what ran.
 - In this repo, **a branch missing sign-offs is not rebased and force-pushed** instead of the fix in *Working
   Conventions* above, because pushed branches are not rewritten here (PR #1 was merged with DCO red rather
-  than rewritten): sign off from the first commit; a commit pushed without one stays, and the user decides at
-  merge.
+  than rewritten): sign off from the first commit; a commit pushed without one stays, and the PR says
+  so.
 
 ## Contributing upstream
 
@@ -305,8 +297,8 @@ In this repo:
 
 - **Every PR targets our fork**: `gh pr create --repo thodkatz/elixir-biohackathon-2026-test --base main`.
   Without `--repo`, `gh` may pick upstream.
-- **The review round is local** (*Reviewers*); **the user approves specs** (the `approved` label) **and merges
-  every PR**, a gate (*Overrides*).
+- **The review round is local** (*Reviewers*); **the user approves specs** (the `approved` label); the
+  session merges every other PR itself once the checks in *Overrides* pass.
   Address the round's findings and any comment the user leaves, each in its own thread. Clean up the worktree and
   branch after the merge, then move the pin in `biohackathon` (*Worktrees and deploying*).
 
@@ -314,7 +306,7 @@ In this repo:
 
 - **`local`**: reviewer subagents in the working session (`development-workflow.md`, *Review and merge*, *Local
   review*: at least the correctness and methodology focuses), findings posted on the PR as one comment; no CI
-  reviewer yet (`BACKLOG.md`). The user can still review any PR, and merges every one, a gate (*Overrides*).
+  reviewer yet (`BACKLOG.md`). The user can still review any PR.
 
 ## Project knowledge
 
