@@ -12,8 +12,12 @@
 #   SPE_LLM_PROVIDER      provider name (lowercase), default denbi
 #   SPE_LLM_PROVIDER_LABEL display name, default "de.NBI LLM"
 #   SPE_LLM_MODELS        comma-separated "model[:context_limit[:display name]]",
-#                         default "qwen3.8-27b:32768:Qwen3.8 27B (de.NBI)";
-#                         the first one becomes the organization's default model
+#                         default "gemma-4-31b:131072:Gemma 4 31B (de.NBI)";
+#                         the first one becomes the organization's default model.
+#                         Not qwen3.8-27b or mistral-medium-3.5: their chat
+#                         templates reject a system message that is not the
+#                         first message, and Coder Agents sends one mid-conversation
+#                         (gpt-oss-120b, gemma-4-31b and glm-5.3 accept it; probed 2026-11-02).
 #   SPE_CODER_ORG         organization, default "default"
 #
 # Undo: delete the models, then the provider (both endpoints accept DELETE).
@@ -25,7 +29,7 @@ SPE_LLM_API_KEY=${SPE_LLM_API_KEY:-$(sudo grep '^DENBI_LLM_API_KEY=' /etc/speran
 SPE_LLM_BASE_URL=${SPE_LLM_BASE_URL:-https://denbi-llm-api-internal.bihealth.org/v1}
 SPE_LLM_PROVIDER=${SPE_LLM_PROVIDER:-denbi}
 SPE_LLM_PROVIDER_LABEL=${SPE_LLM_PROVIDER_LABEL:-de.NBI LLM}
-SPE_LLM_MODELS=${SPE_LLM_MODELS:-qwen3.8-27b:32768:Qwen3.8 27B (de.NBI)}
+SPE_LLM_MODELS=${SPE_LLM_MODELS:-gemma-4-31b:131072:Gemma 4 31B (de.NBI)}
 SPE_CORG=${SPE_CODER_ORG:-default}
 B="$CODER_URL/api/v2"
 H=(-H "Coder-Session-Token: $CODER_SESSION_TOKEN" -H 'Content-Type: application/json')

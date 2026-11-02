@@ -295,8 +295,11 @@ platform/coder/deploy/coder-agents-setup.sh      # on the portal VM, as ubuntu
 ```
 
 It creates (or updates) the provider `denbi` with the base URL and the key from
-`coder.env`, and the model `qwen3.8-27b` as the organization's default; it is
-safe to rerun. Everything is a variable (`SPE_LLM_BASE_URL`, `SPE_LLM_MODELS`
+`coder.env`, and the model `gemma-4-31b` as the organization's default; it is
+safe to rerun. Not every model on the endpoint works: Coder Agents sends a
+system message in the middle of the conversation, which the chat templates of
+`qwen3.8-27b` and `mistral-medium-3.5` reject ("System message must be at the
+beginning"); `gpt-oss-120b`, `gemma-4-31b` and `glm-5.3` accept it. Everything is a variable (`SPE_LLM_BASE_URL`, `SPE_LLM_MODELS`
 as `model:context_limit:display name` separated by commas, …), see the header
 of the script. The API details it relies on, found in Coder 2.38's dashboard
 client since the docs only show the UI: `POST /api/v2/ai/providers` with type
