@@ -12,11 +12,6 @@ start reads this section; keep it short.
 
 <!-- - <item> — from <investigation / review / handoff>; <waits on the user: what> | <due: why soon>. -->
 
-- Bring `impl/agui-chat-sessions-2-sidebar` (#10) and `impl/canary-eval-ladder-1-scoring` (#3) onto the new
-  `.methodology` pin (`172eae3`): each takes `main` at a clean point, by merge (pushed branches aren't rewritten
-  here, *Overrides*), then `git submodule update --init .methodology` — from the methodology update of 2026-11-02;
-  due: both still run the old scripts (`continue.sh`, no `next-session.sh --resume`).
-
 ## Unscheduled
 
 <!-- - <item> — from <PR #n / review thread / spec Inputs for>, waits because <reason>. -->
