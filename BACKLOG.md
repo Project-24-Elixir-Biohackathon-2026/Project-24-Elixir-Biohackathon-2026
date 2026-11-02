@@ -12,6 +12,11 @@ start reads this section; keep it short.
 
 <!-- - <item> — from <investigation / review / handoff>; <waits on the user: what> | <due: why soon>. -->
 
+- Canary ladder: fold `biohackathon` knowledge 0015 (matched clean and injected trials; proposed) into the spec
+  and plan as 0014's findings were (clarifications, tasks rewritten) — from the user's comment on #3
+  (2026-10-23, "check 0015 review point as well"); due: before slice 2 of the ladder, which 0015 touches via
+  slice 5's suite.
+
 ## Unscheduled
 
 <!-- - <item> — from <PR #n / review thread / spec Inputs for>, waits because <reason>. -->
