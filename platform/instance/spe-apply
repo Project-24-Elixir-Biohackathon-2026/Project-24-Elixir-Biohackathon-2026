@@ -77,6 +77,15 @@ wait_http() {  # url, tries
 
 up() {
   echo "== up (profiles: $COMPOSE_PROFILES)"
+  # Containers of services outside the active profiles (the other frontend, or the
+  # other chat UI mode) are not orphans to compose and would keep their ports: remove them.
+  local active inactive
+  active=$("${compose[@]}" config --services)
+  inactive=$(COMPOSE_PROFILES='*' "${compose[@]}" config --services | grep -vxF -f <(echo "$active") || true)
+  if [[ -n $inactive ]]; then
+    # shellcheck disable=SC2086
+    COMPOSE_PROFILES='*' "${compose[@]}" rm -sf $inactive >/dev/null 2>&1 || true
+  fi
   # agent.yaml is a bind mount: its hash is a container label, so a change recreates the agent.
   SPE_AGENT_CONFIG_HASH=$(sha256sum "$dir/agent.yaml" 2>/dev/null | cut -c1-16 || true)
   export SPE_AGENT_CONFIG_HASH
