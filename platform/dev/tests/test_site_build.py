@@ -23,7 +23,7 @@ def test_builds_landing_and_catalog(tmp_path):
     landing = (out / "index.html").read_text()
     assert 'href="/workspaces"' in landing and 'href="/threats/"' in landing
     assert "<!-- site.css -->" not in landing  # the stylesheet was inlined
-    overview = (out / "threats" / "index.html").read_text()
+    overview = (out / "threats" / "all-threats" / "index.html").read_text()
     entries = sorted(p for p in (REPO / "threats").glob("TM-*.md"))
     assert entries, "no entries in threats/"
     for path in entries:
@@ -34,7 +34,11 @@ def test_builds_landing_and_catalog(tmp_path):
         assert f"{tm}:" in text and "Attack Scenarios" in text
         assert "hypothesised" in text or "reproduced" in text or "mitigated" in text
         assert f'href="{path.stem}/"' in overview or f'href="../{path.stem}/"' in overview or path.stem in overview
-    assert (out / "threats" / "vocabulary" / "index.html").is_file()
+    for field in ("status", "entry-points", "assets", "stride"):
+        page = out / "threats" / "metadata" / field / "index.html"
+        assert page.is_file(), page
+    assert 'href="../metadata/status/#hypothesised"' in (
+        out / "threats" / entries[0].stem / "index.html").read_text()
     assert (out / "threats" / "assets" / "catalog" / "catalog.js").is_file()
     assert 'class="catalog-table"' in overview and "catalog/catalog.js" in overview
     assert not (out / "threats" / "TEMPLATE").exists()

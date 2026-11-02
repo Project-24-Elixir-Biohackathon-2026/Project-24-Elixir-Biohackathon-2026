@@ -1,13 +1,15 @@
 """MkDocs hooks for the threat catalog.
 
 - on_config: point docs_dir at the repository's threats/ (SPE_REPO_ROOT, or
-  this repository) and build the navigation: Overview, Threats, Vocabulary.
+  this repository) and build the navigation: Overview, All threats, Threats,
+  Metadata (one page per frontmatter field).
 - on_files: validate the catalog with validate.py (a problem stops the
-  build), then generate the overview page and the vocabulary page, and add
-  the catalog table's script and stylesheet from assets/.
+  build), then generate the pages that are not entries (overview, the table
+  of all threats, the metadata pages) and add the table's script and
+  stylesheet from assets/.
 - on_page_markdown: show an entry's frontmatter on its page: the description
-  under the heading, then status, entry points, assets and STRIDE; and a link
-  to the entry's source file at the end.
+  under the heading, then status, entry points, assets and STRIDE, each value
+  linked to its explanation; and a link to the entry's source file at the end.
 """
 
 import os
@@ -25,6 +27,23 @@ import validate  # noqa: E402  (the repository's validator)
 _vocab = None
 _entries = None
 
+# The metadata pages: field -> (page title, vocabulary section, what the field is for)
+FIELDS = (
+    ("status", "Status", "status",
+     "How far the threat has been shown on an SPE instance. A status beyond "
+     "`hypothesised` must be backed by a promptfoo test in "
+     "`platform/promptfoo-evals/` or an archived run."),
+    ("entry-points", "Entry points", "entry-points",
+     "Through which channel the threat reaches the agent: where the triggering "
+     "content or instruction comes from."),
+    ("assets", "Assets", "assets",
+     "What is at stake: the things the agent can read, change or spend that "
+     "the threat puts at risk."),
+    ("stride", "STRIDE", "stride",
+     "The STRIDE categories the threat falls into, a fixed external standard "
+     "(the property each category violates is given in brackets)."),
+)
+
 
 def _catalog():
     global _vocab, _entries
@@ -41,16 +60,21 @@ def on_config(config):
     _, entries = _catalog()
     config["nav"] = [
         {"Overview": "index.md"},
+        {"All threats": "all-threats.md"},
         {"Threats": [e.path.name for e in entries]},
-        {"Vocabulary": "vocabulary.md"},
+        {"Metadata": [{title: f"metadata/{field}.md"} for field, title, _, _ in FIELDS]},
     ]
     return config
 
 
 def on_files(files, config):
     vocab, entries = _catalog()
-    files.append(File.generated(config, "index.md", content=overview(vocab, entries)))
-    files.append(File.generated(config, "vocabulary.md", content=vocabulary_page(vocab)))
+    files.append(File.generated(config, "index.md", content=overview()))
+    files.append(File.generated(config, "all-threats.md", content=all_threats(entries)))
+    for field, title, section, intro in FIELDS:
+        files.append(File.generated(
+            config, f"metadata/{field}.md",
+            content=metadata_page(field, title, intro, vocab[section], entries)))
     for name in ("catalog.js", "catalog.css"):
         files.append(File.generated(
             config, f"assets/catalog/{name}", content=(HERE / "assets" / name).read_text(encoding="utf-8")))
@@ -69,8 +93,8 @@ def on_page_markdown(markdown, page, config, files):
         "",
         "| Status | Entry points | Assets | STRIDE |",
         "|---|---|---|---|",
-        f"| {codes([meta['status']])} | {codes(meta['entry-points'])} "
-        f"| {codes(meta['assets'])} | {codes(meta['stride'])} |",
+        f"| {linked('status', [meta['status']])} | {linked('entry-points', meta['entry-points'])} "
+        f"| {linked('assets', meta['assets'])} | {linked('stride', meta['stride'])} |",
         "",
     ]
     source = (
@@ -84,28 +108,53 @@ def codes(values) -> str:
     return " ".join(f"`{v}`" for v in values)
 
 
+def linked(field: str, values) -> str:
+    """Values as links to their explanation on the field's metadata page."""
+    return " ".join(f"[`{v}`](metadata/{field}.md#{v})" for v in values)
+
+
 def link(entry) -> str:
     return f"[{entry.meta['id']}: {entry.meta['name']}]({entry.path.name})"
 
 
-def overview(vocab, entries) -> str:
-    out = [
+def overview() -> str:
+    return "\n".join([
         "# Threat catalog",
         "",
-        "What the SPE instances are tested for: each threat with its entry points,",
-        "the assets at stake and the status of what has been shown on an instance.",
-        "The [vocabulary](vocabulary.md) defines the terms.",
+        "What the SPE instances are tested for: each threat an AI agent poses, or",
+        "is exposed to, inside a Secure Processing Environment, written against the",
+        "stack the instances run.",
         "",
-        "## By status",
+        "- [All threats](all-threats.md): one table, sortable and filterable.",
+        "- **Threats**: one page per entry, in the navigation.",
+        "- **Metadata**: what each field of an entry means and every value it can",
+        "  take, with the entries that use it.",
         "",
-    ]
-    for status, meaning in vocab["status"].items():
-        group = [e for e in entries if e.meta["status"] == status]
-        out += [f"### {status} ({len(group)})", "", f"*{meaning}.*", ""]
-        out += [f"- {link(e)}" for e in group] or ["- none yet"]
-        out.append("")
-    out += [
-        "## All threats",
+        "## How to read an entry",
+        "",
+        "Every entry has the same shape. Under its heading: the description, then",
+        "its [status](metadata/status.md), [entry points](metadata/entry-points.md),",
+        "[assets](metadata/assets.md) and [STRIDE](metadata/stride.md) categories.",
+        "Then three sections:",
+        "",
+        "- **Attack Scenarios**: who or what triggers the threat, through which entry",
+        "  point, and what the agent then does, with the real commands, endpoints and",
+        "  files of the stack.",
+        "- **Preconditions**: what must be true of the agent, its access or its",
+        "  environment for the scenarios to work.",
+        "- **Mitigations**: preventive (stop it), detective (notice it) and",
+        "  responsive (what to do once detected).",
+        "",
+        "The entries are Markdown files with a YAML header in the repository's",
+        "`threats/` directory; a validator holds every entry to the template and to",
+        "the controlled values. Each page links to its source file at the end.",
+        "",
+    ])
+
+
+def all_threats(entries) -> str:
+    out = [
+        "# All threats",
         "",
         "Click a column to sort; the controls filter the rows.",
         "",
@@ -124,21 +173,19 @@ def overview(vocab, entries) -> str:
     return "\n".join(out)
 
 
-def vocabulary_page(vocab) -> str:
-    out = [
-        "# Vocabulary",
-        "",
-        "The controlled values an entry's frontmatter may use, from",
-        "`vocabulary.yaml` in the repository. `validate.py` rejects anything else.",
-        "",
-    ]
-    for section, title in (
-        ("status", "Status"),
-        ("entry-points", "Entry points"),
-        ("assets", "Assets"),
-        ("stride", "STRIDE"),
-    ):
-        out += [f"## {title}", "", "| Value | Meaning |", "|---|---|"]
-        out += [f"| `{k}` | {v} |" for k, v in vocab[section].items()]
+def metadata_page(field, title, intro, values, entries) -> str:
+    out = [f"# {title}", "", intro, "", f"Field `{field}` in an entry's header; the values come from",
+           "`vocabulary.yaml` in the repository and the validator rejects any other.", ""]
+    for value, meaning in values.items():
+        users = [e for e in entries if value in listed(e.meta[field])]
+        out += [f"## {value}", "", f"{meaning}.", ""]
+        if users:
+            out += [f"- [{e.meta['id']}: {e.meta['name']}](../{e.path.name})" for e in users]
+        else:
+            out.append("- no entry yet")
         out.append("")
     return "\n".join(out)
+
+
+def listed(value) -> list:
+    return value if isinstance(value, list) else [value]
