@@ -10,3 +10,6 @@
 .catalog-table th.sortable:hover { color: var(--md-accent-fg-color); }
 .catalog-table th[aria-sort="ascending"]::after { content: " \2191"; }
 .catalog-table th[aria-sort="descending"]::after { content: " \2193"; }
+
+/* Figures: ![...](...){ .figure } in a page, shown smaller and centred. */
+.md-typeset img.figure { display: block; width: 100%; max-width: 32rem; margin: 1.5rem auto; }
