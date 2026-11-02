@@ -38,6 +38,7 @@ instruction set: each rule lives in exactly one of them, so update the file that
 |---|---|
 | [`platform/promptfoo-evals/README.md`](platform/promptfoo-evals/README.md) | you write, change or run an evaluation |
 | [`platform/ansible/README.md`](platform/ansible/README.md) | you change what an instance plants, deploys or hardens |
+| [`docs/guides/contributing-upstream.md`](docs/guides/contributing-upstream.md) | you port fork work to upstream, or merge `upstream/main` into our `main`: the worktree, the filtered patch, the checks, opening and tracking the PR |
 
 Decisions behind the work (scope, threat × profile experiments) are the knowledge records of the parent
 repository `biohackathon` (`knowledge/`, e.g. 0011 and 0013), which pins this fork as a submodule.
@@ -146,36 +147,45 @@ because Z." This file wins over the guides in `.methodology/shared/guides/`.
   Conventions* above, because pushed branches are not rewritten here (PR #1 was merged with DCO red rather
   than rewritten): sign off from the first commit; a commit pushed without one stays, and the PR says
   so.
+- In this repo, **a PR that merges `upstream/main` is merged with a merge commit** instead of the squash in
+  `development-workflow.md`, *Review and merge*, step 6, and `forge-github.md`, *Merge*, because a squash drops `upstream/main` as a parent and
+  the next upstream merge conflicts on every commit again (`docs/guides/contributing-upstream.md`).
 
 ## Contributing upstream
 
 Our fork's `main` carries fork-only files that upstream must never receive:
 
     .gitmodules  .methodology/  .claude/settings.json  BACKLOG.md
-    docs/README.md  docs/knowledge/  docs/investigations/  docs/proposals/  docs/superpowers/
+    docs/README.md  docs/guides/  docs/knowledge/  docs/investigations/  docs/proposals/  docs/superpowers/
+
+The guide's exclude list (its step 1) mirrors this list: change both together.
 
 A PR to upstream is cut from `upstream/main` (`git fetch upstream`), carries only project changes
 (cherry-picked or re-applied), and must pass this check before it is pushed:
 
 ```bash
 git diff --name-only upstream/main...HEAD \
-  | grep -E '^(\.gitmodules|\.methodology|\.claude/|BACKLOG\.md|docs/(README\.md|knowledge/|investigations/|proposals/|superpowers/))' \
+  | grep -E '^(\.gitmodules|\.methodology|\.claude/|BACKLOG\.md|docs/(README\.md|guides/|knowledge/|investigations/|proposals/|superpowers/))' \
   && echo "fork-only files in this branch: remove them" || echo ok
 ```
 
 `AGENTS.md` is upstream's file rewritten for the fork: never carry its diff upstream. A project rule upstream
 also needs is written into upstream's `AGENTS.md` on the upstream branch, by hand. Code and docs that upstream
 also needs (e.g. `platform/`, `threats/`, `README.md`) must not refer to anything fork-only.
-Upstream changes come in by merging `upstream/main` into our `main`.
+Upstream changes come in by merging `upstream/main` into our `main`. The steps for both directions:
+`docs/guides/contributing-upstream.md`.
 
 ## Current work
 
 One line per active track: where it stands, the next unit, and where its handoff is. This section only points
 to things. Who is working on what is shown by the open PRs, not here (*Claiming a unit* in the workflow guide).
-Each unit's PR updates its track's line; the last slice removes it.
+Each unit's PR updates its track's line; the last slice removes it. An open upstream PR also gets a line while it
+is open (`docs/guides/contributing-upstream.md`, step 6).
 
 - **Canary evaluation ladder** (biohackathon 0013): spec (#1) and plan (#2) merged. **Next: slice 1/9**
   `impl/canary-eval-ladder-1-scoring`. Handoff: `ls docs/superpowers/plans/2026-10-22-canary-eval-ladder/handoffs | tail -1`.
+- **Upstream PR kraatz #9** (`contrib/agui-token-cap-optional`): the AG-UI agent's token cap optional, off by
+  default (fork #4); waits on upstream's review (`docs/guides/contributing-upstream.md`, step 6).
 - **Not scheduled**: `BACKLOG.md` holds every deferred item without a slice; its *Next*, the ones due soon or
   waiting on the user.
 
@@ -207,8 +217,9 @@ evaluation instances.
 
 Each unit of work runs in its own worktree (*Development workflow*).
 
-The portal VM follows `main` (`platform/coder/deploy/sync-template.sh`): a merge
-to `main` changes what participants get within minutes.
+The portal VM follows upstream's `main`, not ours (`platform/coder/deploy/sync-template.sh`, on a checkout
+cloned from `kraatz`): a merge there changes what participants get within minutes. Our work reaches them through
+an upstream PR (`docs/guides/contributing-upstream.md`).
 
 Private instance files and `platform/ansible/output/` exist only in the main checkout,
 not in a worktree. To deploy a worktree's agent or chat UI before it is merged,
