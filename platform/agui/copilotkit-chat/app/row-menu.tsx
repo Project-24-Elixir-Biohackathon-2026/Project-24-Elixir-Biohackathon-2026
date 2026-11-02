@@ -54,13 +54,17 @@ export function RowMenu({ session, keyboard, onRename, onPin, onTags, onHide, on
 }
 
 // Replaces a title in place (a row's, or the chat header's), focused with the text selected.
-export function RenameInput({ value, onChange, onSave, onCancel, label = "Session title", className = "spe-rename" }:
-  { value: string; onChange: (v: string) => void; onSave: () => void; onCancel: () => void; label?: string;
-    className?: string }) {
+// Tab saves too, once focus has moved on (`onLeave`), so the next field keeps it.
+export function RenameInput({ value, onChange, onSave, onLeave, onCancel, label = "Session title",
+  className = "spe-rename" }:
+  { value: string; onChange: (v: string) => void; onSave: () => void; onLeave: () => void; onCancel: () => void;
+    label?: string; className?: string }) {
   const input = useRef<HTMLInputElement>(null);
+  const leave = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => {
     input.current?.focus();
     input.current?.select();
+    return () => clearTimeout(leave.current); // gone first (its row removed): nothing to save
   }, []);
   return (
     <input
@@ -74,6 +78,7 @@ export function RenameInput({ value, onChange, onSave, onCancel, label = "Sessio
         if (composing(e)) return;
         if (e.key === "Enter") { e.preventDefault(); onSave(); }
         if (e.key === "Escape") { e.preventDefault(); onCancel(); }
+        if (e.key === "Tab") leave.current = setTimeout(onLeave, 0);
       }}
     />
   );

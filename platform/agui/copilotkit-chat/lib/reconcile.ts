@@ -38,10 +38,11 @@ export function serverRunStart(browserStartMs: number, serverOffsetMs: number): 
   return browserStartMs + serverOffsetMs;
 }
 
-/** True when the list has the session with an `updated_at` not older than the run's start. */
+/** True when the list has the session with a `last_run_at` not older than the run's start. Not
+ *  `updated_at`: a rename, pin or tag change made during the run moves that one too. */
 export function showsRun(list: readonly SessionMeta[], id: string, runStartServerMs: number): boolean {
   const s = list.find((x) => x.id === id);
-  return s !== undefined && Date.parse(s.updated_at) >= runStartServerMs;
+  return s !== undefined && s.last_run_at !== null && Date.parse(s.last_run_at) >= runStartServerMs;
 }
 
 /** True when a run error is the recorder's refusal at admission (nothing to reconcile). */

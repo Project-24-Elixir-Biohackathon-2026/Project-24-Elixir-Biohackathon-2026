@@ -87,22 +87,28 @@ def runs_summary(rec):
     return f"{len(runs)} ({detail})" if runs else "0"
 
 
+TEXT_ROLES = ("user", "assistant", "system", "developer")
+
+
 def render_messages(messages):
     """User and assistant text; each tool call with its arguments and result, fenced."""
     results = {m.get("toolCallId"): m for m in messages
                if isinstance(m, dict) and m.get("role") == "tool"}
-    shown = set()
+    # A result is shown at its call, wherever the call is; only one with no call stands alone.
+    call_ids = {call.get("id") for m in messages
+                if isinstance(m, dict) and m.get("role") in TEXT_ROLES
+                for call in m.get("toolCalls") or [] if isinstance(call, dict)} - {None}
     out = []
     for m in messages:
         if not isinstance(m, dict):
             continue
         role = m.get("role", "?")
         if role == "tool":
-            if m.get("toolCallId") in shown:
+            if m.get("toolCallId") in call_ids:
                 continue
             out += ["## tool result (no matching call)", "", fence(text_of(m.get("content"))), ""]
             continue
-        if role in ("user", "assistant", "system", "developer"):
+        if role in TEXT_ROLES:
             out += [f"## {role}", ""]
             text = text_of(m.get("content")).strip()
             if text:
@@ -111,9 +117,8 @@ def render_messages(messages):
                 fn = call.get("function") or {}
                 out += [f"**Tool call `{one_line(fn.get('name')) or '?'}`**", "",
                         fence(pretty_args(fn.get("arguments")), "json"), ""]
-                result = results.get(call.get("id"))
+                result = results.get(call.get("id")) if call.get("id") is not None else None
                 if result is not None:
-                    shown.add(call.get("id"))
                     label = "Tool error" if result.get("error") else "Tool result"
                     body = text_of(result.get("content"))
                     if result.get("error"):
@@ -188,6 +193,10 @@ def main(argv):
     else:
         print(f"{bundle}: neither sessions/ nor agui-sessions/", file=sys.stderr)
         return 2
+    chats_dir = os.path.join(run_dir, "chats")
+    if os.path.realpath(src).startswith(os.path.realpath(chats_dir) + os.sep) or same(src, chats_dir):
+        print(f"{src}: inside {chats_dir}, which a render replaces", file=sys.stderr)
+        return 2
     os.makedirs(run_dir, exist_ok=True)
     raw_dir = os.path.join(run_dir, "agui-sessions")
     if not same(src, raw_dir):
@@ -202,6 +211,11 @@ def main(argv):
         shutil.copyfile(log_src, log_dst)
 
     records, unreadable = load_sessions(raw_dir)
+    # A re-render starts chats/ afresh, so no chat is left under an old title.
+    if os.path.islink(chats_dir):
+        os.unlink(chats_dir)
+    elif os.path.isdir(chats_dir):
+        shutil.rmtree(chats_dir)
     rows = []
     for i, (name, rec) in enumerate(records, 1):
         stem = f"{i:02d}-{slug(title_of(rec))}"

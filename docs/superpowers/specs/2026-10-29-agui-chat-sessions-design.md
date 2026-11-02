@@ -181,7 +181,7 @@ Routes under `app/api/sessions/`, beside `/api/copilotkit`:
 
 | Call | Answer |
 |---|---|
-| `GET /api/sessions` | `200`, a JSON list of metadata (`id`, `title`, `tags`, `pinned`, `hidden`, `created_at`, `updated_at`), deleted sessions left out, hidden ones included, newest `updated_at` first, at most 1000 |
+| `GET /api/sessions` | `200`, a JSON list of metadata (`id`, `title`, `tags`, `pinned`, `hidden`, `created_at`, `updated_at`, and `last_run_at`: the last run's `ended_at`, `null` before the first), deleted sessions left out, hidden ones included, newest `updated_at` first, at most 1000 |
 | `GET /api/sessions/{id}` | `200` with the full record minus `deleted_at` and `runs`; `404` if missing or deleted |
 | `PATCH /api/sessions/{id}` | body: any of `title`, `tags`, `pinned`, `hidden`; `200` with the new metadata; `400` for an unknown key, a wrong type or an invalid value (nothing changed); `404` if missing or deleted |
 | `DELETE /api/sessions/{id}` | sets `deleted_at`; `204`; `404` if missing or already deleted |
@@ -208,15 +208,16 @@ Plain React and CSS in `app/` (no new dependencies); all session data is rendere
   `tag:<name>` terms filter by tag (several must all match) and typing `tag:` suggests the tags in use;
   the list, pinned first, then grouped *Today*, *Yesterday*, *Previous 7 days*, *Older* by `updated_at`,
   each row with its title only (as in Open WebUI), the open one highlighted, `⋯` shown on hover, focus,
-  the open row and the row whose menu is open; at the bottom a *Show hidden* toggle and the note "Deleted
+  the open row and the row whose menu is open (on a touch screen, `hover: none`, always); at the bottom a *Show hidden* toggle and the note "Deleted
   sessions are kept in the run archive."
 - **Row menu (`⋯`):** a popover anchored to the button, one open at a time; it closes on a click outside,
-  Escape, choosing an item, opening a session or *New chat*, and returns focus to its `⋯`; arrow keys move
-  between items. *Rename* (inline in the row, also by double-click; text selected; Enter or a click outside
-  saves, Esc cancels), *Pin* / *Unpin*, *Tags* (Open WebUI's tag editor: the session's tags as pills, each
+  Escape, choosing an item, opening a session or *New chat*; Escape and a choice return focus to its `⋯` (a
+  click outside leaves it where the click put it); arrow keys move between items. *Rename* (inline in the row,
+  also by double-click; text selected; Enter, Tab or a click outside saves, Esc cancels), *Pin* / *Unpin*, *Tags* (Open WebUI's tag editor: the session's tags as pills, each
   removed by its ×, and an "Add a tag…" input whose suggestions are the tags in use; Enter adds), *Hide* /
   *Unhide*, *Delete* (a dialog "Delete chat?" with "This removes it from your list. It is kept in the run
-  archive.", *Cancel* and *Delete*; Escape cancels).
+  archive.", *Cancel* and *Delete*; Escape cancels, wherever focus is). The page-wide Escape handlers skip a key an
+  earlier handler already took (`defaultPrevented`).
 - **Chat header:** replaces today's one-line banner: a quiet row with the session's title (*New chat*
   before the first run), renamable in place, and the same `⋯` menu. No banner sentence: the note that this
   is the SPE agent and that every tool call is shown is the muted line under the composer, where claude.ai
@@ -240,11 +241,12 @@ Plain React and CSS in `app/` (no new dependencies); all session data is rendere
   already said it was not saved. Only a run whose stream to the browser ends early (the connection dropped
   while the detached run goes on, §2) is saved after the browser's run has ended, and so can land after that
   fetch: after a
-  run ends, until the list shows the open session with an `updated_at` not older than the run's start, the
+  run ends, until the list shows the open session with a `last_run_at` not older than the run's start, the
   page fetches it again, up to 5 times at 500 ms. If it still does not, the error bar says "this session
   could not be saved".
 - **Errors:** a failed API call shows in the existing error bar; the open chat is never cleared. A run
-  refused by the recorder shows its `RUN_ERROR` there as today.
+  refused by the recorder shows its `RUN_ERROR` there as today. If the runtime is still not ready after 15 s,
+  the bar says "The agent runtime is unreachable; reload the page.", and the message goes once it is ready.
 
 Every current text that says the AG-UI chat keeps no history is rewritten in the slice that changes the
 behaviour: `README.md` ("A reload starts a new conversation"), `docs/getting-started.md` ("a reload
@@ -469,3 +471,16 @@ The same slice rewrites every current text that says the AG-UI chat is not archi
    lack the last run before `destroy.yml` drops the volume (§4: any failed step fails `archive.yml`). A service
    already stopped before the barrier keeps an old exit code, so it is not checked. *Amends:* §4 *Export*, step 1.
    *Status:* folded.
+6. **The list reconciles a run by `last_run_at`, not `updated_at`** (2026-11-02; `change/agui-chat-minors`). Each
+   list entry carries `last_run_at`, the session's last run's `ended_at`, and the page's reconciliation waits for
+   that instead of `updated_at`. *Reason:* a rename, pin, tag or hide made while a run is in progress also moves
+   `updated_at`, so a dropped stream plus a failed save could pass as saved (`BACKLOG.md`, from PR #11's local
+   review). *Amends:* §2 *Session API* (`GET /api/sessions`), §3 *Refresh*. *Status:* folded.
+7. **Keyboard and touch minors: Tab saves a rename, Escape reaches the dialog anywhere, touch shows `⋯`, an
+   unreachable runtime is said** (2026-11-02; `change/agui-chat-minors`). Tab out of a rename saves it once focus
+   has moved; the delete dialog's Escape listens on the document; the page-wide Escape handlers skip a key already
+   taken; under `hover: none` every row shows its `⋯`; after 15 s without the runtime the error bar says so. A
+   click outside the menu does not give focus back to `⋯`. *Reason:* the slice 2 and 3 reviews' deferred minors
+   (`BACKLOG.md`); refocusing `⋯` after a click outside would take focus from whatever the click landed on.
+   *Amends:* §3 *Layout*, *Row menu*, *Errors*; clarification 4's "focus back to `⋯`" (for Escape and a choice
+   only). *Status:* folded.

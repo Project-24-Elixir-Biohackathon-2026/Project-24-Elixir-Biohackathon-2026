@@ -9,7 +9,7 @@ const NOW = new Date(2026, 9, 29, 10, 0); // 29 October 2026, 10:00 local
 
 function meta(id: string, over: Partial<SessionMeta> = {}): SessionMeta {
   return { id, title: id, tags: [], pinned: false, hidden: false, created_at: at(2026, 10, 1),
-           updated_at: at(2026, 10, 29, 9), ...over };
+           updated_at: at(2026, 10, 29, 9), last_run_at: null, ...over };
 }
 
 const LIST: SessionMeta[] = [

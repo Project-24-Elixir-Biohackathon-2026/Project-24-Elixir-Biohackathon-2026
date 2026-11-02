@@ -24,9 +24,14 @@ export type SessionRecord = {
   messages: Message[];
   runs: RunEntry[];
 };
-export type SessionMeta = Pick<SessionRecord, "id" | "title" | "tags" | "pinned" | "hidden" | "created_at" | "updated_at">;
+// `last_run_at`: the latest recorded run's end (null before the first), so a client can tell its
+// run was saved apart from a metadata change, which also moves `updated_at`.
+export type SessionMeta = Pick<SessionRecord, "id" | "title" | "tags" | "pinned" | "hidden" | "created_at" | "updated_at"> &
+  { last_run_at: string | null };
 export type SessionView = Omit<SessionRecord, "deleted_at" | "runs">;
 export type MetaPatch = Partial<Pick<SessionRecord, "title" | "tags" | "pinned" | "hidden">>;
+
+const DIR_SYNC_UNSUPPORTED = new Set(["EINVAL", "ENOTSUP", "EISDIR", "EPERM"]);
 
 export class ValidationError extends Error {}
 
@@ -128,7 +133,10 @@ export function withSession<T>(id: string, fn: () => Promise<T>): Promise<T> {
 }
 
 function toMeta(r: SessionRecord): SessionMeta {
-  return { id: r.id, title: r.title, tags: r.tags, pinned: r.pinned, hidden: r.hidden, created_at: r.created_at, updated_at: r.updated_at };
+  return {
+    id: r.id, title: r.title, tags: r.tags, pinned: r.pinned, hidden: r.hidden, created_at: r.created_at,
+    updated_at: r.updated_at, last_run_at: r.runs.at(-1)?.ended_at ?? null,
+  };
 }
 
 // The one test of a soft-deleted session, for every reader: list, GET and run admission.
@@ -200,6 +208,18 @@ export class SessionStore {
     } catch (error) {
       await fs.rm(tmp, { force: true }).catch(() => {});
       throw error;
+    }
+    // The rename itself is durable only once the directory is synced. Some filesystems (network, 9p,
+    // virtiofs mounts) refuse to sync a directory; the file is in place then, so that is not a failed save.
+    try {
+      const dir = await fs.open(this.dir, "r");
+      try {
+        await dir.sync();
+      } finally {
+        await dir.close();
+      }
+    } catch (error) {
+      if (!DIR_SYNC_UNSUPPORTED.has((error as NodeJS.ErrnoException).code ?? "")) throw error;
     }
   }
 

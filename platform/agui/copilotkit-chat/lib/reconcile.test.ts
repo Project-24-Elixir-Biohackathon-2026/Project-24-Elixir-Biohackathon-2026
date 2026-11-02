@@ -13,16 +13,22 @@ const ID = "6f1c0d2e-4b1a-4c3d-8e9f-0a1b2c3d4e5f";
 const START = Date.parse("2026-10-29T10:00:00.000Z");
 // The browser's start time; with offset 0 the clocks agree.
 const BROWSER_START = START;
-const row = (updated: string, id = ID): SessionMeta => ({
-  id, title: "t", tags: [], pinned: false, hidden: false, created_at: updated, updated_at: updated,
+// A session whose last recorded run ended at `ran`; `updated_at` as late as that, or later.
+const row = (ran: string | null, id = ID, updated = ran ?? "2026-10-29T08:00:00.000Z"): SessionMeta => ({
+  id, title: "t", tags: [], pinned: false, hidden: false, created_at: updated, updated_at: updated, last_run_at: ran,
 });
 
-test("showsRun: the session present with updated_at not older than the run's start", () => {
+test("showsRun: the session present with last_run_at not older than the run's start", () => {
   assert.equal(showsRun([row("2026-10-29T10:00:00.000Z")], ID, START), true);
   assert.equal(showsRun([row("2026-10-29T10:00:05.000Z")], ID, START), true);
   assert.equal(showsRun([row("2026-10-29T09:59:59.999Z")], ID, START), false);
   assert.equal(showsRun([row("2026-10-29T10:00:05.000Z", "other")], ID, START), false);
   assert.equal(showsRun([], ID, START), false);
+});
+
+test("showsRun: a metadata change during the run (updated_at moved, no new run) is not this run's save", () => {
+  assert.equal(showsRun([row("2026-10-29T09:00:00.000Z", ID, "2026-10-29T10:00:03.000Z")], ID, START), false);
+  assert.equal(showsRun([row(null, ID, "2026-10-29T10:00:03.000Z")], ID, START), false);
 });
 
 test("clockOffset and serverRunStart: a browser clock 30 s fast does not lose the run", () => {

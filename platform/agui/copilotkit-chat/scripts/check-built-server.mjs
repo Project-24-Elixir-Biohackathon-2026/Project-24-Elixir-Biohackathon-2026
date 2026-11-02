@@ -6,9 +6,11 @@
 //   1. two sessions run at once keep separate recorder state (per-run state across clones);
 //   2. PATCHes overlapping a run's finalisation all land, and the run's messages too (one
 //      session queue shared by the session routes and the CopilotKit route).
-// Exits non-zero on the first failure.
+// Exits non-zero on the first failure, or after DEADLINE_MS if something hangs; each request
+// gives up after REQUEST_MS.
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { rmSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -21,6 +23,8 @@ const AGENT_PORT = 18171;
 const UI_PORT = 18172;
 const KEY = `check-${randomUUID()}`;
 const SAVE_DELAY_MS = 1500;
+const REQUEST_MS = 30_000;
+const DEADLINE_MS = 180_000;
 const ui = `http://127.0.0.1:${UI_PORT}`;
 const children = [];
 
@@ -30,10 +34,15 @@ function start(cmd, args, options) {
   return child;
 }
 
+// A fetch that fails instead of waiting forever on a wedged server.
+function request(url, init = {}) {
+  return fetch(url, { ...init, signal: AbortSignal.timeout(REQUEST_MS) });
+}
+
 async function waitFor(url) {
   for (let i = 0; i < 300; i++) {
     try {
-      await fetch(url);
+      await fetch(url, { signal: AbortSignal.timeout(2000) });
       return;
     } catch {
       await new Promise((r) => setTimeout(r, 200));
@@ -53,7 +62,7 @@ function user(content) {
 
 // One run through the CopilotKit route, read to its end (the SSE stream ends after the save).
 async function run(threadId, messages) {
-  const response = await fetch(`${ui}/api/copilotkit/agent/spe/run`, {
+  const response = await request(`${ui}/api/copilotkit/agent/spe/run`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ threadId, runId: randomUUID(), messages, tools: [], context: [], state: {}, forwardedProps: {} }),
@@ -67,6 +76,14 @@ async function session(id) {
 }
 
 const dir = await fs.mkdtemp(path.join(os.tmpdir(), "check-sessions-"));
+// The whole check's bound: kill what it started and fail, whatever step is stuck.
+const deadline = setTimeout(() => {
+  console.error(`FAILED: the check did not finish within ${DEADLINE_MS / 1000} s`);
+  // SIGTERM, as below: uv passes it on to the fake agent, a SIGKILL would orphan it.
+  for (const child of children) child.kill("SIGTERM");
+  rmSync(dir, { recursive: true, force: true });
+  setTimeout(() => process.exit(1), 1000);
+}, DEADLINE_MS);
 try {
   start("uv", ["run", "--group", "dev", "python", fakeAgent, "--port", String(AGENT_PORT), "--key", KEY], {
     cwd: agentDir, env: { ...process.env, PYDANTIC_AI_NO_BANNER: "1" },
@@ -102,7 +119,7 @@ try {
   const waits = [];
   for (let i = 0; !ended; i++) {
     const t0 = Date.now();
-    const response = await fetch(`${ui}/api/sessions/${a}`, {
+    const response = await request(`${ui}/api/sessions/${a}`, {
       method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: `patch ${i}` }),
     });
     if (response.status !== 200) throw new Error(`FAILED: PATCH ${i} answered ${response.status}`);
@@ -120,6 +137,7 @@ try {
   console.error(error instanceof Error ? error.message : error);
   process.exitCode = 1;
 } finally {
+  clearTimeout(deadline);
   for (const child of children) child.kill("SIGTERM");
   await fs.rm(dir, { recursive: true, force: true });
 }

@@ -2,6 +2,7 @@
 import filecmp
 import importlib.util
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -189,3 +190,52 @@ def test_write_run_still_renders_an_openwebui_bundle(tmp_path):
     assert proc.stdout.strip() == "1 chats, report filled in"
     assert "| [First](chats/01-first.md) | exfil |  | 1 | 2025-10-29 10:00 UTC |" in (out / "index.md").read_text()
     assert (out / "report.md").read_text() == "found it"
+
+
+def test_agui_run_rerender_drops_chats_under_an_old_title(bundle, tmp_path):
+    out = tmp_path / "run"
+    run(bundle, out)
+    path = bundle / "sessions" / f"{ACTIVE}.json"
+    path.write_text(json.dumps({**json.loads(path.read_text()), "title": "Renamed"}))
+    run(bundle, out)
+    names = sorted(p.name for p in (out / "chats").iterdir())
+    assert "01-renamed.md" in names and not any(n.startswith("01-list") for n in names)
+    assert len(names) == 6
+
+
+def test_agui_run_result_before_its_call_is_shown_once_at_the_call(tmp_path):
+    turn = tool_turn(1, "the result")
+    turn[1], turn[2] = turn[2], turn[1]  # the tool message recorded before the assistant's call
+    b = tmp_path / "bundle"
+    (b / "sessions").mkdir(parents=True)
+    (b / "sessions" / f"{ACTIVE}.json").write_text(json.dumps(record(ACTIVE, "Early", "2026-10-29T10:00:00Z",
+                                                                     messages=turn)))
+    out = tmp_path / "run"
+    run(b, out)
+    md = (out / "chats" / "01-early.md").read_text()
+    assert "no matching call" not in md
+    assert md.count("the result") == 1 and "<summary>Tool result</summary>" in md
+
+
+def test_agui_run_refuses_a_source_inside_the_chats_it_replaces(bundle, tmp_path):
+    out = tmp_path / "run"
+    (out / "chats").mkdir(parents=True)
+    shutil.move(bundle, out / "chats" / "bundle")
+    proc = subprocess.run([sys.executable, str(AGUI), str(out / "chats" / "bundle"), str(out)],
+                          capture_output=True, text=True)
+    assert proc.returncode == 2 and "which a render replaces" in proc.stderr
+    assert (out / "chats" / "bundle" / "sessions" / f"{ACTIVE}.json").exists()
+
+
+def test_agui_run_result_whose_call_has_no_id_still_shows(tmp_path):
+    msgs = [{"id": "a", "role": "assistant", "content": "",
+             "toolCalls": [{"type": "function", "function": {"name": "x", "arguments": "{}"}}]},
+            {"id": "t", "role": "tool", "content": "orphan result"}]
+    b = tmp_path / "bundle"
+    (b / "sessions").mkdir(parents=True)
+    (b / "sessions" / f"{ACTIVE}.json").write_text(json.dumps(record(ACTIVE, "No id", "2026-10-29T10:00:00Z",
+                                                                     messages=msgs)))
+    out = tmp_path / "run"
+    run(b, out)
+    md = (out / "chats" / "01-no-id.md").read_text()
+    assert "## tool result (no matching call)" in md and md.count("orphan result") == 1

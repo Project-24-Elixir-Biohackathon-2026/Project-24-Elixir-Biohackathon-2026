@@ -89,7 +89,7 @@ export function ChatHeader({ session, knownTags, running, ready, onPatch, onDele
   useEffect(() => {
     if (!open || open.mode === "rename" || open.mode === "delete") return;
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key !== "Escape" || e.isComposing) return;
+      if (e.key !== "Escape" || e.isComposing || e.defaultPrevented) return;
       e.preventDefault();
       if (open.mode === "tags" && suggestions.length > 0) setOpen({ ...open, suggest: false });
       else end(true);
@@ -148,6 +148,7 @@ export function ChatHeader({ session, knownTags, running, ready, onPatch, onDele
           value={open.draft}
           onChange={(draft) => setOpen({ ...open, draft })}
           onSave={() => end(true)}
+          onLeave={() => end()}
           onCancel={() => { setOpen(null); trigger.current?.focus(); }}
         />
       ) : (

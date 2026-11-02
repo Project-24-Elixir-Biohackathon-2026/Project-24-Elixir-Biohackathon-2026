@@ -340,6 +340,36 @@ test("RunHandle.cancel() ends a running session's run as cancelled and closes th
   }
 });
 
+test("two sessions running with the same client run id: cancelling one leaves the other's request open", async () => {
+  const { store, server, recorder } = await setup();
+  try {
+    const [a, b] = [randomUUID(), randomUUID()];
+    const runId = randomUUID();
+    // Both requests held until both runs are admitted, so each looks its controller up after both are set.
+    let open = () => {};
+    const gate = new Promise<void>((r) => (open = r));
+    const held = () => new HttpAgent({
+      url: server.url, fetch: async (url: string | URL | Request, init?: RequestInit) => { await gate; return recorder.fetch(url, init); },
+    });
+    const first = drive(recorder, { ...input(a, "hang a"), runId }, held());
+    const second = drive(recorder, { ...input(b, "hang b"), runId }, held());
+    for (let i = 0; i < 100 && !(shared().running.has(a) && shared().running.has(b)); i++) await new Promise((r) => setTimeout(r, 5));
+    open();
+    await requestsReach(server, 2);
+    const index = (id: string) => server.requests.findIndex((r) => r.body.threadId === id);
+    shared().running.get(b)?.cancel();
+    await second;
+    assert.equal(await closedByClient(server, index(b)), true, "b's agent request closed");
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(server.requests[index(a)].closed, false, "a's agent request still open");
+    shared().running.get(a)?.cancel();
+    await first;
+    assert.equal((await onlyRun(store, a))[1].status, "cancelled");
+  } finally {
+    await server.close();
+  }
+});
+
 test("closing: new runs are refused once shutdown has begun", async () => {
   const { server, recorder, agent } = await setup();
   shared().closing = true;

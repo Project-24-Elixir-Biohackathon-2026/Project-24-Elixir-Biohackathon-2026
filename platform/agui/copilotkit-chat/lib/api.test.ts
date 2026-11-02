@@ -120,7 +120,7 @@ test("PATCH: 200 with the new metadata; title_source becomes user", async () => 
   assert.equal(response.status, 200);
   const meta = await response.json();
   assert.deepEqual([meta.id, meta.title, meta.tags, meta.pinned, meta.hidden], [id, "Mine", ["dns"], true, false]);
-  assert.deepEqual(Object.keys(meta).sort(), ["created_at", "hidden", "id", "pinned", "tags", "title", "updated_at"]);
+  assert.deepEqual(Object.keys(meta).sort(), ["created_at", "hidden", "id", "last_run_at", "pinned", "tags", "title", "updated_at"]);
   assert.equal(((await store.read(id)) as SessionRecord).title_source, "user");
   assert.equal((await patchSession(store, randomUUID(), patchRequest('{"pinned":true}'))).status, 404);
 });

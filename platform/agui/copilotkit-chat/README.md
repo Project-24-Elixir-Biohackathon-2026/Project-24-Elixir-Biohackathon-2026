@@ -43,8 +43,9 @@ volume like the agent's run log.
 **Sidebar.** `app/sidebar.tsx`, in Open WebUI's layout and colours (light and dark follow the system): *New chat*,
 the sessions by title only, grouped and filtered by `lib/sidebar-view.ts` (below), and a button that collapses the
 sidebar. Each row has a `⋯` menu (`app/row-menu.tsx`): rename (also a double-click on the
-title; Enter or a click outside saves, Escape cancels), pin, tags, hide, and delete after a confirmation
-(`app/delete-dialog.tsx`; the file is kept and archived). The menu closes on a click outside, Escape or a choice.
+title; Enter, Tab or a click outside saves, Escape cancels), pin, tags, hide, and delete after a confirmation
+(`app/delete-dialog.tsx`; the file is kept and archived). The menu closes on a click outside, Escape or a choice;
+on a touch screen every row shows its `⋯`.
 Tags are shown and edited only in the menu's tag editor (`app/tag-editor.tsx`): it suggests the tags in use (arrow
 keys pick one, Enter adds it or the typed text), and a click on a tag removes it. Titles and tags are rendered as
 text. The page only reads sessions and changes metadata (`lib/client.ts`); it never writes messages. The note that
@@ -56,7 +57,8 @@ session must have every one; typing `tag:` suggests the tags in use), lists pinn
 hidden*. The chat header shows the open session's title, renamable in place, and the same `⋯` menu as its
 row. While a run is in progress, switching session and *New chat* are disabled; after a run the list is
 fetched until it shows that run (up to 5 retries, 500 ms apart), else the error bar says the session could not
-be saved. `platform/dev/e2e/sessions.py` drives all of it in a browser against the scripted agent.
+be saved. If the runtime is not ready within 15 s, the error bar says it is unreachable.
+`platform/dev/e2e/sessions.py` drives all of it in a browser against the scripted agent.
 
 **Opening a session** sets its messages on the agent and then mounts a new `CopilotChat` (`key={id}`) inside
 `CopilotChatConfigurationProvider` with `threadId={id}` and `hasExplicitThreadId={false}`. With an explicit

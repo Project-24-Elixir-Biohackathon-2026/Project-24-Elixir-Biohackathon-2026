@@ -118,7 +118,7 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
   useEffect(() => {
     if (!busy || busy.mode === "rename" || busy.mode === "delete") return;
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key !== "Escape" || e.isComposing) return;
+      if (e.key !== "Escape" || e.isComposing || e.defaultPrevented) return;
       e.preventDefault();
       if (busy.mode === "tags" && suggestions.length > 0) setBusy({ ...busy, suggest: false });
       else end(true);
@@ -220,6 +220,7 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
             value={mine.draft}
             onChange={(draft) => setBusy({ ...mine, draft })}
             onSave={() => { end(true); }}
+            onLeave={() => end()}
             onCancel={() => { setBusy(null); focusTrigger(s.id); }}
           />
         ) : (

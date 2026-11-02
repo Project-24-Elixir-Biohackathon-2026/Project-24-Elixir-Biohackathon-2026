@@ -20,11 +20,17 @@ export const REFUSAL_MESSAGES: readonly string[] = Object.freeze([INVALID, DELET
 
 type Admission = { refused: string } | { refused: null };
 
-function runIdOf(body: unknown): string | undefined {
+// A run's key among the recorder's requests: its session and run id. The client supplies the run
+// id, so two sessions could send the same one; a session runs one run at a time (admission).
+function runKey(threadId: string, runId: string): string {
+  return JSON.stringify([threadId, runId]);
+}
+
+function runKeyOf(body: unknown): string | undefined {
   if (typeof body !== "string") return undefined;
   try {
-    const runId = (JSON.parse(body) as { runId?: unknown }).runId;
-    return typeof runId === "string" ? runId : undefined;
+    const { threadId, runId } = JSON.parse(body) as { threadId?: unknown; runId?: unknown };
+    return typeof threadId === "string" && typeof runId === "string" ? runKey(threadId, runId) : undefined;
   } catch {
     return undefined;
   }
@@ -55,7 +61,7 @@ function isAbort(error: unknown): boolean {
 export class SessionRecorder extends Middleware {
   readonly store: () => SessionStore;
   readonly now: () => Date;
-  // One abort controller per admitted run, by run id, for its request to the agent.
+  // One abort controller per admitted run, by runKey(), for its request to the agent.
   private readonly requests = new Map<string, AbortController>();
 
   constructor(store: () => SessionStore, now: () => Date = () => new Date()) {
@@ -71,8 +77,8 @@ export class SessionRecorder extends Middleware {
   // cannot call abortRun() itself. The agent's own signal (abortRun(), the stop button) still
   // applies.
   readonly fetch = (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
-    const runId = runIdOf(init?.body);
-    const controller = runId === undefined ? undefined : this.requests.get(runId);
+    const key = runKeyOf(init?.body);
+    const controller = key === undefined ? undefined : this.requests.get(key);
     if (!controller) return fetch(url, init);
     const signal = init?.signal ? AbortSignal.any([init.signal, controller.signal]) : controller.signal;
     return fetch(url, { ...init, signal });
@@ -81,6 +87,7 @@ export class SessionRecorder extends Middleware {
   run(input: RunAgentInput, next: AbstractAgent): Observable<BaseEvent> {
     return new Observable<BaseEvent>((out) => {
       const id = input.threadId;
+      const key = runKey(id, input.runId);
       const { running } = shared();
       const startedAt = this.now().toISOString();
       let messages: Message[] = input.messages;
@@ -102,7 +109,7 @@ export class SessionRecorder extends Middleware {
       // Leaves the running set only if this run is still the one in it.
       const release = () => {
         if (running.get(id) === handle) running.delete(id);
-        if (this.requests.get(input.runId) === request) this.requests.delete(input.runId);
+        if (this.requests.get(key) === request) this.requests.delete(key);
       };
       // Exactly once per run: the first termination wins, every later one does nothing.
       // recordRun joins the session's queue synchronously, so the run leaves the running set as
@@ -167,7 +174,7 @@ export class SessionRecorder extends Middleware {
           release();
           return;
         }
-        this.requests.set(input.runId, request);
+        this.requests.set(key, request);
         inner = this.runNextWithState(input, next).subscribe({
           next: ({ event, messages: latest }) => {
             // Synchronously, so a teardown right after a terminal event still records it.

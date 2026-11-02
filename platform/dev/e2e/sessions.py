@@ -8,7 +8,7 @@
 Run `npm ci && npm run build` in platform/agui/copilotkit-chat first. The script starts
 platform/dev/fake_agent.py (with uv, in platform/agui/pydantic-ai-agent) and the standalone chat UI
 with its own sessions directory, walks the sidebar (list, open, New chat, ?session=, the row menu's
-close and focus rules, the row menu) and checks the session files after each step. It ends with three sessions: one tagged and pinned, one hidden, one
+close and focus rules, the row menu, the open session deleted elsewhere) and checks the session files after each step. It ends with three sessions: one tagged and pinned, one hidden, one
 deleted, and checks that a run whose tab is closed is still saved whole. Needs Python Playwright with Chromium
 (`pip install playwright` and `playwright install chromium`). Exits nonzero on the first failed check.
 """
@@ -635,6 +635,32 @@ def check_stop(r: Run) -> str:
     sys.exit(f"FAIL: no session file titled {title!r} with a run")
 
 
+DELETED = "this session was deleted"
+
+
+def check_deleted_open(r: Run) -> None:
+    """The open session deleted elsewhere (here through the API): a message sent in it puts up
+    "this session was deleted", and no "could not be saved" follows once the reconciliation is over."""
+    page = r.page
+    page.get_by_role("button", name="New chat").click()
+    expect(page.locator(".spe-header-title")).to_have_text("New chat")
+    title = f"deleted while open {uuid.uuid4().hex[:8]}"
+    r.send(title, 1)
+    expect(r.row(title)).to_have_count(1, timeout=5_000)
+    sid = next(sid for sid, f in r.files().items() if f["title"] == title)
+    with urllib.request.urlopen(urllib.request.Request(f"{BASE}/api/sessions/{sid}", method="DELETE")) as resp:
+        assert resp.status < 300, resp.status
+    box = page.get_by_test_id("copilot-chat-textarea")
+    box.fill("one more")
+    box.press("Enter")
+    expect(page.locator(".spe-error")).to_contain_text(DELETED, timeout=10_000)
+    time.sleep(3.5)  # longer than the reconciliation's retries
+    assert SAVE_FAILED not in "".join(page.locator(".spe-error").all_inner_texts())
+    r.shot("deleted-open")
+    page.locator(".spe-error").get_by_role("button", name="Dismiss").click()
+    r.ok("open session deleted elsewhere: a message says it was deleted, never that it could not be saved")
+
+
 def check_save_failed(r: Run) -> None:
     """The chat UI cannot write the session (its directory made read-only for the run): the
     server's save-failed event puts the error bar up, and the list is not fetched again and again
@@ -797,6 +823,7 @@ def main() -> None:
                 check_close_tab(r, ids)
                 check_view(r)
                 check_header(r, ids)
+                check_deleted_open(r)
                 check_stop(r)
                 check_save_failed(r)
             else:

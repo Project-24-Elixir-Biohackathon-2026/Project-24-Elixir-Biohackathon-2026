@@ -7,11 +7,19 @@ export function DeleteDialog({ onCancel, onDelete }: { onCancel: () => void; onD
   const dialog = useRef<HTMLDivElement>(null);
   const cancel = useRef<HTMLButtonElement>(null);
   useEffect(() => cancel.current?.focus(), []);
-  const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Escape") {
+  // Escape on the document, so it cancels even when focus has left the dialog (a click on its text
+  // moves focus to the page).
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== "Escape" || e.isComposing || e.defaultPrevented) return;
       e.preventDefault();
       onCancel();
-    } else if (e.key === "Tab") {
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  });
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Tab") {
       const buttons = [...(dialog.current?.querySelectorAll<HTMLElement>("button") ?? [])];
       const at = buttons.indexOf(document.activeElement as HTMLElement);
       e.preventDefault();

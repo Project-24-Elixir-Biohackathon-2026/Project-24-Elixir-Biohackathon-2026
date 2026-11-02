@@ -97,6 +97,9 @@ function showInUrl(id: string | null): void {
   window.history.replaceState(null, "", `${pathname}${searchWith(search, id)}${hash}`);
 }
 
+const UNREACHABLE = "The agent runtime is unreachable; reload the page.";
+const UNREACHABLE_AFTER_MS = 15_000;
+
 function Chat() {
   const [error, setError] = useState<string | null>(null);
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
@@ -191,6 +194,17 @@ function Chat() {
     if (id) void open(id);
     else startNew(); // no parameter, or a malformed one: dropped
   }, [isReady, open, refresh, startNew]);
+
+  // A runtime that never answers would leave "Loading…" up for good: say so after a while, and take
+  // the message back once it does answer.
+  useEffect(() => {
+    if (isReady) {
+      setError((e) => (e === UNREACHABLE ? null : e));
+      return;
+    }
+    const timer = setTimeout(() => setError(UNREACHABLE), UNREACHABLE_AFTER_MS);
+    return () => clearTimeout(timer);
+  }, [isReady]);
 
   const onDeleted = useCallback((id: string) => {
     if (id === activeRef.current) startNew();

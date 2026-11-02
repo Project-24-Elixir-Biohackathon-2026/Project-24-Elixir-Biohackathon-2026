@@ -142,6 +142,50 @@ test("a write interrupted before the rename leaves the previous file intact", as
   assert.deepEqual(await fs.readdir(store.dir), [`${id}.json`]); // the temp file is removed
 });
 
+test("a write syncs the directory after the rename, so the rename survives a power loss", async () => {
+  const store = await tmpStore();
+  const realOpen = fs.open;
+  const synced: string[] = [];
+  const open = mock.method(fs, "open", async (...args: Parameters<typeof fs.open>) => {
+    const handle = await realOpen(...args);
+    const sync = handle.sync.bind(handle);
+    handle.sync = async () => { synced.push(String(args[0])); return sync(); };
+    return handle;
+  });
+  try {
+    await seeded(store);
+  } finally {
+    open.mock.restore();
+  }
+  assert.equal(synced.at(-1), store.dir);
+});
+
+test("a directory that cannot be synced (EINVAL, as on some network mounts) is not a failed save", async () => {
+  const store = await tmpStore();
+  const realOpen = fs.open;
+  const open = mock.method(fs, "open", async (...args: Parameters<typeof fs.open>) => {
+    const handle = await realOpen(...args);
+    if (args[0] === store.dir) {
+      handle.sync = async () => { throw Object.assign(new Error("EINVAL: invalid argument, fsync"), { code: "EINVAL" }); };
+    }
+    return handle;
+  });
+  try {
+    await seeded(store);
+  } finally {
+    open.mock.restore();
+  }
+  assert.equal((await fs.readdir(store.dir)).length, 1);
+});
+
+test("last_run_at is the last run's end; a metadata change moves updated_at, not last_run_at", async () => {
+  const store = await tmpStore();
+  const id = await seeded(store);
+  assert.equal((await store.list())[0].last_run_at, at(1).toISOString());
+  const meta = await store.patch(id, { pinned: true }, at(9));
+  assert.deepEqual([meta?.updated_at, meta?.last_run_at], [at(9).toISOString(), at(1).toISOString()]);
+});
+
 test("20 concurrent metadata updates to one session all land", async () => {
   const store = await tmpStore();
   const id = await seeded(store);
@@ -171,7 +215,7 @@ test("list: newest updated_at first, deleted left out, hidden kept, capped at 10
   await store.softDelete(b, at(40));
   const list = await store.list();
   assert.deepEqual(list.map((m) => m.id), [a, c]);
-  assert.deepEqual(Object.keys(list[0]).sort(), ["created_at", "hidden", "id", "pinned", "tags", "title", "updated_at"]);
+  assert.deepEqual(Object.keys(list[0]).sort(), ["created_at", "hidden", "id", "last_run_at", "pinned", "tags", "title", "updated_at"]);
   assert.equal(list[0].hidden, true);
 
   const many = await tmpStore();
