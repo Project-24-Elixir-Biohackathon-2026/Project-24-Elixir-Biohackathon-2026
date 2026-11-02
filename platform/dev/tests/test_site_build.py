@@ -23,7 +23,7 @@ def test_builds_landing_and_catalog(tmp_path):
     landing = (out / "index.html").read_text()
     assert 'href="/workspaces"' in landing and 'href="/threats/"' in landing
     assert "<!-- site.css -->" not in landing  # the stylesheet was inlined
-    overview = (out / "threats" / "all-threats" / "index.html").read_text()
+    overview = (out / "threats" / "interactive-table" / "index.html").read_text()
     entries = sorted(p for p in (REPO / "threats").glob("TM-*.md"))
     assert entries, "no entries in threats/"
     for path in entries:

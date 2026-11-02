@@ -13,8 +13,8 @@ two paths from the built directory and proxies everything else to Coder
 | `build.py` | Validates the catalog with the repository's `validate.py`, writes the landing page, runs `mkdocs build` |
 | `mkdocs.yml` | The catalog site: theme, navigation features, `docs_dir` is `threats/` itself |
 | `hooks.py` | MkDocs hooks: validation, the pages from `pages/` with their generated tables, each entry's frontmatter shown on its page |
-| `pages/` | The hand-written pages: `index.md` (Overview), `all-threats.md` (the table is appended), `metadata/*.md` (the value table is appended). Edit freely |
-| `assets/catalog.js`, `assets/catalog.css` | Sorting and filtering of the All threats table, added to the site by `hooks.py` |
+| `pages/` | The hand-written pages: `index.md` (Overview), `interactive-table.md` (the table is appended), `metadata/*.md` (the value table is appended). Edit freely |
+| `assets/catalog.js`, `assets/catalog.css` | Sorting and filtering of the Interactive table, added to the site by `hooks.py` |
 | `landing/index.html` | The landing page; `<!-- site.css -->` is replaced by the stylesheet at build time |
 | `static/site.css` | The landing page's stylesheet |
 | `dist/` | Build output, ignored by git: `index.html` and `threats/` |
@@ -27,7 +27,7 @@ python3 -m http.server -d platform/site/dist 8000           # look at it locally
 (cd platform/site && python3 -m mkdocs serve)               # live preview of the catalog only
 ```
 
-The catalog: an Overview that explains how to read an entry; All threats, one
+The catalog: an Overview that explains how to read an entry; Interactive table, one
 table that sorts by any column and filters by text, status or entry point;
 one page per entry with the navigation on the left and the entry's sections
 on the right; and Metadata, one page per frontmatter field (status, entry

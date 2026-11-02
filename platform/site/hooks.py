@@ -1,7 +1,7 @@
 """MkDocs hooks for the threat catalog.
 
 - on_config: point docs_dir at the repository's threats/ (SPE_REPO_ROOT, or
-  this repository) and build the navigation: Overview, All threats, Threats,
+  this repository) and build the navigation: Overview, Interactive table, Threats,
   Metadata (one page per frontmatter field).
 - on_files: validate the catalog with validate.py (a problem stops the
   build), then add the pages that are not entries from pages/ (the overview
@@ -49,7 +49,7 @@ def on_config(config):
     _, entries = _catalog()
     config["nav"] = [
         {"Overview": "index.md"},
-        {"All threats": "all-threats.md"},
+        {"Interactive table": "interactive-table.md"},
         {"Threats": [e.path.name for e in entries]},
         {"Metadata": [f"metadata/{field}.md" for field in FIELDS]},
     ]
@@ -60,7 +60,7 @@ def on_files(files, config):
     vocab, entries = _catalog()
     files.append(File.generated(config, "index.md", content=page("index.md")))
     files.append(File.generated(
-        config, "all-threats.md", content=page("all-threats.md") + all_threats(entries)))
+        config, "interactive-table.md", content=page("interactive-table.md") + all_threats(entries)))
     for field in FIELDS:
         files.append(File.generated(
             config, f"metadata/{field}.md",
