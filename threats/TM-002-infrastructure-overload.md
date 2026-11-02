@@ -2,80 +2,49 @@
 id: TM-002
 name: Infrastructure Overload via Excessive Resource Requests
 description: >
-  The agent creates a pipeline that requests excessive compute resources,
-  overloading or harming the underlying computational infrastructure.
+  The agent submits more work than the infrastructure can bear: a storm of WES runs, a workflow with oversized or unbounded resource use, or a loop of model calls. The sandbox container is capped, but the runs it submits execute on the workflow machine outside those caps, and model spend is bounded only per run and by the provider account.
+status: hypothesised
+entry-points:
+  - user-prompt
+  - tool-output
 assets:
   - compute-resources
   - external-systems
 stride:
   - denial-of-service
-agent-capabilities:
-  - tool-use
-  - code-execution
-  - autonomous-execution
-related: []
-references:
-  - "OWASP LLM10: Unbounded Consumption"
-  - "OWASP LLM08: Excessive Agency"
-last_reviewed: 2026-07-15
 ---
 
 # TM-002: Infrastructure Overload via Excessive Resource Requests
 
-## Description
-
-The agent creates a pipeline that can cause overload or harm to the underlying
-computational infrastructure by requesting excessive resources. Whether through
-a flawed plan, a runaway loop, or manipulated input, the agent provisions or
-consumes far more CPU, GPU, memory, storage, or budget than the task warrants,
-degrading or exhausting shared infrastructure.
-
-## Affected Assets
-
-Shared computational infrastructure, e.g. CPU/GPU time, memory, storage, API
-quota, and budget (compute-resources), as well as third-party systems the
-pipeline calls into (external-systems).
-
-## Threat Categories (STRIDE)
-
-- **Denial of Service**: exhausting or degrading compute, quota, or budget so
-  that the infrastructure becomes unavailable to this or other workloads.
-
 ## Attack Scenarios
 
-1. **Runaway pipeline**: the agent constructs a pipeline with an unbounded
-   loop, excessive parallelism, or oversized resource requests (e.g. thousands
-   of jobs, huge memory allocations) that saturate the cluster.
-2. **Malicious user prompt**: a user deliberately prompts the agent to build a
-   resource-intensive pipeline to exhaust compute or budget (resource-based
-   denial of service).
-3. **Indirect prompt injection**: instructions embedded in processed data or
-   tool outputs steer the agent toward provisioning excessive resources.
+1. **Run storm**: asked to "run the pipeline for every sample and every parameter setting", the agent loops over `POST $WES_BASE/runs`. WESkit accepts each submission; the executor starts them all on the workflow VM.
+2. **Heavy or unbounded workflow**: the agent registers a workflow whose process requests far more CPU or memory than the task needs, or never terminates, and the run stays `RUNNING` holding the executor's slots.
+3. **Model spend**: a task that keeps polling or retrying uses the per-run caps (50 model requests, 100 tool calls, 400000 tokens) every time; a user, or a script driving the agent endpoint, can start runs without limit.
+4. **Sandbox exhaustion**: commands the agent starts in the background keep running after the chat ends, fill the sandbox volume or hit its process limit, and the agent service reports the sandbox as unavailable.
+
+Instructions planted in content the agent reads (TM-003) can steer it into any of these without the user asking.
 
 ## Preconditions
 
-- The agent can define, submit, or scale pipelines/jobs on shared
-  infrastructure without hard resource ceilings.
-- No per-task quotas, rate limits, or budget caps constrain the agent's
-  requests.
-- Resource usage is not monitored or throttled in real time.
+- WES accepts submissions from the sandbox with no authentication, rate limit or per-client concurrency cap.
+- The executor does not cap a workflow's CPU, memory, runtime or job count.
+- No aggregate budget for model calls exists beyond the provider account's spend limit.
 
 ## Mitigations
 
 ### Preventive
 
-- Resource quotas and hard limits (CPU/GPU, memory, storage, job count) on any
-  pipeline the agent can submit.
-- Budget and API-quota caps enforced outside the agent's control.
-- Require human approval before provisioning above a defined resource threshold.
+- Cap concurrent and queued runs per instance (a Traefik rate-limit middleware in front of WES, or WESkit's own configuration) and have the executor enforce CPU, memory and runtime limits on every run.
+- Keep the sandbox limits (2 CPUs, 2 GB, 256 processes) and the agent's per-run caps; add a per-instance spend budget at the provider.
+- Require operator approval above a threshold of runs or resource requests.
 
 ### Detective
 
-- Real-time monitoring of resource consumption and cost against expected
-  baselines.
-- Alerting on anomalous job counts, runtimes, or spend.
+- Monitor run counts and states per instance and the workflow VM's load against the expected baseline.
+- Watch provider spend; the agent's run log records requests, tool calls and tokens per run.
 
 ### Responsive
 
-- Automatic throttling or termination of jobs that exceed limits.
-- Session quarantine and incident escalation on detected overload.
+- Cancel runs (`POST $WES_BASE/runs/RUN_ID/cancel`), stop background commands (`kill_process`, or restart the sandbox container).
+- Destroy the instance if the load does not subside.

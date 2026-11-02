@@ -7,7 +7,8 @@ with a chat frontend to probe it, a self-service portal that hands instances to
 participants and archives what they did, and promptfoo evaluations that test the
 agent directly.
 
-- `threats/`: the threat model catalog (`validate.py` checks it against `vocabulary.yaml`).
+- `threats/`: the threat model catalog (`validate.py` checks it against `vocabulary.yaml`;
+  `platform/site/` renders it as the portal's `/threats/` site).
 - [`platform/`](platform/README.md): everything that builds, runs or tests an instance.
   - [`platform/coder/README.md`](platform/coder/README.md): the portal, for
     participants and for whoever deploys it.

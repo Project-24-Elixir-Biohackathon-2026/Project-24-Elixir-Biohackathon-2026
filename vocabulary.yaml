@@ -1,10 +1,23 @@
-# Controlled vocabularies for threat model entries.
-# This file is the source of truth; VOCABULARY.md explains conventions
-# and may render these tables for humans.
+# Controlled vocabularies for threat model entries (threats/TM-*.md).
+# validate.py checks the frontmatter fields `status`, `entry-points`,
+# `assets` and `stride` against the keys below.
 #
 # Extending: add a new key with a one-line description. Check for existing
 # synonyms first (e.g. don't add `user-data` next to `user-records`).
 # `stride` is a fixed external standard - do NOT extend it.
+
+status:
+  hypothesised: Written down; not yet attempted on an instance
+  reproduced: Demonstrated on an instance by a promptfoo test or an archived run
+  mitigated: A control on the instance blocks the reproduced scenario, confirmed by a promptfoo test
+
+entry-points:
+  user-prompt: The user's own instructions in the chat
+  pasted-text: Text the user copies into the chat from somewhere else
+  uploaded-file: A file the user attaches to the chat
+  web-content: A page the agent, or a command in its sandbox, fetches from the internet
+  tool-output: What the agent's tools return (API responses, run logs, files it reads)
+  mcp-server: Tool descriptions and results from a tool server the user connected (MCP or OpenAPI)
 
 assets:
   user-records: Personal or account data of end users
@@ -19,22 +32,9 @@ assets:
   agent-integrity: Correctness of the agent's own behavior/outputs
 
 stride:
-  spoofing: Authenticity
-  tampering: Integrity
-  repudiation: Non-repudiability (missing/destroyed evidence)
-  information-disclosure: Confidentiality
-  denial-of-service: Availability
-  elevation-of-privilege: Authorization
-
-agent-capabilities:
-  data-access: Reads (or writes/deletes) data stores or documents
-  chat-output: Returns free-form output to a user-visible channel
-  tool-use: Invokes external tools / function calls
-  code-execution: Runs generated code (sandboxed or not)
-  web-access: Fetches or browses external web content
-  email-messaging: Sends messages on a user's behalf (email, chat, etc.)
-  file-system-access: Reads/writes a local or mounted file system
-  persistent-memory: Retains state across sessions
-  multi-agent: Interacts with or orchestrates other agents
-  autonomous-execution: Acts without per-step human approval
-  context-ingestion: Incorporates external content (uploads, pasted text, fetched pages, tool output) into its working context
+  spoofing: Pretending to be another user, service or tool (authenticity)
+  tampering: Changing data, code or instructions without permission (integrity)
+  repudiation: Acting without leaving evidence of who did it, or destroying that evidence (non-repudiation)
+  information-disclosure: Exposing data to someone who should not see it (confidentiality)
+  denial-of-service: Making a system or resource unavailable, or using it up (availability)
+  elevation-of-privilege: Gaining access or abilities beyond what was granted (authorization)

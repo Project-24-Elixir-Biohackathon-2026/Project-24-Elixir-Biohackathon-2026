@@ -1,0 +1,15 @@
+/* Controls and sortable headers of the catalog table (see catalog.js). */
+.catalog-controls { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: 0 0 .6rem; }
+.catalog-controls input, .catalog-controls select {
+  font: inherit; font-size: .7rem; color: var(--md-default-fg-color); background: var(--md-default-bg-color);
+  border: 1px solid var(--md-default-fg-color--lightest); border-radius: .2rem; padding: .3rem .5rem;
+}
+.catalog-controls input { min-width: 12rem; }
+.catalog-count { margin-left: auto; font-size: .7rem; color: var(--md-default-fg-color--light); }
+.catalog-table th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+.catalog-table th.sortable:hover { color: var(--md-accent-fg-color); }
+.catalog-table th[aria-sort="ascending"]::after { content: " \2191"; }
+.catalog-table th[aria-sort="descending"]::after { content: " \2193"; }
+
+/* Figures: ![...](...){ .figure } in a page, shown smaller and centred. */
+.md-typeset img.figure { display: block; width: 100%; max-width: 26rem; margin: 1.5rem auto; }
