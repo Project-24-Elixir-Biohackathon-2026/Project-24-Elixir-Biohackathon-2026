@@ -37,12 +37,13 @@ Success means:
 ## 2. Non-goals
 
 Creating VMs (the `openstack` provisioning path is left as it is, not
-used or tested here), more than one SPE, server-side sessions, user
+used or tested here), more than one SPE, user
 authentication, push, public exposure, scenario
 profiles and fleets (sub-project 2), the portal and flags (sub-project 3),
 red/blue agents (deferred), typed GA4GH tools (the `typed` tool surface is
 reserved in config, not built), sandbox egress restriction (today's
-behaviour is kept, see §8).
+behaviour is kept, see §8). Chat sessions were added later:
+`platform/agui/copilotkit-chat/README.md`, *Sessions*.
 
 ## 3. Architecture
 
@@ -257,7 +258,8 @@ as AG-UI defines; the agent keeps no session state. Accepted for #1 (0002,
   (`@copilotkit/react-core/v2`, verified in CopilotKit docs 2026-10-15): one
   collapsible card per call showing the tool name, its arguments (for
   `run_command`, the command), status, and the first lines of the result.
-- No secrets in the browser; no persistence (a reload starts a new chat).
+- No secrets in the browser; sessions are kept on the server
+  (`platform/agui/copilotkit-chat/README.md`, *Sessions*).
 - Exact package versions are pinned in `package-lock.json`; the image runs
   `next start` as a non-root user.
 

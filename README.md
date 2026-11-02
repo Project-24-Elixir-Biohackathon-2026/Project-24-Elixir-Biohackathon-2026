@@ -34,8 +34,8 @@ Then open <http://localhost:3000> and ask, for example, "List the registered
 workflows." Every tool call the agent makes appears as a card you can expand. No key is
 needed in the browser: the chat UI holds the agent's key on its server side. If port
 3000 is taken on your machine, change only the first number, e.g.
-`-L 13000:127.0.0.1:3000` and open <http://localhost:13000>. A reload starts a new
-conversation.
+`-L 13000:127.0.0.1:3000` and open <http://localhost:13000>. Each conversation is a session in the
+left sidebar; a reload reopens the one in the URL.
 
 ## Architecture
 

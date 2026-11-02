@@ -53,6 +53,7 @@ needed port is taken, or if disk is short. Nothing on a refused VM is changed.
 | **Canary record** | The answer key: every planted token and where it is | Written by the playbook | `platform/ansible/output/<instance>/canaries.json` (0600; encrypted to `canaries.json.age` if `spe_age_recipient` is set) | **No.** Never copy it to a VM or to a player. `canaries.manifest.sha256` (hashes only) may go to detection tooling |
 | **Hand-off** | Addresses, tunnel command, Open WebUI admin password (`openwebui` frontend) | Written by the playbook | `platform/ansible/output/<instance>/hosts.yml`, `summary.md` | Operators only |
 | **Run log** | Every agent run: player input, tool calls and results, answers, usage | Written by the agent | On the VM, volume `spe-frontend_agent-runs` | **No**: contains canaries |
+| **Chat sessions** | Every AG-UI conversation: messages, tool calls and results, titles and tags | Written by the chat UI | On the VM, volume `spe-frontend_chat-sessions`; in the run directory `agui-sessions/`, `chats/` and `agent-runs.jsonl` | **No**: contain canaries |
 | **Evaluation reports** | promptfoo results | `npm run eval` | `platform/promptfoo-evals/reports/`, `.promptfoo/` (git-ignored) | **No**: contain canaries. Delete after use |
 
 Everything in `platform/ansible/output/` and every real instance file is git-ignored.
@@ -163,7 +164,8 @@ ssh -F ~/.ssh/config ubuntu@VM -N -L 3000:127.0.0.1:3000 -L 8100:127.0.0.1:8100
 ```
 
 Then open `http://localhost:3000`. Every tool call the agent makes is shown as a
-card; a reload starts a new conversation. If 3000 or 8100 is taken on your machine,
+card. Conversations are kept as sessions in the left sidebar (rename, pin, tag, hide, delete) and
+archived with the run. If 3000 or 8100 is taken on your machine,
 change only the first number of each `-L` (e.g. `-L 13000:127.0.0.1:3000`).
 
 To call the agent directly, as promptfoo does:

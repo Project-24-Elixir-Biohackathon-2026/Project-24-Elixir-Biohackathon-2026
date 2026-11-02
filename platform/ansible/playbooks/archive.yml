@@ -1,7 +1,8 @@
 ---
 # Save one instance's run to <spe_runs_root>/<UTC time>_<instance>/: parameters,
-# canary record and, with the openwebui frontend, chats and notes (incl. the
-# run report). Works for OpenStack and existing-VM instances.
+# canary record and the frontend's chats: with openwebui chats and notes (incl.
+# the run report), with agui every chat session (hidden and deleted included)
+# and the agent's run log. Works for OpenStack and existing-VM instances.
 #   ansible-playbook playbooks/archive.yml -e @instances/<name>.yml
 # destroy.yml runs this first and stops if it fails, so chats are never lost
 # by accident. -e spe_archive_skip=true skips it.
@@ -67,7 +68,7 @@
       when: archive_present
       changed_when: false
 
-- name: Export OpenWebUI from the instance
+- name: Export the frontend's chats
   hosts: spe_api
   gather_facts: false
   any_errors_fatal: true
@@ -79,7 +80,7 @@
       ansible.builtin.include_role:
         name: run_archive
         tasks_from: export
-      when: spe_frontend == 'openwebui'
+      when: spe_frontend in ['openwebui', 'agui']
 
 - name: Write the run directory
   hosts: localhost

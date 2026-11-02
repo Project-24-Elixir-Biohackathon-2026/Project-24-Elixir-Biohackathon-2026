@@ -168,7 +168,7 @@ data "coder_parameter" "smoke_test" {
 data "coder_parameter" "frontend" {
   name         = "frontend"
   display_name = "Chat frontend"
-  description  = "openwebui: Open WebUI runs the agent loop (chats and the run report are archived on stop). agui: our own Pydantic AI agent with a CopilotKit chat (platform/agui)."
+  description  = "openwebui: Open WebUI runs the agent loop (chats and the run report are archived on stop). agui: our own Pydantic AI agent with a CopilotKit chat (platform/agui; its chat sessions and run log are archived on stop)."
   type         = "string"
   form_type    = "radio"
   default      = "openwebui"

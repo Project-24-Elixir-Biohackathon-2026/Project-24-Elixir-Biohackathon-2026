@@ -208,6 +208,10 @@ export class SessionRecorder extends Middleware {
         return { refused: UNREADABLE };
       }
       if (record && isDeleted(record)) return { refused: DELETED };
+      // Re-checked: SIGTERM may have landed while the read above was pending. Without this,
+      // a handle registered after shutdown() has taken its snapshot of `running` is never
+      // cancelled, and drain() waits for it to end by itself.
+      if (shared().closing) return { refused: CLOSING };
       running.set(id, handle);
       return { refused: null };
     });

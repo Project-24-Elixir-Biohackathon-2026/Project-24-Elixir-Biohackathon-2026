@@ -1,34 +1,139 @@
 ---
-# On the SPE VM: export OpenWebUI (chats, notes, tags) and fetch the bundle to
-# the controller as {{ spe_output_dir }}/archive-bundle.json.
-- name: Exporter script
-  ansible.builtin.copy:
-    src: export_openwebui.py
-    dest: /tmp/spe-export-openwebui.py
-    mode: "0700"
-
+# On the SPE VM: export the frontend's chats and fetch them to the controller.
+# openwebui: chats, notes and tags as {{ spe_output_dir }}/archive-bundle.json.
+# agui: every session file (hidden and deleted included) and the agent's run log
+# as {{ spe_output_dir }}/archive-bundle-agui.tar.gz, after stopping chat-ui and
+# then the agent so that no run is in progress or unsaved; both are started again.
 - name: Export OpenWebUI
-  ansible.builtin.command:
-    argv:
-      - python3
-      - /tmp/spe-export-openwebui.py
-      - "http://127.0.0.1:{{ spe_webui_local_port }}"
-      - /tmp/spe-openwebui-export.json
-      - "{{ spe_frontend_dir }}/run_report.md"
-  environment:
-    WEBUI_EMAIL: "{{ spe_webui_admin_email if spe_webui_auth else '' }}"
-    WEBUI_PASSWORD: "{{ spe_webui_admin_password if spe_webui_auth else '' }}"
-  register: export_out
-  changed_when: false
+  when: spe_frontend == 'openwebui'
+  block:
+    - name: Exporter script
+      ansible.builtin.copy:
+        src: export_openwebui.py
+        dest: /tmp/spe-export-openwebui.py
+        mode: "0700"
 
-- name: Fetch the export
-  ansible.builtin.fetch:
-    src: /tmp/spe-openwebui-export.json
-    dest: "{{ spe_output_dir }}/archive-bundle.json"
-    flat: true
+    - name: Export OpenWebUI
+      ansible.builtin.command:
+        argv:
+          - python3
+          - /tmp/spe-export-openwebui.py
+          - "http://127.0.0.1:{{ spe_webui_local_port }}"
+          - /tmp/spe-openwebui-export.json
+          - "{{ spe_frontend_dir }}/run_report.md"
+      environment:
+        WEBUI_EMAIL: "{{ spe_webui_admin_email if spe_webui_auth else '' }}"
+        WEBUI_PASSWORD: "{{ spe_webui_admin_password if spe_webui_auth else '' }}"
+      register: export_out
+      changed_when: false
 
-- name: Remove the export from the VM
-  ansible.builtin.file:
-    path: "{{ item }}"
-    state: absent
-  loop: [/tmp/spe-export-openwebui.py, /tmp/spe-openwebui-export.json]
+    - name: Fetch the export
+      ansible.builtin.fetch:
+        src: /tmp/spe-openwebui-export.json
+        dest: "{{ spe_output_dir }}/archive-bundle.json"
+        flat: true
+
+    - name: Remove the export from the VM
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: [/tmp/spe-export-openwebui.py, /tmp/spe-openwebui-export.json]
+
+- name: Export the AG-UI chat sessions and the agent's run log
+  when: spe_frontend == 'agui'
+  vars:
+    agui_compose: [docker, compose, -p, spe-frontend, -f, "{{ spe_frontend_dir }}/docker-compose.yml"]
+  block:
+    - name: The chat-ui container exists (stopping a missing one would succeed silently)
+      ansible.builtin.command:
+        argv: "{{ agui_compose + ['ps', '-a', '-q', 'chat-ui'] }}"
+      register: agui_chat_ui
+      changed_when: false
+      failed_when: agui_chat_ui.rc != 0 or agui_chat_ui.stdout | trim | length == 0
+
+    - name: The services running before the barrier (only their exit code says whether it held)
+      ansible.builtin.command:
+        argv: "{{ agui_compose + ['ps', '--status', 'running', '--services'] }}"
+      register: agui_running
+      changed_when: false
+
+    - name: Export, then remove the copies from the VM whatever happens
+      block:
+        - name: Export directory on the VM
+          ansible.builtin.tempfile:
+            state: directory
+            prefix: spe-agui-export-
+          register: agui_export_dir
+
+        - name: Barrier and copy; the containers are started again whatever happens
+          block:
+            - name: Stop the chat UI first (on SIGTERM it cancels, saves every run in progress and exits)
+              ansible.builtin.command:
+                argv: "{{ agui_compose + ['stop', '-t', '30', 'chat-ui'] }}"
+              changed_when: true
+
+            - name: Then stop the agent (it has seen its last request and closed its run log)
+              ansible.builtin.command:
+                argv: "{{ agui_compose + ['stop', '-t', '30', 'agent'] }}"
+              changed_when: true
+
+            # compose stop returns 0 even when the drain timed out (the chat UI exits 1) or Docker
+            # killed the container after -t (137): only the exit code shows a barrier that did not hold.
+            - name: Exit codes of the stopped services
+              ansible.builtin.command:
+                argv: "{{ agui_compose + ['ps', '-a', '--format', '{{.Service}} {{.ExitCode}}', 'chat-ui', 'agent'] }}"
+              register: agui_exits
+              changed_when: false
+
+            - name: The barrier held (each service that was running exited 0)
+              ansible.builtin.assert:
+                that: agui_unclean | length == 0
+                fail_msg: >-
+                  Stopping did not end cleanly ({{ agui_unclean | join(', ') }}: service and exit code;
+                  1 from chat-ui is a drain timeout, 137 a kill after 30 s), so the sessions may lack
+                  the last run. The containers are started again; see their logs, then run archive.yml again.
+                quiet: true
+              vars:
+                agui_unclean: >-
+                  {{ agui_exits.stdout_lines | map('split') | selectattr(0, 'in', agui_running.stdout_lines)
+                     | rejectattr(1, 'eq', '0') | map('join', ' ') | list }}
+
+            - name: Copy the session files (hidden and deleted included)
+              ansible.builtin.command:
+                argv: "{{ agui_compose + ['cp', 'chat-ui:/data/sessions', agui_export_dir.path ~ '/sessions'] }}"
+              changed_when: false
+
+            - name: Copy the agent's run log (absent until a run has reached the agent)
+              ansible.builtin.command:
+                argv: "{{ agui_compose + ['cp', 'agent:/var/lib/spe-agent/runs.jsonl', agui_export_dir.path ~ '/agent-runs.jsonl'] }}"
+              register: agui_run_log
+              changed_when: false
+              failed_when: agui_run_log.rc != 0 and 'Could not find the file' not in agui_run_log.stderr
+          always:
+            - name: Start the agent and the chat UI again
+              ansible.builtin.command:
+                argv: "{{ agui_compose + ['start', 'agent', 'chat-ui'] }}"
+              changed_when: true
+
+        - name: Archive directory on the VM
+          ansible.builtin.tempfile:
+            state: directory
+            prefix: spe-agui-archive-
+          register: agui_archive_dir
+
+        - name: Pack the bundle
+          ansible.builtin.command:
+            argv: [tar, -czf, "{{ agui_archive_dir.path }}/spe-agui-export.tar.gz", -C, "{{ agui_export_dir.path }}", .]
+          changed_when: true
+
+        - name: Fetch the bundle
+          ansible.builtin.fetch:
+            src: "{{ agui_archive_dir.path }}/spe-agui-export.tar.gz"
+            dest: "{{ spe_output_dir }}/archive-bundle-agui.tar.gz"
+            flat: true
+      always:
+        - name: Remove the export from the VM
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop: "{{ [agui_export_dir.path | default(''), agui_archive_dir.path | default('')] | select | list }}"

@@ -157,8 +157,9 @@ spe_report_template: "{{ playbook_dir }}/../reports/run_report.md.j2"
 spe_report_title: Run report
 
 # Run archive: playbooks/archive.yml (also run first by destroy.yml) saves the
-# OpenWebUI chats and notes, the parameters and the canary record of an
-# instance to <spe_runs_root>/<UTC time>_<instance>/ on the controller.
+# frontend's chats (OpenWebUI chats and notes, or the AG-UI chat sessions and
+# the agent's run log), the parameters and the canary record of an instance to
+# <spe_runs_root>/<UTC time>_<instance>/ on the controller.
 # destroy.yml stops if the archive fails; pass -e spe_archive_skip=true to
 # destroy without saving.
 spe_runs_root: /data-share/runs

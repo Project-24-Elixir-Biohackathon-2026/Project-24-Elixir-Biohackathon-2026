@@ -8,13 +8,16 @@ RUN npm ci --no-audit --no-fund
 COPY next.config.mjs tsconfig.json ./
 COPY app ./app
 COPY lib ./lib
+COPY instrumentation.ts ./
 RUN npm run build
 
 FROM node:24-slim
 WORKDIR /app
 # No telemetry from an SPE: Next.js, CopilotKit runtime (and, via /info, its browser client).
+# NEXT_MANUAL_SIG_HANDLE: Next.js's own SIGTERM handler would exit before the sessions are saved;
+# instrumentation.ts installs the one that drains them (lib/shutdown.ts).
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 COPILOTKIT_TELEMETRY_DISABLED=true DO_NOT_TRACK=1 \
-    PORT=3000 HOSTNAME=0.0.0.0
+    PORT=3000 HOSTNAME=0.0.0.0 NEXT_MANUAL_SIG_HANDLE=true
 COPY --from=build --chown=root:root /app/.next/standalone ./
 COPY --from=build --chown=root:root /app/.next/static ./.next/static
 # The image's own files stay root-owned and read-only to the app; only .next/cache is writable,

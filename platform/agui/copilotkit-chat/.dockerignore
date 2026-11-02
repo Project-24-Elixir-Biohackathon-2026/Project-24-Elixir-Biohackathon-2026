@@ -3,6 +3,7 @@
 !package-lock.json
 !next.config.mjs
 !tsconfig.json
+!instrumentation.ts
 !app/
 !lib/
 lib/*.test.ts

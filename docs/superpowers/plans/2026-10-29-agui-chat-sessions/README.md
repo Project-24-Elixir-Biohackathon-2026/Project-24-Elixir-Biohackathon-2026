@@ -7,7 +7,7 @@
 agent's AG-UI stream, kept on a `chat-sessions` volume and exported by `archive.yml` like an Open WebUI run.
 
 **Spec:** [`docs/superpowers/specs/2026-10-29-agui-chat-sessions-design.md`](../../specs/2026-10-29-agui-chat-sessions-design.md)
-(decisions 1–15; latest clarification: 1). Each slice file links the sections it implements.
+(decisions 1–15; latest clarification: 5). Each slice file links the sections it implements.
 
 **Architecture.** All new chat-UI logic lives in `platform/agui/copilotkit-chat/lib/` as plain TypeScript that
 `node --test` runs without Next.js: the store (`sessions.ts`), the recorder middleware (`recorder.ts`) and the
@@ -166,8 +166,8 @@ N = 3. Sequential: slice n+1 starts from `main` after slice n merged. The user m
 
 | n/N | Branch | Tasks | Delivers | Est. LOC | Reviewer checks | File | Status |
 |---|---|---|---|---|---|---|---|
-| 1/3 | `impl/agui-chat-sessions-1-store` | 5 | store, recorder, session API, volume, image, slow fake run; no visible change | ~950 | `npm test`; `node scripts/check-built-server.mjs`; `docker build` | [slice-1-store.md](slice-1-store.md) | in review #9 |
-| 2/3 | `impl/agui-chat-sessions-2-sidebar` | 5 | **early output**: sidebar list, open, New chat, URL, row menu; archive export and writer; docs | ~1,070 | Playwright run (three sessions) with screenshots; `archive.yml` run directory; pytest | [slice-2-sidebar.md](slice-2-sidebar.md) | planned |
+| 1/3 | `impl/agui-chat-sessions-1-store` | 5 | store, recorder, session API, volume, image, slow fake run; no visible change | ~950 | `npm test`; `node scripts/check-built-server.mjs`; `docker build` | [slice-1-store.md](slice-1-store.md) | merged #9 |
+| 2/3 | `impl/agui-chat-sessions-2-sidebar` | 5 | **early output**: sidebar list, open, New chat, URL, row menu; archive export and writer; docs | ~1,070 | Playwright run (three sessions) with screenshots; `archive.yml` run directory; pytest | [slice-2-sidebar.md](slice-2-sidebar.md) | merged #10 |
 | 3/3 | `impl/agui-chat-sessions-3-complete` | 5 | search, tag filter, groups, *Show hidden*, header, disabled controls, reconciliation; instance checks; dev-VM archive checks; paid check | ~700 | full Playwright run; `verify.yml`; four `archive.yml` runs | [slice-3-complete.md](slice-3-complete.md) | planned |
 
 The early output (spec, *Early output*) is slice 2: it needs slice 1's store and recorder, and nothing that
@@ -203,9 +203,10 @@ Each is added by the slice that verifies it, with status `folded`, and §2's tex
    Added by slice 1 (folded).
 2. **Next.js's own `SIGTERM` handler exits before the drain**, so the image sets `NEXT_MANUAL_SIG_HANDLE=true`
    and `instrumentation.ts` installs the only handler. §4 *Export*, step 1 (*Barrier*) gains that. Slice 2, task 3.
+   Added by slice 2 (folded).
 3. **An absent run log is recognised from `docker compose cp`'s own error** (`Could not find the file`), not by a
    check before the copy. §4 *Export*, step 2 and decision 11's acceptance check are rewritten to match. Slice 2,
-   task 4.
+   task 4. Added by slice 2 (folded).
 
 ## Handoffs
 

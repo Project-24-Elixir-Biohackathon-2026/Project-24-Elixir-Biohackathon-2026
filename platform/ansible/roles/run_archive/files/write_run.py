@@ -9,7 +9,7 @@ this script: write_run.py <run dir>/openwebui-export.json <run dir> "Run report"
 Writes report.md (the participant's "Run report" note), chats/NN-<title>.md
 and .json (active branch of each chat, with tags), notes/ for any other
 notes, index.md (overview) and openwebui-export.json (the raw bundle).
-Stdlib only.
+Stdlib only. write_agui_run.py imports slug() and fence() from here.
 """
 import datetime
 import json
@@ -17,10 +17,6 @@ import os
 import re
 import shutil
 import sys
-
-bundle_path, run_dir, report_title = sys.argv[1:4]
-with open(bundle_path) as f:
-    b = json.load(f)
 
 
 def slug(s):
@@ -48,8 +44,10 @@ def active_branch(chat):
 
 
 def fence(text, lang=""):
+    """A code fence one backtick longer than the longest backtick run inside (at least three)."""
     text = text.rstrip("\n")
-    ticks = "````" if "```" in text else "```"
+    longest = max((len(run) for run in re.findall(r"`+", text)), default=0)
+    ticks = "`" * max(3, longest + 1)
     return f"{ticks}{lang}\n{text}\n{ticks}"
 
 
@@ -93,68 +91,77 @@ def write(path, text):
         f.write(text)
 
 
-tag_names = {t["id"]: t["name"] for t in b.get("tags") or []}
-os.makedirs(run_dir, exist_ok=True)
-raw = os.path.join(run_dir, "openwebui-export.json")
-if not (os.path.exists(raw) and os.path.samefile(bundle_path, raw)):  # re-rendering in place
-    shutil.copy(bundle_path, raw)
+def main(argv):
+    bundle_path, run_dir, report_title = argv[:3]
+    with open(bundle_path) as f:
+        b = json.load(f)
 
-# Notes: the run report, plus anything else the participant wrote.
-report = None
-for n in b.get("notes") or []:
-    md = ((n.get("data") or {}).get("content") or {}).get("md") or ""
-    if n.get("title") == report_title and report is None:
-        report = md
-        write(os.path.join(run_dir, "report.md"), md)
+    tag_names = {t["id"]: t["name"] for t in b.get("tags") or []}
+    os.makedirs(run_dir, exist_ok=True)
+    raw = os.path.join(run_dir, "openwebui-export.json")
+    if not (os.path.exists(raw) and os.path.samefile(bundle_path, raw)):  # re-rendering in place
+        shutil.copy(bundle_path, raw)
+
+    # Notes: the run report, plus anything else the participant wrote.
+    report = None
+    for n in b.get("notes") or []:
+        md = ((n.get("data") or {}).get("content") or {}).get("md") or ""
+        if n.get("title") == report_title and report is None:
+            report = md
+            write(os.path.join(run_dir, "report.md"), md)
+        else:
+            write(os.path.join(run_dir, "notes", slug(n.get("title")) + ".md"), md)
+
+    template = (b.get("report_template_md") or "").strip()
+    if report is None:
+        report_state = f'missing (no "{report_title}" note)'
+    elif template and report.strip() == template:
+        report_state = "**not filled in**"
     else:
-        write(os.path.join(run_dir, "notes", slug(n.get("title")) + ".md"), md)
+        report_state = "filled in"
 
-template = (b.get("report_template_md") or "").strip()
-if report is None:
-    report_state = f'missing (no "{report_title}" note)'
-elif template and report.strip() == template:
-    report_state = "**not filled in**"
-else:
-    report_state = "filled in"
+    # Chats, oldest first.
+    rows = []
+    chats = sorted(b.get("chats") or [], key=lambda c: c.get("created_at") or 0)
+    for i, c in enumerate(chats, 1):
+        msgs = active_branch(c.get("chat") or {})
+        tags = [tag_names.get(t, t) for t in (c.get("meta") or {}).get("tags") or []]
+        name = f"{i:02d}-{slug(c.get('title'))}"
+        lines = [
+            f"# {c.get('title') or 'Untitled'}",
+            "",
+            f"- Created: {when(c.get('created_at'))}",
+            f"- Updated: {when(c.get('updated_at'))}",
+            f"- Tags: {', '.join(tags) or '-'}",
+            f"- Archived in OpenWebUI: {'yes' if c.get('archived') else 'no'}",
+            "",
+        ]
+        for m in msgs:
+            who = m.get("role", "?")
+            if who == "assistant" and m.get("model"):
+                who += f" ({m['model']})"
+            lines += [f"## {who} · {when(m.get('timestamp'))}", "", render_message(m), ""]
+        write(os.path.join(run_dir, "chats", name + ".md"), "\n".join(lines))
+        write(os.path.join(run_dir, "chats", name + ".json"), json.dumps(c, indent=1))
+        link = re.sub(r"([\[\]|])", r"\\\1", c.get("title") or "Untitled")
+        rows.append(f"| [{link}](chats/{name}.md) | {', '.join(tags) or '-'} "
+                    f"| {'yes' if c.get('archived') else ''} | {len(msgs)} | {when(c.get('created_at'))} |")
 
-# Chats, oldest first.
-rows = []
-chats = sorted(b.get("chats") or [], key=lambda c: c.get("created_at") or 0)
-for i, c in enumerate(chats, 1):
-    msgs = active_branch(c.get("chat") or {})
-    tags = [tag_names.get(t, t) for t in (c.get("meta") or {}).get("tags") or []]
-    name = f"{i:02d}-{slug(c.get('title'))}"
-    lines = [
-        f"# {c.get('title') or 'Untitled'}",
+    index = [
+        f"# Run {os.path.basename(run_dir.rstrip('/'))}",
         "",
-        f"- Created: {when(c.get('created_at'))}",
-        f"- Updated: {when(c.get('updated_at'))}",
-        f"- Tags: {', '.join(tags) or '-'}",
-        f"- Archived in OpenWebUI: {'yes' if c.get('archived') else 'no'}",
+        f"- Exported: {when(b.get('exported_at'))}",
+        f"- Report: [report.md](report.md), {report_state}",
+        "- Parameters and canary record: [run.yml](run.yml), canaries.json",
+        "",
+        "| Chat | Tags | Archived | Messages | Created |",
+        "|---|---|---|---|---|",
+        *rows,
         "",
     ]
-    for m in msgs:
-        who = m.get("role", "?")
-        if who == "assistant" and m.get("model"):
-            who += f" ({m['model']})"
-        lines += [f"## {who} · {when(m.get('timestamp'))}", "", render_message(m), ""]
-    write(os.path.join(run_dir, "chats", name + ".md"), "\n".join(lines))
-    write(os.path.join(run_dir, "chats", name + ".json"), json.dumps(c, indent=1))
-    link = re.sub(r"([\[\]|])", r"\\\1", c.get("title") or "Untitled")
-    rows.append(f"| [{link}](chats/{name}.md) | {', '.join(tags) or '-'} "
-                f"| {'yes' if c.get('archived') else ''} | {len(msgs)} | {when(c.get('created_at'))} |")
+    write(os.path.join(run_dir, "index.md"), "\n".join(index))
+    print(f"{len(chats)} chats, report {report_state}")
 
-index = [
-    f"# Run {os.path.basename(run_dir.rstrip('/'))}",
-    "",
-    f"- Exported: {when(b.get('exported_at'))}",
-    f"- Report: [report.md](report.md), {report_state}",
-    "- Parameters and canary record: [run.yml](run.yml), canaries.json",
-    "",
-    "| Chat | Tags | Archived | Messages | Created |",
-    "|---|---|---|---|---|",
-    *rows,
-    "",
-]
-write(os.path.join(run_dir, "index.md"), "\n".join(index))
-print(f"{len(chats)} chats, report {report_state}")
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

@@ -8,10 +8,10 @@ Next.js 16.4.1 + CopilotKit 1.79.0 (v2 API), a thin client for the SPE agent.
   `HttpAgent` (`@ag-ui/client` 1.0.2) for `AGENT_URL` sending `Authorization: Bearer
   $AGENT_API_KEY`. Both variables are server-side only (not `NEXT_PUBLIC_*`) and read on the
   first request, so the build needs neither.
-- `app/page.tsx`: full-screen `CopilotChat` (`@copilotkit/react-core/v2`); every tool call is a
-  collapsible card (`useDefaultRenderTool`) with name, status, arguments and the first 40 lines
-  or 4000 characters of the result, rendered as text. Run errors appear in a bar above the chat.
-  No persistence: a reload starts a new conversation.
+- `app/page.tsx`: `CopilotChat` (`@copilotkit/react-core/v2`) beside the sidebar; every tool call is
+  a collapsible card (`useDefaultRenderTool`) with name, status, arguments and the first 40 lines
+  or 4000 characters of the result, rendered as text. Run errors appear in a bar above the chat. A
+  sidebar (`app/sidebar.tsx`) lists the sessions; the open one is in the URL (`?session=<id>`).
 - `lib/`: chat sessions on the server, plain TypeScript that `node --test` runs without Next.js
   (see *Sessions*). `app/api/sessions/` wraps `lib/api.ts`.
 
@@ -40,12 +40,35 @@ AG-UI thread id, a lower-case UUID v4; nothing else ever names a file. The file 
 The files hold whatever participants typed and tools returned, canary values included: treat the
 volume like the agent's run log.
 
+**Sidebar.** `app/sidebar.tsx`, in Open WebUI's layout and colours (light and dark follow the system): *New chat*,
+the sessions by title only (a *Pinned* list first, then *Chats*, newest first; hidden ones are left out), and a
+button that collapses the sidebar. Each row has a `⋯` menu (`app/popover.tsx`): rename (also a double-click on the
+title; Enter or a click outside saves, Escape cancels), pin, tags, hide, and delete after a confirmation
+(`app/delete-dialog.tsx`; the file is kept and archived). The menu closes on a click outside, Escape or a choice.
+Tags are shown and edited only in the menu's tag editor (`app/tag-editor.tsx`): it suggests the tags in use (arrow
+keys pick one, Enter adds it or the typed text), and a click on a tag removes it. Titles and tags are rendered as
+text. The page only reads sessions and changes metadata (`lib/client.ts`); it never writes messages. Above the chat
+a header row shows the open session's title; the note that this is the SPE agent and every tool call is shown sits
+under the composer (CopilotKit's `chatDisclaimerText`).
+
+**Opening a session** sets its messages on the agent and then mounts a new `CopilotChat` (`key={id}`) inside
+`CopilotChatConfigurationProvider` with `threadId={id}` and `hasExplicitThreadId={false}`. With an explicit
+`threadId`, CopilotChat 1.79 asks the runtime to *connect* to the thread and first clears the agent's messages on a
+thread it has not connected to; the runtime's in-memory runner only knows threads this process ran. A malformed,
+unknown or deleted `?session=` starts a new session and drops the parameter.
+
+**Shutdown.** `instrumentation.ts` installs `lib/shutdown.ts` on `SIGTERM`: new runs are refused, every run in
+progress is cancelled and saved as `cancelled`, the session queue drains (at most 25 s) and the process exits. The
+image sets `NEXT_MANUAL_SIG_HANDLE=true` so that Next.js's own handler does not exit first; `node
+scripts/check-shutdown.mjs [--image <tag>]` checks it. `archive.yml` relies on it: it stops `chat-ui`, then `agent`,
+before copying the sessions.
+
 ```bash
 npm ci && npm run build                       # type-checks too
 # against the scripted agent (no LLM): in ../pydantic-ai-agent
 #   uv run --group dev python ../../dev/fake_agent.py --port 18100 --key TEST_KEY
 # SPE_SESSIONS_DIR (default /data/sessions) must be an existing, writable directory, or every save fails
-SPE_SESSIONS_DIR=$(mktemp -d) AGENT_URL=http://127.0.0.1:18100/agent AGENT_API_KEY=TEST_KEY PORT=3000 \
+SPE_SESSIONS_DIR=$(mktemp -d) AGENT_URL=http://127.0.0.1:18100/agent AGENT_API_KEY=TEST_KEY PORT=3000 NEXT_MANUAL_SIG_HANDLE=true \
   node .next/standalone/server.js
 #   (copy .next/static to .next/standalone/.next/static first; the Dockerfile does)
 docker build -t spe-chat-ui .                 # node:24-slim, user node, port 3000

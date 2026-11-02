@@ -1,5 +1,5 @@
 name: AG-UI agent, all data
-description: All four samples, all tiers, every canary type; our own Pydantic AI agent with the CopilotKit chat. Chats are not archived yet.
+description: All four samples, all tiers, every canary type; our own Pydantic AI agent with the CopilotKit chat. Its chat sessions and run log are archived on stop.
 parameters:
   samples: [HG002, HG003, HG004, HG005]
   tiers: [ref, genomes, registry, secret]

@@ -10,6 +10,10 @@ says the AG-UI chat keeps no history or is not archived is rewritten. The slice 
 `platform/dev/fake_agent.py` that leaves three sessions (tagged and pinned, hidden, deleted), `archive.yml`'s run
 directory for them on the dev VM, and a PR body that asks the user to look at both (spec, *Early output*).
 
+Tasks 6–8 were added on 2026-11-02 (spec clarification 4): the sidebar's menu, rename and tags behave as Open
+WebUI's do, the sidebar and chat take Open WebUI's look, and slice 3's tasks follow. They run after task 4 and
+before task 5.
+
 Not in this slice (slice 3): title search, the tag filter, date groups, *Show hidden* (until then hidden rows are
 left out of the list but stay openable by URL), the chat header with title and tags, disabled controls during a
 run, and the list reconciliation after a run (for a save that lands late).
@@ -2854,3 +2858,97 @@ DCO: every commit signed off. Rulings: in the handoff.
 ```
 
 Then the local review round (`AGENTS.md`, *Reviewers*), the findings addressed, and stop: the user merges.
+
+### Task 6: the row menu's behaviour, Open WebUI's way (clarification 4)
+
+Added 2026-11-02 at the user's request, run after task 4 and before task 5 (task 5's screenshots, docs and PR show
+the result). Implements spec §3 *Row menu* and the row bullets of *Layout* as amended by clarification 4. The
+first sidebar left the menu and the rename or tag editor open after a click elsewhere, ignored Escape outside an
+input, never returned focus, and rendered the menu inline in the list.
+
+**Files:** Modify `CHAT/app/sidebar.tsx`, `CHAT/app/page.tsx`, `CHAT/app/globals.css` (structure only; task 7
+does the look), `platform/dev/e2e/sessions.py` (`check_menu`). Create, if it helps testing, small pure helpers in
+`CHAT/lib/` (e.g. tag suggestions) with `node --test` cases beside them. No new dependencies.
+
+- [ ] **Step 1: One owner for menu state.** `Sidebar` holds which row has the menu open and what that row is
+  doing (`menu`, `rename`, `tags`, `delete`); rows do not keep their own mode. Opening a session (any row),
+  *New chat*, collapsing the sidebar, or opening another row's menu ends whatever is open. At most one row is
+  ever in a non-idle state.
+- [ ] **Step 2: The popover.** The menu floats over the list, anchored under the row's `⋯` (flip upward when
+  it would leave the viewport), and does not move other rows. It closes on a `pointerdown` outside the menu and
+  its trigger, on Escape (wherever focus is inside the sidebar or menu), and on choosing an item. Closing
+  returns focus to the `⋯` that opened it. `role="menu"` items are reachable with ArrowUp/ArrowDown/Home/End;
+  the first item is focused when the menu opens from the keyboard. Item order: *Rename*, *Pin*/*Unpin*,
+  *Tags*, *Hide*/*Unhide*, separator, *Delete*.
+- [ ] **Step 3: Rename** replaces the row's title in place (same height, no layout shift), focused with the text
+  selected; also started by double-clicking the row's title. Enter saves if changed, Escape cancels, and a
+  click outside the row saves if changed and ends the edit (Open WebUI's blur rule). The `⋯` is not clickable
+  while renaming. IME composition (`isComposing`) never saves or cancels. An empty or unchanged title saves
+  nothing.
+- [ ] **Step 4: Tags** opens Open WebUI's tag editor inside the popover: the session's tags as pills, each with
+  a ×; below them an input with placeholder "Add a tag…". Typing shows up to 8 suggestions from the tags in use
+  on other sessions (case-insensitive substring, excluding tags already on this session); a click on a
+  suggestion or Enter adds the tag. Invalid input (spec §1 rules) shows the server's 400 as a one-line error
+  under the input and keeps the text. Escape closes the suggestions first, then the editor. A click outside
+  closes the editor without adding the typed text (Open WebUI's tag blur rule).
+- [ ] **Step 5: Delete** opens a modal dialog (centred, backdrop, `role="alertdialog"`, focus on *Cancel*):
+  title "Delete chat?", text "This removes it from your list. It is kept in the run archive.", buttons
+  *Cancel* and *Delete*. Escape or the backdrop cancels; focus returns to the row's `⋯` (or, if the deleted
+  row was open, the page behaves as today after a delete).
+- [ ] **Step 6: Browser checks** in `platform/dev/e2e/sessions.py`, extending `check_menu` (or a new
+  `check_focus` run after it), against `fake_agent.py` as the existing checks do. Each of these, asserted on
+  the DOM: (a) Rename → click another row: the edit ends, the new title is saved (a reload shows it), the other
+  session opens; (b) Rename → Escape: unchanged; (c) menu open → click empty sidebar space: closed; (d) menu
+  open → Escape: closed and `document.activeElement` is that row's `⋯`; (e) menu open on row A → click row B's
+  `⋯`: exactly one menu, row B's; (f) menu open → *New chat*: closed; (g) Tags → type a prefix of an existing
+  tag → its suggestion shows; Enter adds it; × removes it; click outside with typed text: nothing added;
+  (h) Delete → Escape: dialog closed, row still listed; (i) ArrowDown moves focus through the items.
+- [ ] **Step 7: Tests and commit.** `npm test` and `npm run build` in `CHAT`, the e2e script as the README says.
+  Commit.
+
+### Task 7: the look — Open WebUI's sidebar, a polished chat (clarification 4)
+
+Run after task 6. Implements spec §3 *Look* and *Chat header* as amended by clarification 4. The reference is
+Open WebUI's sidebar (the controller hands the implementer a design reference with its tokens and icon paths);
+the bar is claude.ai and chatgpt.com: calm, dense, no stray borders, one accent at most.
+
+**Files:** Modify `CHAT/app/globals.css`, `CHAT/app/sidebar.tsx`, `CHAT/app/page.tsx`, `CHAT/app/layout.tsx`;
+add an icons module (inline SVG React components) under `CHAT/app/`; `CHAT/next.config.*` only to turn off the
+dev-only indicator if it overlaps the sidebar. No new dependencies and no web fonts fetched at runtime (the
+instance may have no internet): a system font stack.
+
+- [ ] **Step 1: Tokens.** CSS custom properties on `:root` for Open WebUI's gray scale, text, border, hover,
+  selected, menu, dialog and focus-ring colours, radii, shadows and the 200 ms menu transition; a
+  `@media (prefers-color-scheme: dark)` block redefines them. No hex colour outside the token block.
+- [ ] **Step 2: Sidebar.** Open WebUI's geometry: about 260 px, its background, *New chat* as a full-width
+  row with a pencil-square icon, the collapse control as an icon button, a search-shaped area left for slice 3,
+  rows of title only (single line, ellipsis, `⋯` on hover/focus/open row/menu open, selected and hover
+  backgrounds, rounded), pinned rows under a small muted *Pinned* label, the bottom note muted and small. The
+  popover menu, tag pills (Open WebUI's: the whole pill, with its always-visible ×, removes the tag on a click),
+  suggestion list and dialog in Open WebUI's style, each menu item with its icon
+  (pencil, pin/pin-slash, tag, eye-slash/eye, trash); *Delete* in a muted red. Visible `:focus-visible` rings.
+- [ ] **Step 3: Header and composer.** Drop the banner sentence. A quiet header row (no border; a fade under it
+  when the chat scrolls is fine) with the open session's title, *New chat* before the first run, truncated.
+  Set CopilotKit's `labels`: `chatDisclaimerText` "SPE agent · runs inside the secure processing environment ·
+  every tool call is shown" and `chatInputPlaceholder` "Message the SPE agent". (Renaming from the header and its
+  `⋯` are slice 3.)
+- [ ] **Step 4: The CopilotKit chat** in the same palette, light and dark: message bubbles, composer, tool
+  cards (`run_command` and the others) and buttons, targeted through `data-testid`/stable classes the audit
+  lists rather than generated `cpk:` utility strings where possible. The chat column stays centred and
+  readable (about 768 px).
+- [ ] **Step 5: Screenshots** at 1280×800, light and dark (Playwright `color_scheme`): the page with four
+  sessions (one pinned), the open menu, a rename, the tag editor with a suggestion, the delete dialog. Save
+  them under the plan's `evidence/` directory, named `ui-<mode>-<what>.png`, and compare them yourself against
+  the reference before reporting; say in the report what still differs from Open WebUI and why.
+- [ ] **Step 6: Tests and commit.** `npm test`, `npm run build`, the e2e script (task 6's checks must still
+  pass: class names they use stay). Commit.
+
+### Task 8: slice 3's tasks follow clarification 4
+
+Docs only, run after task 7. Rewrite the task text of [slice 3](slice-3-complete.md) task 1 (search, tag filter)
+and task 2 (chat header) so they implement spec §3 as amended by clarification 4: the tag filter is Open WebUI's
+`tag:<name>` search syntax with a suggestion list when `tag:` is typed (several terms must all match; the rest
+of the query filters titles), not tag chips; the header is task 7's title row made renamable in place with the
+same `⋯` menu as the rows; rows carry no tags; the class names and components slice 2 now has (from task 6 and
+7's code) replace the ones the old text assumed. Keep the tasks' structure, steps and acceptance checks
+otherwise. Commit.

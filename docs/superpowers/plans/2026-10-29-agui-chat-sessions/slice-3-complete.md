@@ -1,8 +1,8 @@
 # Slice 3/3: complete — search, tags, groups, header, reconciliation; instance and archive checks
 
-Completes the sidebar of spec §3 on top of slice 2's list, row menu and URL: the title search, the tag filter
-with counts, the date groups, *Show hidden*, the chat header, the controls disabled during a run and the list
-reconciliation after it. Then the checks that need an instance: "Session API answers", `chat-ui`'s hardening as
+Completes the sidebar of spec §3 (as amended by its clarification 4) on top of slice 2's list, row menu and URL:
+the title search with Open WebUI's `tag:<name>` terms and their suggestions, the date groups, *Show hidden*, the
+chat header's rename and `⋯` menu, the controls disabled during a run and the list reconciliation after it. Then the checks that need an instance: "Session API answers", `chat-ui`'s hardening as
 `docker inspect` reports it and the key scan over the `chat-sessions` volume in `roles/agui/tasks/checks.yml` (run
 by `create.yml` and `verify.yml`), the `archive.yml` runs of decision 11 on the dev VM with `fake_agent.py`
 standing in for the agent, and the one paid check. The last task closes the track.
@@ -18,38 +18,59 @@ answers").
 interfaces and Review Focus: [plan README](README.md). Paths are relative to the repository root; `CHAT` is
 `platform/agui/copilotkit-chat`.
 
-**What this slice takes from slice 2** ([slice-2-sidebar.md](slice-2-sidebar.md), tasks 1 and 2; its merged code
-is authoritative, and a difference found there is recorded as a ruling in the handoff):
+**What this slice takes from slice 2** ([slice-2-sidebar.md](slice-2-sidebar.md), tasks 1, 2, 6 and 7; its merged
+code is authoritative, and a difference found there is recorded as a ruling in the handoff):
 
 - `CHAT/lib/client.ts`: `type Fetch`, `ApiError`, `fetchSessions`, `fetchSession`, `updateSession`, `removeSession`
-  (each with an optional `f?: Fetch`), `listOrder` (removed here, task 1), `renamePatch`, `withTag`, `withoutTag`.
-  `CHAT/lib/session-url.ts` and `CHAT/lib/session-id.ts` are used unchanged.
-- `CHAT/app/sidebar.tsx`: `Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChanged, onDeleted, onError })`
-  and its `SessionRow` (`<li className="spe-row …">`, no row attribute: task 1 adds `data-session-id`), *New chat*
-  `.spe-new`, `.spe-row-open`, `.spe-row-title`, `.spe-chip`, `.spe-row-menu`, `.spe-menu`, the delete
-  confirmation inside the row, `.spe-empty`, `.spe-note` ("Deleted sessions are kept in the run archive."), a
-  `<ul className="spe-list">`. The row menu's labels: `Session title`, `Add a tag`, `Remove tag <t>`.
+  (each with an optional `f?: Fetch`), `listOrder` (removed here, task 1), `renamePatch`, `withTag`, `withoutTag`,
+  `tagSuggestions(known, current, input, max = 8)` (the tag editor's). `CHAT/lib/menu.ts` (`popoverPosition`,
+  `menuIndex(key, current, count)`), `CHAT/lib/session-url.ts` and `CHAT/lib/session-id.ts` are used unchanged.
+- `CHAT/app/sidebar.tsx` (slice 2's task 6 and 7, Open WebUI's look, spec clarification 4): `Sidebar({ sessions,
+  knownTags, activeId, onNew, onOpen, onChanged, onDeleted, onError })`, which owns one `busy` state (the row whose
+  menu, rename, tag editor or delete dialog is open; closed on a press outside, Escape, a choice) and renders each
+  row inline (`row(s)`: `<li className="spe-row …">`, no row attribute: task 1 adds `data-session-id`), with the
+  classes `.spe-row-active`, `.spe-row-menu-open`, `.spe-row-renaming`, `.spe-row-open` (the title button, which
+  also renames on double-click), `.spe-row-title`, `.spe-pin` (screen-reader text only), `.spe-row-menu` (the
+  `⋯`), `.spe-rename`. Rows show the title only, no tags. Above the list: `.spe-sidebar-top` (`.spe-brand`, the
+  collapse `.spe-icon-button`), `.spe-sidebar-actions` with *New chat* `.spe-new` and the comment `{/* Title search
+  goes here. */}`; the list `.spe-sidebar-list` with a `.spe-section` heading ("Pinned", "Chats") over each `<ul
+  className="spe-list">`; `.spe-empty` ("No sessions yet."); below it `.spe-note` ("Deleted sessions are kept in
+  the run archive."). In the same file, `RowMenu` (`.spe-menu`, `role="menu"`, items Rename, Pin/Unpin, Tags,
+  Hide/Unhide, Delete `.spe-menu-danger`) and `RenameInput`. Beside it: `app/popover.tsx` (`Popover({ anchor, box,
+  children })`, `.spe-popover`), `app/tag-editor.tsx` (`TagEditor({ tags, draft, suggestions, error, onDraft,
+  onAdd, onRemove })`: pills `.spe-chip`, `.spe-tag-input`, `.spe-tag-suggestions` with arrow keys and Enter),
+  `app/delete-dialog.tsx` (`DeleteDialog({ onCancel, onDelete })`, `role="alertdialog"`), `app/icons.tsx`,
+  `app/keys.ts` (`composing(e)`). Labels: `Session title`, `Add a tag`, `Remove tag <t>`, `Menu for <title>`,
+  `Hide sessions`, `Show sessions`.
 - `CHAT/app/page.tsx`: state `sessions`, `active`, `activeRef`; `refresh()`, `select()`, `startNew()`, `open()`,
-  `showInUrl()`, `messageOf()`; passes `listOrder(sessions)` to `Sidebar`; renders the one-line
-  `<div className="spe-header">`. **How it learns a run ended:** an effect subscribes
+  `showInUrl()`, `messageOf()`; passes `listOrder(sessions)` to `Sidebar`; renders task 7's quiet title row
+  `<header className="spe-header"><h1 className="spe-header-title">` (the open session's title, else "New
+  chat"); the note that this is the SPE agent and every tool call is shown is CopilotKit's disclaimer under the
+  composer (`LABELS.chatDisclaimerText`), not in the header. **How it learns a run ended:** an effect subscribes
   `agent.subscribe({ onRunFinalized: ended, onRunFailed: ended })`, where `ended` calls `refresh()` once and then
   puts the open session into the URL if the list has it. Task 2 replaces that effect.
-- `CHAT/app/globals.css`, slice 2's whole file.
+- `CHAT/app/globals.css`, slice 2's whole file: every colour is a token on `:root` with a dark block under
+  `@media (prefers-color-scheme: dark)` (`--text`, `--text-muted`, `--text-placeholder`, `--line`, `--line-strong`,
+  `--hover`, `--selected`, `--menu-bg`, `--menu-border`, `--menu-hover`, `--button-off-text`, `--radius-row`,
+  `--radius-item`, `--radius-menu`, `--shadow-menu`, `--hover-transition`, …), and no rule after the token blocks
+  names a colour. This slice's CSS uses those tokens only, so it holds in light and dark.
 - `platform/dev/e2e/sessions.py` (Python Playwright; slice 2's ruling 1): `Run` (`page`, `sessions`, `shot`, `ok`,
-  `files`, `wait_runs`, `url_session`, `rows`, `row`, `send`, `menu`), `check_list(r) -> ids`, `check_menu(r, ids)`,
-  `check_close_tab(r, ids)`, `BASE`, `XSS`, `main()`, which calls the three checks in that order. After
+  `files`, `wait_runs`, `url_session`, `rows`, `row`, `send`, `menu`), `check_list(r) -> ids`, `check_focus(r, ids)`,
+  `check_menu(r, ids)`, `check_close_tab(r, ids)`, `BASE`, `XSS`, `main()`, which calls the four checks in that
+  order. After
   `check_close_tab` there are three sessions: "List the home directory (exfil try)" (pinned, tags `exfil, dns`, two
   runs), "Read the dataset" (hidden, a second `completed` run from `check_close_tab`), "Try the canary" (deleted).
-  Task 2 adds checks after them, and its new `main()` keeps calling all three.
+  Task 2 adds checks after them, and its new `main()` keeps calling all four.
 - Slice 2's dev-VM commands (its task 5, steps 5 and 6, ruling 5): `create.yml` from the main checkout with
   `-e spe_agui_source_dir=$W/platform/agui`; `archive.yml` (and here `verify.yml`) from the worktree with the main
   checkout's instance file and `-e spe_output_root=$M/platform/ansible/output`, so the branch's roles run.
 
 **Additions to the README's shared interfaces** (new in this slice, used only inside it):
 `lib/sidebar-view.ts`: `type DateGroup`, `type SectionLabel`, `type Section`, `type ViewFilter = { query: string;
-tags: string[]; showHidden: boolean }`, `type TagCount`, `filterSessions(list, filter): SessionMeta[]`,
-`tagCounts(list, showHidden, selected): TagCount[]`, `dateGroup(updatedAt: string, now: Date): DateGroup`,
-`sections(list, now: Date): Section[]`, `toggleTag(selected, tag): string[]`. `lib/reconcile.ts`:
+showHidden: boolean }`, `type ParsedQuery = { text: string; tags: string[] }`, `parseQuery(query): ParsedQuery`,
+`filterSessions(list, filter): SessionMeta[]`, `tagTermSuggestions(known, query, max = 8): string[]`,
+`withTagTerm(query, tag): string`, `dateGroup(updatedAt: string, now: Date): DateGroup`, `sections(list, now:
+Date): Section[]`. `lib/reconcile.ts`:
 `SAVE_FAILED_MESSAGE`, `RECONCILE_RETRIES = 5`, `RECONCILE_DELAY_MS = 500`, `SAVE_FAILED_EVENT` (equal to slice 1's
 `SAVE_FAILED`), `REFUSED_RUN_MESSAGES` (equal to slice 1's `REFUSAL_MESSAGES`; `lib/reconcile.ts` is browser code
 and does not import `lib/recorder.ts`), `clockOffset(dateHeader, browserNowMs): number`,
@@ -57,9 +78,12 @@ and does not import `lib/recorder.ts`), `clockOffset(dateHeader, browserNowMs): 
 `isRefusal(message): boolean`, `isSaveFailed(event: { name: string; value?: unknown }, id: string): boolean`,
 `fetchSessionList(f?: Fetch):
 Promise<{ list; serverOffsetMs }>`, `reconcile(fetchList, id, browserStartMs, sleep?): Promise<{ list; saved }>`.
-`app/session-filters.tsx`: `SessionFilters`, `HiddenToggle`, `DELETED_NOTE`. `app/chat-header.tsx`: `ChatHeader({
-session, knownTags, onPatch })`, `TOOL_CALL_NOTE`. `app/use-run-reconcile.ts`: `useRunReconcile({ openId, onList,
-onError }): { busy: boolean; noteRunError(message): void }`. `Sidebar` gains `busy: boolean`. `sessions.py` gains
+`app/session-filters.tsx`: `SearchBox({ query, knownTags, onChange })`, `HiddenToggle`, `DELETED_NOTE`.
+`app/row-menu.tsx` (task 2 moves them out of `sidebar.tsx`): `RowMenu` (gains `deleteDisabled?: boolean`),
+`RenameInput` (gains `label` and `className`, defaults `"Session title"` and `"spe-rename"`). `app/chat-header.tsx`:
+`ChatHeader({ session, knownTags, running, onPatch, onDelete, onError })`. `app/use-run-reconcile.ts`:
+`useRunReconcile({ openId, onList, onError }): { busy: boolean; noteRunError(message): void }`. `Sidebar` gains
+`running: boolean` (named so, because `busy` is already its row state). `sessions.py` gains
 `check_view`, `check_header`, `check_stop`, `check_save_failed`, `slow_loop`, `two_turn`, `InstanceRun` and the options `--scenario`,
 `--save-delay-ms`, `--url`, `--compose-file`. `platform/dev/fake_agent.py` gains `--run-log PATH` and reads `--key`
 from `SPE_AGENT_API_KEY` when it is not given.
@@ -90,23 +114,34 @@ task 1–2 code extracted from its plan file with a stub of slice 1's `lib/sessi
 - A stub `destroy.yml` importing a stub `archive.yml` whose export fails: neither the write play nor the destroy
   play runs.
 
-### Task 1: sidebar view — search, tag filter, date groups, *Show hidden*
+### Task 1: sidebar view — search with `tag:` terms, date groups, *Show hidden*
 
 **Files:** Create: `CHAT/lib/sidebar-view.ts`, `CHAT/lib/sidebar-view.test.ts`, `CHAT/app/session-filters.tsx`.
-Modify: `CHAT/app/sidebar.tsx` (whole file below), `CHAT/app/page.tsx`, `CHAT/lib/client.ts`,
-`CHAT/lib/client.test.ts`, `CHAT/app/globals.css`.
+Modify: `CHAT/app/sidebar.tsx` (diff below), `CHAT/app/page.tsx`, `CHAT/lib/client.ts`, `CHAT/lib/client.test.ts`,
+`CHAT/app/globals.css`.
 
-**Interfaces:** Consumes: `SessionMeta` (slice 1); slice 2's `Sidebar`, `SessionRow`, `listOrder`. Produces: the
-`lib/sidebar-view.ts` names above; `data-session-id` on each row, `data-group="<label>"` on each group,
-`.spe-filter-chip[data-tag="<tag>"]` with `aria-pressed`, the class `spe-row-hidden`; the labels `Search titles` and
-`Show hidden`. The page now passes every session; the sidebar filters and orders them.
+**Interfaces:** Consumes: `SessionMeta` (slice 1); slice 2's `Sidebar` (its inline `row(s)` and `busy` state),
+`listOrder`, `menuIndex` (`lib/menu.ts`), `composing` (`app/keys.ts`). Produces: the `lib/sidebar-view.ts` names
+above; `SearchBox`, `HiddenToggle`, `DELETED_NOTE`; `data-session-id` on each row, `<section className="spe-group"
+data-group="<label>">` around each group's `.spe-section` heading and `.spe-list`, the class `spe-row-hidden`, the
+suggestion list `.spe-search-suggestions` (`role="listbox"`, options `tag:<name>`); the labels `Search titles`,
+`Tags in use` (the listbox) and `Show hidden`. The page now passes every session; the sidebar filters and orders
+them.
 
-**Decisions:** 9 (search, tag filter with all selected tags matching, pinned first then date groups, *Show
-hidden*, the deleted note), 14 (search treats HTML and regular-expression characters as text; all React text).
-Groups use the browser's local calendar day: "Today" since local midnight, "Yesterday" the local day before,
-"Previous 7 days" the six days before that, by calendar day, so a daylight-saving change moves nothing. A selected
-tag keeps its chip with count 0 when no shown session has it, so the filter can always be cleared. Filter chips get
-their own class (`spe-filter-chip`): slice 2's `.spe-chip` is a row's tag, and its browser checks count those.
+**Decisions:** 9 as amended by spec clarification 4 (search; Open WebUI's `tag:<name>` terms, several of which
+must all match, the rest of the query filtering titles; suggestions when `tag:` is typed; pinned first then date
+groups; *Show hidden*; the deleted note; rows keep showing the title only, no tags), 14 (search treats HTML and
+regular-expression characters as text; all React text). The query is split on whitespace: each `tag:<name>` term
+is a tag (lower-cased, as the server stores tags, whose names hold no spaces: `a-z 0-9 . _ -`), a bare `tag:` still
+being typed is ignored, and the other words, joined by one space, must be a case-insensitive substring of the
+title. While the query's last word starts with `tag:`, the box lists the tags in use (all sessions', hidden ones
+included: the page's `knownTags`) that start with what follows it, leaving out those the query already names, at
+most 8; as the tag editor's suggestions (slice 2, task 6), the arrow keys pick one, Enter or a click takes it, and
+Escape hides them; taking one completes the word to `tag:<name> ` (Open WebUI's `SearchInput.svelte`). Groups use
+the browser's local calendar day: "Today" since local midnight, "Yesterday" the local day before, "Previous 7 days"
+the six days before that, by calendar day, so a daylight-saving change moves nothing. The groups replace slice 2's
+"Pinned" / "Chats" headings. A row whose menu is open and that the filter hides is no longer busy (slice 2's rule
+for a row that left the list).
 
 - [ ] **Step 1: Write the failing test** `CHAT/lib/sidebar-view.test.ts`
 
@@ -114,7 +149,7 @@ their own class (`spe-filter-chip`): slice 2's `.spe-chip` is a row's tag, and i
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { SessionMeta } from "./sessions.ts";
-import { dateGroup, filterSessions, sections, tagCounts, toggleTag } from "./sidebar-view.ts";
+import { dateGroup, filterSessions, parseQuery, sections, tagTermSuggestions, withTagTerm } from "./sidebar-view.ts";
 
 // Local wall-clock times, so the tests hold in any time zone (run them with TZ set to check).
 const at = (y: number, mo: number, d: number, h = 12, mi = 0) => new Date(y, mo - 1, d, h, mi).toISOString();
@@ -131,43 +166,54 @@ const LIST: SessionMeta[] = [
   meta("c", { title: "hidden one", tags: ["exfil"], hidden: true }),
   meta("d", { title: "Plain", tags: [] }),
 ];
+const ids = (query: string, showHidden = false) => filterSessions(LIST, { query, showHidden }).map((s) => s.id);
 
 test("search is a case-insensitive substring of the title, spaces around it ignored", () => {
-  assert.deepEqual(filterSessions(LIST, { query: "  home ", tags: [], showHidden: false }).map((s) => s.id), ["a"]);
-  assert.deepEqual(filterSessions(LIST, { query: "DNS", tags: [], showHidden: false }).map((s) => s.id), ["b"]);
-  assert.deepEqual(filterSessions(LIST, { query: "", tags: [], showHidden: false }).map((s) => s.id), ["a", "b", "d"]);
+  assert.deepEqual(ids("  home "), ["a"]);
+  assert.deepEqual(ids("DNS"), ["b"]);
+  assert.deepEqual(ids("the   home"), ["a"]);
+  assert.deepEqual(ids(""), ["a", "b", "d"]);
 });
 
 test("search treats regex and HTML characters literally", () => {
   const list = [meta("x", { title: "<img src=x onerror=alert(1)>" }), meta("y", { title: "a.b" })];
-  assert.deepEqual(filterSessions(list, { query: "<img", tags: [], showHidden: false }).map((s) => s.id), ["x"]);
-  assert.deepEqual(filterSessions(list, { query: ".", tags: [], showHidden: false }).map((s) => s.id), ["y"]);
+  assert.deepEqual(filterSessions(list, { query: "<img", showHidden: false }).map((s) => s.id), ["x"]);
+  assert.deepEqual(filterSessions(list, { query: ".", showHidden: false }).map((s) => s.id), ["y"]);
 });
 
-test("several selected tags: a session must have all of them", () => {
-  assert.deepEqual(filterSessions(LIST, { query: "", tags: ["dns"], showHidden: false }).map((s) => s.id), ["a", "b"]);
-  assert.deepEqual(filterSessions(LIST, { query: "", tags: ["dns", "exfil"], showHidden: false }).map((s) => s.id), ["a"]);
-  assert.deepEqual(filterSessions(LIST, { query: "", tags: ["exfil"], showHidden: true }).map((s) => s.id), ["a", "c"]);
+test("parseQuery: tag: terms are tags (lower-cased, a bare tag: ignored), the rest is the title text", () => {
+  assert.deepEqual(parseQuery("  tag:DNS list  Tag:exfil the tag: "), { text: "list the", tags: ["dns", "exfil"] });
+  assert.deepEqual(parseQuery("tag:dns tag:dns"), { text: "", tags: ["dns"] });
+  assert.deepEqual(parseQuery(""), { text: "", tags: [] });
+});
+
+test("several tag: terms: a session must have all of them; the rest filters titles", () => {
+  assert.deepEqual(ids("tag:dns"), ["a", "b"]);
+  assert.deepEqual(ids("tag:dns tag:exfil"), ["a"]);
+  assert.deepEqual(ids("tag:exfil", true), ["a", "c"]);
+  assert.deepEqual(ids("tag:dns lookups"), ["b"]);
+  assert.deepEqual(ids("tag:nosuch"), []);
+  assert.deepEqual(ids("tag:"), ["a", "b", "d"]);
 });
 
 test("hidden sessions only with Show hidden", () => {
-  assert.equal(filterSessions(LIST, { query: "", tags: [], showHidden: false }).some((s) => s.hidden), false);
-  assert.deepEqual(filterSessions(LIST, { query: "hidden", tags: [], showHidden: true }).map((s) => s.id), ["c"]);
+  assert.equal(filterSessions(LIST, { query: "", showHidden: false }).some((s) => s.hidden), false);
+  assert.deepEqual(ids("hidden", true), ["c"]);
 });
 
-test("tag chips count the sessions Show hidden lets through, most used first", () => {
-  assert.deepEqual(tagCounts(LIST, false, []), [{ tag: "dns", count: 2 }, { tag: "exfil", count: 1 }]);
-  assert.deepEqual(tagCounts(LIST, true, []), [{ tag: "dns", count: 2 }, { tag: "exfil", count: 2 }]);
+test("tag: suggestions: the last word's prefix, tags already named left out, none without tag:", () => {
+  const known = ["alpha", "beta", "dns", "exfil"];
+  assert.deepEqual(tagTermSuggestions(known, "tag:"), known);
+  assert.deepEqual(tagTermSuggestions(known, "home TAG:b"), ["beta"]);
+  assert.deepEqual(tagTermSuggestions(known, "tag:beta tag:"), ["alpha", "dns", "exfil"]);
+  assert.deepEqual(tagTermSuggestions(known, "tag:beta "), []);
+  assert.deepEqual(tagTermSuggestions(known, "beta"), []);
+  assert.deepEqual(tagTermSuggestions(known, "tag:", 2), ["alpha", "beta"]);
 });
 
-test("a selected tag keeps its chip when no shown session has it", () => {
-  const list = [meta("h", { tags: ["only-hidden"], hidden: true })];
-  assert.deepEqual(tagCounts(list, false, ["only-hidden"]), [{ tag: "only-hidden", count: 0 }]);
-});
-
-test("toggleTag adds then removes", () => {
-  assert.deepEqual(toggleTag(["dns"], "exfil"), ["dns", "exfil"]);
-  assert.deepEqual(toggleTag(["dns", "exfil"], "dns"), ["exfil"]);
+test("withTagTerm replaces the last word and keeps the rest", () => {
+  assert.equal(withTagTerm("tag:b", "beta"), "tag:beta ");
+  assert.equal(withTagTerm("home tag:beta tag:a", "alpha"), "home tag:beta tag:alpha ");
 });
 
 test("date groups by local calendar day", () => {
@@ -214,48 +260,70 @@ Expected: FAIL, `Error [ERR_MODULE_NOT_FOUND]: Cannot find module '…/lib/sideb
 - [ ] **Step 3: Write `CHAT/lib/sidebar-view.ts`**
 
 ```ts
-// What the sidebar shows, as pure functions of the session list: the
-// title search, the tag filter and its chips, *Show hidden*, and the order: pinned first,
-// then Today / Yesterday / Previous 7 days / Older by `updated_at`, in the browser's time zone.
+// What the sidebar shows, as pure functions of the session list: the title search with Open WebUI's
+// `tag:<name>` terms, the suggestions for a `tag:` being typed, *Show hidden*, and the order: pinned
+// first, then Today / Yesterday / Previous 7 days / Older by `updated_at`, in the browser's time zone.
 import type { SessionMeta } from "./sessions.ts";
 
 export type DateGroup = "Today" | "Yesterday" | "Previous 7 days" | "Older";
 export type SectionLabel = "Pinned" | DateGroup;
 export type Section = { label: SectionLabel; sessions: SessionMeta[] };
-export type ViewFilter = { query: string; tags: string[]; showHidden: boolean };
-export type TagCount = { tag: string; count: number };
+export type ViewFilter = { query: string; showHidden: boolean };
+export type ParsedQuery = { text: string; tags: string[] };
 
 const GROUPS: readonly DateGroup[] = ["Today", "Yesterday", "Previous 7 days", "Older"];
+const TAG_PREFIX = "tag:";
 
 function time(iso: string): number {
   const t = Date.parse(iso);
   return Number.isNaN(t) ? -Infinity : t;
 }
 
-/** Sessions the current filter shows: hidden ones only with showHidden; the title contains the
- *  query (case-insensitive, surrounding spaces ignored); every selected tag is on the session. */
+/** The query's terms, split on whitespace: each `tag:<name>` is a tag (lower-cased, as the server
+ *  stores tags; a bare `tag:` still being typed is ignored), the other words, joined by one space and
+ *  lower-cased, are the title text. */
+export function parseQuery(query: string): ParsedQuery {
+  const words: string[] = [];
+  const tags: string[] = [];
+  for (const term of query.split(/\s+/)) {
+    if (term === "") continue;
+    if (term.toLowerCase().startsWith(TAG_PREFIX)) {
+      const tag = term.slice(TAG_PREFIX.length).toLowerCase();
+      if (tag !== "" && !tags.includes(tag)) tags.push(tag);
+    } else {
+      words.push(term);
+    }
+  }
+  return { text: words.join(" ").toLowerCase(), tags };
+}
+
+/** Sessions the current filter shows: hidden ones only with showHidden; every `tag:` term is on the
+ *  session; the title contains the rest of the query (case-insensitive, literally: no pattern). */
 export function filterSessions(list: readonly SessionMeta[], filter: ViewFilter): SessionMeta[] {
-  const query = filter.query.trim().toLowerCase();
+  const { text, tags } = parseQuery(filter.query);
   return list.filter(
     (s) =>
       (filter.showHidden || !s.hidden) &&
-      (query === "" || s.title.toLowerCase().includes(query)) &&
-      filter.tags.every((tag) => s.tags.includes(tag)),
+      tags.every((tag) => s.tags.includes(tag)) &&
+      (text === "" || s.title.toLowerCase().includes(text)),
   );
 }
 
-/** One chip per tag in use among the sessions *Show hidden* lets through, with how many carry it;
- *  most used first, then by name. A selected tag keeps its chip (count 0) so it can be deselected. */
-export function tagCounts(list: readonly SessionMeta[], showHidden: boolean, selected: readonly string[]): TagCount[] {
-  const counts = new Map<string, number>();
-  for (const s of list) {
-    if (s.hidden && !showHidden) continue;
-    for (const tag of s.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1);
-  }
-  for (const tag of selected) if (!counts.has(tag)) counts.set(tag, 0);
-  return [...counts]
-    .map(([tag, count]) => ({ tag, count }))
-    .sort((a, b) => b.count - a.count || (a.tag < b.tag ? -1 : a.tag > b.tag ? 1 : 0));
+/** Open WebUI's `tag:` suggestions: when the query's last word (no whitespace after it) starts with
+ *  `tag:`, the tags in use (`known`) that start with what follows it, leaving out those the query
+ *  already names; at most `max`. Otherwise none. */
+export function tagTermSuggestions(known: readonly string[], query: string, max = 8): string[] {
+  const last = query.split(/\s/).at(-1) ?? "";
+  if (!last.toLowerCase().startsWith(TAG_PREFIX)) return [];
+  const typed = last.slice(TAG_PREFIX.length).toLowerCase();
+  const named = parseQuery(query.slice(0, query.length - last.length)).tags;
+  return known.filter((t) => t.startsWith(typed) && !named.includes(t)).slice(0, max);
+}
+
+/** Picking a suggestion: the last word becomes `tag:<tag>` and a space, the rest of the query stays. */
+export function withTagTerm(query: string, tag: string): string {
+  const last = query.split(/\s/).at(-1) ?? "";
+  return `${query.slice(0, query.length - last.length)}${TAG_PREFIX}${tag} `;
 }
 
 /** The date group of a timestamp, by local calendar day. A time after `now` (clock skew) is
@@ -282,11 +350,6 @@ export function sections(list: readonly SessionMeta[], now: Date): Section[] {
   }
   return out;
 }
-
-/** Selecting a chip adds its tag to the filter, selecting it again removes it. */
-export function toggleTag(selected: readonly string[], tag: string): string[] {
-  return selected.includes(tag) ? selected.filter((t) => t !== tag) : [...selected, tag];
-}
 ```
 
 - [ ] **Step 4: Run it to see it pass, in several time zones**
@@ -304,43 +367,73 @@ Expected: `pass 10`, `fail 0` four times.
 
 ```tsx
 "use client";
-// The sidebar's filters: title search and tag chips above the list, the
-// *Show hidden* toggle and the note on deleted sessions below it. All text is React text.
-import type { SessionMeta } from "../lib/sessions.ts";
-import type { ViewFilter } from "../lib/sidebar-view.ts";
-import { tagCounts, toggleTag } from "../lib/sidebar-view.ts";
+// The sidebar's filters: the title search with Open WebUI's `tag:<name>` terms and its suggestions,
+// above the list; the *Show hidden* toggle and the note on deleted sessions below it. All text is
+// React text.
+import { useEffect, useState } from "react";
+import { menuIndex } from "../lib/menu.ts";
+import { tagTermSuggestions, withTagTerm } from "../lib/sidebar-view.ts";
+import { composing } from "./keys.ts";
 
 export const DELETED_NOTE = "Deleted sessions are kept in the run archive.";
 
-type FiltersProps = { sessions: SessionMeta[]; filter: ViewFilter; onChange: (filter: ViewFilter) => void };
+type SearchProps = { query: string; knownTags: string[]; onChange: (query: string) => void };
 
-export function SessionFilters({ sessions, filter, onChange }: FiltersProps) {
-  const chips = tagCounts(sessions, filter.showHidden, filter.tags);
+// Typing `tag:` lists the tags in use under the box (as the tag editor's suggestions: arrows pick,
+// Enter or a click takes one, Escape hides them); taking one completes the word to `tag:<name> `.
+export function SearchBox({ query, knownTags, onChange }: SearchProps) {
+  const [picked, setPicked] = useState(-1);
+  const [dismissed, setDismissed] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const suggestions = focused && !dismissed ? tagTermSuggestions(knownTags, query) : [];
+  useEffect(() => setPicked(-1), [query, suggestions.length]);
+  const take = (tag: string) => {
+    onChange(withTagTerm(query, tag));
+    setDismissed(false);
+  };
   return (
-    <div className="spe-filters">
+    <div className="spe-search-box">
       <input
         type="search"
         className="spe-search"
         aria-label="Search titles"
         placeholder="Search"
-        value={filter.query}
-        onChange={(e) => onChange({ ...filter, query: e.target.value })}
+        value={query}
+        aria-autocomplete="list"
+        aria-expanded={suggestions.length > 0}
+        aria-controls={suggestions.length > 0 ? "spe-search-suggestions" : undefined}
+        aria-activedescendant={picked >= 0 ? `spe-search-suggestion-${picked}` : undefined}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        onChange={(e) => {
+          setDismissed(false);
+          onChange(e.target.value);
+        }}
+        onKeyDown={(e) => {
+          if (composing(e) || suggestions.length === 0) return;
+          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            e.preventDefault();
+            setPicked((i) => menuIndex(e.key, i, suggestions.length) ?? -1);
+          } else if (e.key === "Enter" && picked >= 0) {
+            e.preventDefault();
+            take(suggestions[picked]);
+          } else if (e.key === "Escape") {
+            e.preventDefault(); // the search box's own Escape would clear the query
+            setDismissed(true);
+          }
+        }}
       />
-      {chips.length > 0 && (
-        <div className="spe-filter-chips" role="group" aria-label="Filter by tag">
-          {chips.map(({ tag, count }) => (
-            <button
-              key={tag}
-              type="button"
-              className="spe-filter-chip"
-              aria-pressed={filter.tags.includes(tag)}
-              data-tag={tag}
-              onClick={() => onChange({ ...filter, tags: toggleTag(filter.tags, tag) })}
-            >
-              {tag} <span className="spe-filter-count">{count}</span>
-            </button>
+      {suggestions.length > 0 && (
+        <ul className="spe-search-suggestions" id="spe-search-suggestions" role="listbox" aria-label="Tags in use">
+          {suggestions.map((t, i) => (
+            // mousedown, and its default prevented: the input keeps focus.
+            <li key={t} id={`spe-search-suggestion-${i}`} role="option" aria-selected={i === picked}
+              className={i === picked ? "spe-search-suggestion-picked" : undefined}
+              onMouseDown={(e) => { e.preventDefault(); take(t); }}>
+              <span className="spe-search-suggestion-prefix">tag:</span>{t}
+            </li>
           ))}
-        </div>
+        </ul>
       )}
     </div>
   );
@@ -351,7 +444,7 @@ type HiddenProps = { showHidden: boolean; onChange: (showHidden: boolean) => voi
 export function HiddenToggle({ showHidden, onChange }: HiddenProps) {
   return (
     <div className="spe-sidebar-foot">
-      <label>
+      <label className="spe-hidden-toggle">
         <input type="checkbox" checked={showHidden} onChange={(e) => onChange(e.target.checked)} /> Show hidden
       </label>
       <p className="spe-note">{DELETED_NOTE}</p>
@@ -360,220 +453,18 @@ export function HiddenToggle({ showHidden, onChange }: HiddenProps) {
 }
 ```
 
-- [ ] **Step 7: The sidebar and the page.** Replace `CHAT/app/sidebar.tsx` with (slice 2's task-2 file; changed:
-  the header comment, the imports, the `filter` state and `shown`, the list as groups, the row's `data-session-id`
-  and hidden class, `HiddenToggle` in place of the note):
-
-```tsx
-"use client";
-// The sessions sidebar: New chat, title search and tag chips, the list the filter shows (pinned
-// first, then Today / Yesterday / Previous 7 days / Older), each row's menu, and Show hidden.
-// Titles and tags are model or participant text: rendered as React text only, never as HTML.
-import { useState } from "react";
-import type { KeyboardEvent } from "react";
-import { removeSession, renamePatch, updateSession, withTag, withoutTag } from "../lib/client.ts";
-import type { MetaPatch, SessionMeta } from "../lib/sessions.ts";
-import { filterSessions, sections } from "../lib/sidebar-view.ts";
-import type { ViewFilter } from "../lib/sidebar-view.ts";
-import { HiddenToggle, SessionFilters } from "./session-filters";
-
-type SidebarProps = {
-  sessions: SessionMeta[];
-  knownTags: string[];
-  activeId: string | null;
-  onNew: () => void;
-  onOpen: (id: string) => void;
-  onChanged: () => void;
-  onDeleted: (id: string) => void;
-  onError: (message: string) => void;
-};
-
-export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChanged, onDeleted, onError }: SidebarProps) {
-  const [menuFor, setMenuFor] = useState<string | null>(null);
-  const [collapsed, setCollapsed] = useState(false);
-  const [filter, setFilter] = useState<ViewFilter>({ query: "", tags: [], showHidden: false });
-  const shown = sections(filterSessions(sessions, filter), new Date());
-  if (collapsed) {
-    return (
-      <nav className="spe-sidebar spe-sidebar-collapsed" aria-label="Sessions">
-        <button type="button" className="spe-collapse" aria-label="Show sessions" onClick={() => setCollapsed(false)}>›</button>
-      </nav>
-    );
-  }
-  return (
-    <nav className="spe-sidebar" aria-label="Sessions">
-      <div className="spe-sidebar-top">
-        <button type="button" className="spe-new" onClick={onNew}>New chat</button>
-        <button type="button" className="spe-collapse" aria-label="Hide sessions" onClick={() => setCollapsed(true)}>‹</button>
-      </div>
-      <datalist id="spe-known-tags">
-        {knownTags.map((t) => <option key={t} value={t} />)}
-      </datalist>
-      <SessionFilters sessions={sessions} filter={filter} onChange={setFilter} />
-      <div className="spe-list">
-        {shown.map((section) => (
-          <section key={section.label} className="spe-group" data-group={section.label}>
-            <h2 className="spe-group-label">{section.label}</h2>
-            <ul>
-              {section.sessions.map((s) => (
-                <SessionRow
-                  key={s.id}
-                  session={s}
-                  active={s.id === activeId}
-                  menuOpen={menuFor === s.id}
-                  onToggleMenu={() => setMenuFor(menuFor === s.id ? null : s.id)}
-                  onCloseMenu={() => setMenuFor(null)}
-                  onOpen={() => onOpen(s.id)}
-                  onChanged={onChanged}
-                  onDeleted={() => onDeleted(s.id)}
-                  onError={onError}
-                />
-              ))}
-            </ul>
-          </section>
-        ))}
-      </div>
-      {shown.length === 0 && (
-        <p className="spe-empty">{sessions.length === 0 ? "No sessions yet." : "No session matches."}</p>
-      )}
-      <HiddenToggle showHidden={filter.showHidden} onChange={(showHidden) => setFilter({ ...filter, showHidden })} />
-    </nav>
-  );
-}
-
-type RowProps = {
-  session: SessionMeta;
-  active: boolean;
-  menuOpen: boolean;
-  onToggleMenu: () => void;
-  onCloseMenu: () => void;
-  onOpen: () => void;
-  onChanged: () => void;
-  onDeleted: () => void;
-  onError: (message: string) => void;
-};
-
-type Mode = "menu" | "rename" | "tags" | "delete";
-
-function SessionRow({ session, active, menuOpen, onToggleMenu, onCloseMenu, onOpen, onChanged, onDeleted, onError }: RowProps) {
-  const [mode, setMode] = useState<Mode>("menu");
-  const [draft, setDraft] = useState("");
-
-  const close = () => {
-    setMode("menu");
-    setDraft("");
-    onCloseMenu();
-  };
-  // `stay`: the tag editor stays open for the next tag.
-  const save = async (patch: MetaPatch | null, stay = false) => {
-    if (patch) {
-      try {
-        await updateSession(session.id, patch);
-        onChanged();
-      } catch (e) {
-        onError(e instanceof Error ? e.message : "Saving the change failed.");
-      }
-    }
-    if (stay) setDraft("");
-    else close();
-  };
-  const remove = async () => {
-    try {
-      await removeSession(session.id);
-      onDeleted();
-    } catch (e) {
-      onError(e instanceof Error ? e.message : "Deleting the session failed.");
-    }
-    close();
-  };
-  const keys = (onEnter: () => void) => (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Enter") onEnter();
-    if (event.key === "Escape") close();
-  };
-
-  return (
-    <li
-      data-session-id={session.id}
-      className={["spe-row", active && "spe-row-active", session.hidden && "spe-row-hidden"].filter(Boolean).join(" ")}
-    >
-      {mode === "rename" && menuOpen ? (
-        <input
-          className="spe-rename"
-          aria-label="Session title"
-          autoFocus
-          maxLength={200}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={keys(() => void save(renamePatch(draft, session.title)))}
-        />
-      ) : (
-        <button type="button" className="spe-row-open" onClick={onOpen} aria-current={active ? "page" : undefined}>
-          <span className="spe-row-title">
-            {session.pinned && <span className="spe-pin" aria-label="pinned">📌 </span>}
-            {session.title}
-          </span>
-          {session.tags.length > 0 && (
-            <span className="spe-row-tags">
-              {session.tags.map((t) => <span key={t} className="spe-chip">{t}</span>)}
-            </span>
-          )}
-        </button>
-      )}
-      <button type="button" className="spe-row-menu" aria-label={`Menu for ${session.title}`} aria-expanded={menuOpen}
-        onClick={() => { setMode("menu"); onToggleMenu(); }}>⋯</button>
-      {menuOpen && mode === "menu" && (
-        <div className="spe-menu" role="menu">
-          <button type="button" role="menuitem" onClick={() => { setDraft(session.title); setMode("rename"); }}>Rename</button>
-          <button type="button" role="menuitem" onClick={() => void save({ pinned: !session.pinned })}>
-            {session.pinned ? "Unpin" : "Pin"}
-          </button>
-          <button type="button" role="menuitem" onClick={() => { setDraft(""); setMode("tags"); }}>Tags</button>
-          <button type="button" role="menuitem" onClick={() => void save({ hidden: !session.hidden })}>
-            {session.hidden ? "Unhide" : "Hide"}
-          </button>
-          <button type="button" role="menuitem" onClick={() => setMode("delete")}>Delete</button>
-        </div>
-      )}
-      {menuOpen && mode === "tags" && (
-        <div className="spe-menu">
-          <span className="spe-row-tags">
-            {session.tags.map((t) => (
-              <span key={t} className="spe-chip">
-                {t}
-                <button type="button" aria-label={`Remove tag ${t}`} onClick={() => void save(withoutTag(session.tags, t), true)}>×</button>
-              </span>
-            ))}
-          </span>
-          <input
-            aria-label="Add a tag"
-            placeholder="add a tag"
-            list="spe-known-tags"
-            autoFocus
-            maxLength={32}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={keys(() => void save(withTag(session.tags, draft), true))}
-          />
-        </div>
-      )}
-      {menuOpen && mode === "delete" && (
-        <div className="spe-menu" role="alertdialog" aria-label="Delete session">
-          <p>This removes it from your list. It is kept in the run archive.</p>
-          <button type="button" onClick={() => void remove()}>Delete</button>
-          <button type="button" onClick={close}>Cancel</button>
-        </div>
-      )}
-    </li>
-  );
-}
-```
-
-and apply to `CHAT/app/page.tsx` (the page passes every session; the sidebar decides what shows):
+- [ ] **Step 7: The sidebar and the page.** Apply to `CHAT/app/sidebar.tsx` (slice 2's task 6–7 file; changed: the
+  header comment, the imports, the `filter` state with `visible` and `shown`, `busySession` taken from the visible
+  rows, the row's `data-session-id` and hidden class, the search box in place of the placeholder comment, the
+  list as groups, `HiddenToggle` in place of the note) and to `CHAT/app/page.tsx` (the page passes every session;
+  the sidebar decides what shows):
 
 ```diff
+diff --git a/platform/agui/copilotkit-chat/app/page.tsx b/platform/agui/copilotkit-chat/app/page.tsx
+index edc0e58..14e3cef 100644
 --- a/platform/agui/copilotkit-chat/app/page.tsx
 +++ b/platform/agui/copilotkit-chat/app/page.tsx
-@@ -12,7 +12,7 @@
+@@ -12,7 +12,7 @@ import {
    useDefaultRenderTool,
  } from "@copilotkit/react-core/v2";
  import { useCallback, useEffect, useRef, useState } from "react";
@@ -581,8 +472,8 @@ and apply to `CHAT/app/page.tsx` (the page passes every session; the sidebar dec
 +import { fetchSession, fetchSessions } from "../lib/client.ts";
  import { searchWith, sessionFromSearch } from "../lib/session-url.ts";
  import type { SessionMeta } from "../lib/sessions.ts";
- import { Sidebar } from "./sidebar";
-@@ -168,7 +168,7 @@
+ import { ChevronRight } from "./icons";
+@@ -182,6 +182,6 @@ function Chat() {
    return (
      <div className="spe-layout">
        <Sidebar
@@ -590,24 +481,164 @@ and apply to `CHAT/app/page.tsx` (the page passes every session; the sidebar dec
 +        sessions={sessions}
          knownTags={[...new Set(sessions.flatMap((s) => s.tags))].sort()}
          activeId={active}
-         onNew={startNew}
+diff --git a/platform/agui/copilotkit-chat/app/sidebar.tsx b/platform/agui/copilotkit-chat/app/sidebar.tsx
+index cc46485..2f1fa35 100644
+--- a/platform/agui/copilotkit-chat/app/sidebar.tsx
++++ b/platform/agui/copilotkit-chat/app/sidebar.tsx
+@@ -1,5 +1,6 @@
+ "use client";
+-// The sessions sidebar: New chat, the list (pinned first, then newest) and each row's menu.
++// The sessions sidebar: New chat, the title search (with `tag:` terms), the list the search shows
++// (pinned first, then Today / Yesterday / Previous 7 days / Older), each row's menu, and Show hidden.
+ // Titles and tags are model or participant text: rendered as React text only, never as HTML.
+ //
+ // One owner for what a row is doing: `Sidebar` holds which row has its menu, rename, tag editor or
+@@ -12,10 +13,13 @@ import type { KeyboardEvent, MouseEvent } from "react";
+ import { removeSession, renamePatch, tagSuggestions, updateSession, withTag, withoutTag } from "../lib/client.ts";
+ import { menuIndex } from "../lib/menu.ts";
+ import type { MetaPatch, SessionMeta } from "../lib/sessions.ts";
++import { filterSessions, sections } from "../lib/sidebar-view.ts";
++import type { ViewFilter } from "../lib/sidebar-view.ts";
+ import { DeleteDialog } from "./delete-dialog";
+ import { Ellipsis, Eye, EyeSlash, PencilSquare, Pencil, Pin, PinSlash, SidebarToggle, Tag, Trash } from "./icons";
+ import { composing } from "./keys.ts";
+ import { Popover } from "./popover";
++import { HiddenToggle, SearchBox } from "./session-filters";
+ import { TagEditor } from "./tag-editor";
+ 
+ type SidebarProps = {
+@@ -45,7 +49,11 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
+   const [collapsed, setCollapsed] = useState(false);
+   const triggers = useRef(new Map<string, HTMLButtonElement>());
+   const popover = useRef<HTMLDivElement>(null);
+-  const busySession = busy ? sessions.find((s) => s.id === busy.id) : undefined;
++  const [filter, setFilter] = useState<ViewFilter>({ query: "", showHidden: false });
++  // `sessions` is every session the server lists; the filter decides which rows show.
++  const visible = filterSessions(sessions, filter);
++  const shown = sections(visible, new Date());
++  const busySession = busy ? visible.find((s) => s.id === busy.id) : undefined;
+   const suggestions = busy?.mode === "tags" && busy.suggest && busySession
+     ? tagSuggestions(knownTags, busySession.tags, busy.draft)
+     : [];
+@@ -184,10 +192,11 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
+     const popoverOpen = mine?.mode === "menu" || mine?.mode === "tags";
+     const classes = ["spe-row"];
+     if (s.id === activeId) classes.push("spe-row-active");
++    if (s.hidden) classes.push("spe-row-hidden");
+     if (popoverOpen) classes.push("spe-row-menu-open");
+     if (mine?.mode === "rename") classes.push("spe-row-renaming");
+     return (
+-      <li key={s.id} className={classes.join(" ")}>
++      <li key={s.id} className={classes.join(" ")} data-session-id={s.id}>
+         {mine?.mode === "rename" ? (
+           <RenameInput
+             value={mine.draft}
+@@ -217,10 +226,6 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
+       </li>
+     );
+   };
+-  // `sessions` comes ordered, pinned first.
+-  const pinned = sessions.filter((s) => s.pinned);
+-  const others = sessions.filter((s) => !s.pinned);
+-
+   return (
+     <nav className="spe-sidebar" aria-label="Sessions">
+       <div className="spe-sidebar-top">
+@@ -230,24 +235,21 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
+       </div>
+       <div className="spe-sidebar-actions">
+         <button type="button" className="spe-new" onClick={newChat}><PencilSquare />New chat</button>
+-        {/* Title search goes here. */}
++        <SearchBox query={filter.query} knownTags={knownTags} onChange={(query) => setFilter({ ...filter, query })} />
+       </div>
+       <div className="spe-sidebar-list">
+-        {pinned.length > 0 && (
+-          <>
+-            <h3 className="spe-section" id="spe-section-pinned">Pinned</h3>
+-            <ul className="spe-list" aria-labelledby="spe-section-pinned">{pinned.map(row)}</ul>
+-          </>
+-        )}
+-        {pinned.length > 0 && others.length > 0 && <h3 className="spe-section" id="spe-section-chats">Chats</h3>}
+-        {others.length > 0 && (
+-          <ul className="spe-list" aria-labelledby={pinned.length > 0 ? "spe-section-chats" : undefined}>
+-            {others.map(row)}
+-          </ul>
++        {shown.map((section, i) => (
++          <section key={section.label} className="spe-group" data-group={section.label}
++            aria-labelledby={`spe-section-${i}`}>
++            <h3 className="spe-section" id={`spe-section-${i}`}>{section.label}</h3>
++            <ul className="spe-list">{section.sessions.map(row)}</ul>
++          </section>
++        ))}
++        {shown.length === 0 && (
++          <p className="spe-empty">{sessions.length === 0 ? "No sessions yet." : "No session matches."}</p>
+         )}
+-        {sessions.length === 0 && <p className="spe-empty">No sessions yet.</p>}
+       </div>
+-      <p className="spe-note">Deleted sessions are kept in the run archive.</p>
++      <HiddenToggle showHidden={filter.showHidden} onChange={(showHidden) => { end(); setFilter({ ...filter, showHidden }); }} />
+ 
+       {busySession && busy?.mode === "menu" && (
+         <Popover anchor={triggers.current.get(busy.id)} box={popover} key={`menu-${busy.id}`}>
 ```
 
-- [ ] **Step 8: Styles** — append to `CHAT/app/globals.css`:
+- [ ] **Step 8: Styles.** Apply to `CHAT/app/globals.css`: the first group's heading takes the first heading's
+  tighter top padding, and a new section before the row popover's; the reduced-motion list gains
+  `.spe-search-suggestions`, which also animates in. Tokens only (no colour outside the token blocks), so light
+  and dark both hold:
 
-```css
-.spe-filters { display: flex; flex-direction: column; gap: 6px; }
-.spe-search { font: inherit; padding: 4px 6px; }
-.spe-filter-chips { display: flex; flex-wrap: wrap; gap: 4px; }
-.spe-filter-chip { font-size: 11px; border: 1px solid #ccc; background: #fff; border-radius: 10px; padding: 1px 8px;
-  cursor: pointer; overflow-wrap: anywhere; }
-.spe-filter-chip[aria-pressed="true"] { background: #2b5cd6; border-color: #2b5cd6; color: #fff; }
-.spe-filter-count { opacity: .7; }
-.spe-group > ul { list-style: none; margin: 0; padding: 0; }
-.spe-group-label { margin: 8px 6px 2px; font-size: 11px; font-weight: 600; color: #777; text-transform: uppercase; }
-.spe-row-hidden .spe-row-title { opacity: .6; font-style: italic; }
-.spe-sidebar-foot { border-top: 1px solid #ddd; padding-top: 6px; font-size: 13px; }
-.spe-sidebar-foot .spe-note { margin-top: 4px; }
+```diff
+diff --git a/platform/agui/copilotkit-chat/app/globals.css b/platform/agui/copilotkit-chat/app/globals.css
+index 0d9bc5d..fb266e3 100644
+--- a/platform/agui/copilotkit-chat/app/globals.css
++++ b/platform/agui/copilotkit-chat/app/globals.css
+@@ -210,7 +210,7 @@ body {
+   scrollbar-width: thin; scrollbar-color: var(--scrollbar) transparent; }
+ .spe-section { margin: 0; padding: 16px 8px 4px; font-size: 12px; line-height: 16px; font-weight: 400;
+   color: var(--text-muted); }
+-.spe-sidebar-list > .spe-section:first-child { padding-top: 4px; }
++.spe-sidebar-list > .spe-group:first-child > .spe-section { padding-top: 4px; }
+ .spe-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+ .spe-empty { margin: 0; padding: 8px; font-size: 13px; color: var(--text-muted); }
+ .spe-note { margin: 0; padding: 8px 8px 0; font-size: 12px; line-height: 16px; color: var(--text-muted); }
+@@ -241,6 +241,31 @@ body {
+   outline: none; box-shadow: inset 0 0 0 1px var(--line-strong); }
+ .spe-rename:focus-visible { outline: none; box-shadow: inset 0 0 0 1.5px var(--focus-ring); }
+ 
++/* ---------- Sidebar: search with tag: suggestions, Show hidden ---------- */
++
++.spe-search-box { position: relative; }
++.spe-search { width: 100%; height: 32px; box-sizing: border-box; margin: 0; padding: 6px 8px; border: 0;
++  border-radius: var(--radius-row); background: none; color: var(--text); font: inherit; outline: none;
++  box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow var(--hover-transition); }
++.spe-search::placeholder { color: var(--text-placeholder); }
++.spe-search:focus, .spe-search:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--line-strong); }
++/* Open WebUI's suggestion panel: under the box, over the list. */
++.spe-search-suggestions { position: absolute; z-index: 40; top: calc(100% + 4px); left: 0; right: 0;
++  max-height: 192px; overflow-y: auto; list-style: none; margin: 0; padding: 4px;
++  border: 1px solid var(--menu-border); border-radius: var(--radius-menu); background: var(--menu-bg);
++  box-shadow: var(--shadow-menu); animation: spe-fade 50ms ease-out; }
++.spe-search-suggestions li { padding: 5px 8px; border-radius: var(--radius-item); font-size: 12px; line-height: 16px;
++  cursor: pointer; overflow-wrap: anywhere; }
++.spe-search-suggestions li:hover, .spe-search-suggestion-picked { background: var(--menu-hover); }
++.spe-search-suggestion-prefix { color: var(--text-muted); }
++.spe-row-hidden .spe-row-title { color: var(--text-muted); font-style: italic; }
++.spe-sidebar-foot { display: flex; flex-direction: column; gap: 4px; padding: 8px 8px 0;
++  border-top: 1px solid var(--line); }
++.spe-sidebar-foot .spe-note { padding: 0; }
++.spe-hidden-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px;
++  color: var(--text-muted); cursor: pointer; }
++.spe-hidden-toggle input { margin: 0; accent-color: var(--button-strong-bg); }
++
+ /* ---------- Row popover: menu and tag editor ---------- */
+ 
+ /* Floats over the list (fixed, placed by the sidebar under or above its ⋯). */
+@@ -378,4 +378,4 @@ body {
+ @media (prefers-reduced-motion: reduce) {
+-  .spe-popover, .spe-dialog, .spe-dialog-backdrop { animation: none; }
++  .spe-popover, .spe-dialog, .spe-dialog-backdrop, .spe-search-suggestions { animation: none; }
+   .spe-tool-chevron.spe-icon { transition: none; }
+ }
 ```
 
 - [ ] **Step 9: Run the suites**
@@ -625,7 +656,7 @@ git add platform/agui/copilotkit-chat/lib/sidebar-view.ts platform/agui/copilotk
   platform/agui/copilotkit-chat/app/session-filters.tsx platform/agui/copilotkit-chat/app/sidebar.tsx \
   platform/agui/copilotkit-chat/app/page.tsx platform/agui/copilotkit-chat/lib/client.ts \
   platform/agui/copilotkit-chat/lib/client.test.ts platform/agui/copilotkit-chat/app/globals.css
-git commit -s -m "Chat sidebar: title search, tag filter, date groups, Show hidden
+git commit -s -m "Chat sidebar: title search with tag: terms, date groups, Show hidden
 
 Pure helpers in lib/sidebar-view.ts (node --test, several time zones) replace listOrder."
 ```
@@ -633,11 +664,13 @@ Pure helpers in lib/sidebar-view.ts (node --test, several time zones) replace li
 ### Task 2: chat header, controls disabled during a run, reconciliation; the browser checks
 
 **Files:** Create: `CHAT/lib/reconcile.ts`, `CHAT/lib/reconcile.test.ts`, `CHAT/app/use-run-reconcile.ts`,
-`CHAT/app/chat-header.tsx`. Modify: `CHAT/app/page.tsx`, `CHAT/app/sidebar.tsx`, `CHAT/app/globals.css`,
+`CHAT/app/row-menu.tsx` (moved out of `sidebar.tsx`), `CHAT/app/chat-header.tsx`. Modify: `CHAT/app/page.tsx`,
+`CHAT/app/sidebar.tsx`, `CHAT/app/globals.css`,
 `platform/dev/e2e/sessions.py`, `CHAT/README.md` (*Sessions*).
 
-**Interfaces:** Consumes: task 1; `Fetch`, `updateSession`, `renamePatch`, `withTag`, `withoutTag`
-(`lib/client.ts`); slice 1's test hook `SPE_SESSIONS_TEST_SAVE_DELAY_MS` (delays the recorder's finalisation write
+**Interfaces:** Consumes: task 1; `Fetch`, `updateSession`, `removeSession`, `renamePatch`, `withTag`,
+`withoutTag`, `tagSuggestions` (`lib/client.ts`); slice 2's `RowMenu`, `RenameInput`, `Popover`, `TagEditor`,
+`DeleteDialog`, `Ellipsis`; slice 1's test hook `SPE_SESSIONS_TEST_SAVE_DELAY_MS` (delays the recorder's finalisation write
 by that many ms) and `SPE_SESSIONS_DIR`; the recorder's refusal messages ("invalid session", "this session was
 deleted", "this session is already running", "the chat UI is shutting down", "this session could not be read",
 spec §2 *Admit*; slice 1's `REFUSAL_MESSAGES`) and its save-failed `CUSTOM` event (`SAVE_FAILED`, value `{session:
@@ -646,13 +679,22 @@ containing "slow" streams for about 10 s); `@ag-ui/client`'s subscriber hooks `o
 `onCustomEvent` (`{ event: CustomEvent }`, `event.name` and `event.value`; the CopilotKit runtime passes every
 event of the run through to the browser) and `onRunFinalized` (the latter runs in the run's `finalize`, so on
 finish, error and abort alike). Produces:
-`useRunReconcile`, `ChatHeader`, `Sidebar`'s `busy`; header labels `Chat title`, `New tag for this chat`, `Untag
-<t>` (none contains a row-menu label, so slice 2's `get_by_label("Session title")` and `get_by_label("Add a tag")`
-still find one element); the `sessions.py` scenarios.
+`useRunReconcile`, `app/row-menu.tsx`, `ChatHeader`, `Sidebar`'s `running`; the header's title `.spe-header-title`
+(double-click renames), its rename input `.spe-header-rename` labelled `Chat title` (not the rows' `Session title`,
+so slice 2's `get_by_label("Session title")` still finds one element) and its `⋯` `.spe-header-menu` labelled
+`Chat actions`, which opens the row's `RowMenu`, whose *Tags* opens the same `TagEditor` (labels `Add a tag`,
+`Remove tag <t>`: one popover is open at a time, the header's or a row's, since a press outside closes each); the
+`sessions.py` scenarios.
 
 **Decisions:** 10 (both controls disabled during a run; after stop enabled, run recorded `cancelled`, the
-session's row appears, also with the save delayed), 9 (header edits; a reload reopens the session with its tool
-cards), 14 (header text is React text).
+session's row appears, also with the save delayed), 9 as amended by spec clarification 4 (the header is slice 2's
+quiet title row, renamable in place, with the same `⋯` menu as the rows; tags appear only in that menu's tag editor
+and in `tag:` search, never as chips in the header or the rows; no banner sentence: the note stays under the
+composer; a reload reopens the session with its tool cards), 14 (header text is React text). The header keeps its
+own small state (menu, rename, tags, delete) with the sidebar's close and focus rules rather than sharing the
+sidebar's `busy`: the two never hold a popover at once, since a press outside closes each. Its popover and dialog
+render inside the header, whose `z-index: 10` stacking context is above the chat. Record this as a ruling (cost if
+wrong: lifting the state into one owner).
 
 How the reconciliation decides (spec §3, *Refresh*): after a run ends however it ended, the list is fetched until
 it has the run's session with an `updated_at` not older than the run's start, at most once plus 5 retries 500 ms
@@ -664,7 +706,12 @@ nothing, so its own `RUN_ERROR` is the only message. When the recorder reports a
 `spe.session_save_failed` event, spec §5), the error bar says "this session could not be saved" at once and the
 list is fetched once after the run, without retries. The hook replaces slice 2's run-end effect: the list it returns also puts the open session into the
 URL once listed. The open session's *Delete* is disabled during a run as well (it would start a new chat under the
-running one, through slice 2's `onDeleted`); record this as a ruling (cost if wrong: one more click after the run).
+running one, through slice 2's `onDeleted`), in its row's menu and in the header's; record this as a ruling (cost if wrong: one more click after the run).
+
+The header must never say "New chat" while the page's own "Loading…" still shows: on first load, which
+session is open is unknown until the URL's `?session=` is resolved, so `ChatHeader`'s `session` prop is
+`undefined` for that span (no title shown) and only `null` once a New chat is actually confirmed (`active`
+holds a fresh id with no session file yet).
 
 - [ ] **Step 1: Write the failing test** `CHAT/lib/reconcile.test.ts`
 
@@ -964,134 +1011,328 @@ export function useRunReconcile({ openId, onList, onError }: Options) {
 }
 ```
 
-- [ ] **Step 6: Write `CHAT/app/chat-header.tsx`**
+- [ ] **Step 6: Move the row menu out of the sidebar, and write `CHAT/app/chat-header.tsx`.** Cut slice 2's
+  `RowMenu` and `RenameInput` (from `type RowMenuProps = {` to the end of `CHAT/app/sidebar.tsx`) into
+  `CHAT/app/row-menu.tsx`, exported, with `RowMenu`'s new `deleteDisabled` and `RenameInput`'s `label` and
+  `className` (defaults keep the rows as they are):
 
 ```tsx
 "use client";
-// The chat header: the open session's title and tags, editable here as in
-// the row menu (same PATCH bodies: lib/client.ts), and the note that every tool call is shown. A
-// session not yet recorded (New chat, before its first run ends) has nothing to edit: PATCH would
-// answer 404. Labels differ from the row menu's ("Session title", "Add a tag"), so a label lookup
-// finds one input, not two.
-import { useState } from "react";
-import { renamePatch, withTag, withoutTag } from "../lib/client.ts";
-import type { MetaPatch, SessionMeta } from "../lib/sessions.ts";
+// A session's `⋯` menu and its in-place rename, shared by the sidebar rows and the chat header.
+// Titles are model or participant text: rendered as React text only, never as HTML.
+import { useEffect, useRef } from "react";
+import type { KeyboardEvent } from "react";
+import { menuIndex } from "../lib/menu.ts";
+import type { SessionMeta } from "../lib/sessions.ts";
+import { Eye, EyeSlash, Pencil, Pin, PinSlash, Tag, Trash } from "./icons";
+import { composing } from "./keys.ts";
 
-export const TOOL_CALL_NOTE = "Every tool call the agent makes is shown.";
-
-type Props = {
-  session: SessionMeta | null;
-  knownTags: string[];
-  onPatch: (patch: MetaPatch) => Promise<void>;
+export type RowMenuProps = {
+  session: SessionMeta;
+  keyboard: boolean;
+  onRename: () => void;
+  onPin: () => void;
+  onTags: () => void;
+  onHide: () => void;
+  onDelete: () => void;
+  /** Delete greyed out: the session is running (its Delete would start a new chat under the run). */
+  deleteDisabled?: boolean;
 };
 
-export function ChatHeader({ session, knownTags, onPatch }: Props) {
-  const [editing, setEditing] = useState(false);
-  const [title, setTitle] = useState("");
-  const [tag, setTag] = useState("");
+// The `⋯` menu of a session, the same for its sidebar row and the chat header.
+export function RowMenu({ session, keyboard, onRename, onPin, onTags, onHide, onDelete, deleteDisabled }: RowMenuProps) {
+  const menu = useRef<HTMLDivElement>(null);
+  const items = () => [...(menu.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
+  // From the keyboard the first item takes focus; from a click the menu itself, so arrows work.
+  useEffect(() => {
+    if (keyboard) items()[0]?.focus();
+    else menu.current?.focus();
+  }, [keyboard]);
+  const onKeyDown = (e: KeyboardEvent) => {
+    const list = items();
+    const next = menuIndex(e.key, list.indexOf(document.activeElement as HTMLElement), list.length);
+    if (next === null) return;
+    e.preventDefault();
+    list[next].focus();
+  };
+  return (
+    <div className="spe-menu" role="menu" aria-label={`Menu for ${session.title}`} tabIndex={-1} ref={menu} onKeyDown={onKeyDown}>
+      <button type="button" role="menuitem" onClick={onRename}><Pencil />Rename</button>
+      <button type="button" role="menuitem" onClick={onPin}>
+        {session.pinned ? <><PinSlash />Unpin</> : <><Pin />Pin</>}
+      </button>
+      <button type="button" role="menuitem" onClick={onTags}><Tag />Tags</button>
+      <button type="button" role="menuitem" onClick={onHide}>
+        {session.hidden ? <><Eye />Unhide</> : <><EyeSlash />Hide</>}
+      </button>
+      <div role="separator" className="spe-menu-separator" />
+      <button type="button" role="menuitem" className="spe-menu-danger" disabled={deleteDisabled}
+        onClick={onDelete}><Trash />Delete</button>
+    </div>
+  );
+}
 
+// Replaces a title in place (a row's, or the chat header's), focused with the text selected.
+export function RenameInput({ value, onChange, onSave, onCancel, label = "Session title", className = "spe-rename" }:
+  { value: string; onChange: (v: string) => void; onSave: () => void; onCancel: () => void; label?: string;
+    className?: string }) {
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    input.current?.focus();
+    input.current?.select();
+  }, []);
+  return (
+    <input
+      ref={input}
+      className={className}
+      aria-label={label}
+      maxLength={200}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onKeyDown={(e) => {
+        if (composing(e)) return;
+        if (e.key === "Enter") { e.preventDefault(); onSave(); }
+        if (e.key === "Escape") { e.preventDefault(); onCancel(); }
+      }}
+    />
+  );
+}
+```
+
+  Then `CHAT/app/chat-header.tsx`:
+
+```tsx
+"use client";
+// The chat header (Open WebUI's navbar): the open session's title, renamable in place (by its menu's
+// Rename or a double-click, as a row), and the same `⋯` menu as its sidebar row: RowMenu, the
+// TagEditor, the DeleteDialog, with the sidebar's close and focus rules. A session not yet recorded
+// (New chat, before its first run ends) shows "New chat" and no menu: PATCH would answer 404. Which
+// session is open is still unknown on first load (before the URL's `?session=` is resolved, while
+// the page's own "Loading…" shows): `session` is `undefined` then, so the header shows no title at
+// all rather than "New chat" while the rest of the page says it is still loading.
+// Its rename input is labelled "Chat title", not the rows' "Session title", so a label lookup finds one.
+// Titles and tags are model or participant text: rendered as React text only, never as HTML.
+import { useEffect, useRef, useState } from "react";
+import type { MouseEvent } from "react";
+import { renamePatch, tagSuggestions, withTag, withoutTag } from "../lib/client.ts";
+import type { MetaPatch, SessionMeta } from "../lib/sessions.ts";
+import { DeleteDialog } from "./delete-dialog";
+import { Ellipsis } from "./icons";
+import { Popover } from "./popover";
+import { RenameInput, RowMenu } from "./row-menu";
+import { TagEditor } from "./tag-editor";
+
+type Props = {
+  /** `undefined`: which session is open is not yet known (first load, still "Loading…"), so
+   * nothing is shown. `null`: a confirmed New chat, not yet recorded. */
+  session: SessionMeta | null | undefined;
+  knownTags: string[];
+  /** A run is in progress: Delete is disabled, as in the open session's row. */
+  running: boolean;
+  /** Saves the change and refreshes the list; rejects with the failure. */
+  onPatch: (patch: MetaPatch) => Promise<void>;
+  onDelete: () => void;
+  onError: (message: string) => void;
+};
+
+type Mode =
+  | { mode: "menu"; keyboard: boolean }
+  | { mode: "rename"; draft: string }
+  | { mode: "tags"; draft: string; suggest: boolean; error: string | null }
+  | { mode: "delete" };
+
+const errorText = (e: unknown, fallback: string) => (e instanceof Error && e.message ? e.message : fallback);
+
+export function ChatHeader({ session, knownTags, running, onPatch, onDelete, onError }: Props) {
+  const [open, setOpen] = useState<Mode | null>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const popover = useRef<HTMLDivElement>(null);
+  const header = useRef<HTMLElement>(null);
+  const suggestions = open?.mode === "tags" && open.suggest && session
+    ? tagSuggestions(knownTags, session.tags, open.draft)
+    : [];
+
+  const save = async (patch: MetaPatch | null) => {
+    if (!patch) return;
+    try {
+      await onPatch(patch);
+    } catch (e) {
+      onError(errorText(e, "Saving the change failed."));
+    }
+  };
+  // As the sidebar's `end`: a rename in progress is saved if it changed the title; a tag typed but
+  // not added is dropped.
+  const end = (returnFocus = false) => {
+    if (!open) return;
+    setOpen(null);
+    if (open.mode === "rename" && session) void save(renamePatch(open.draft, session.title));
+    if (returnFocus) trigger.current?.focus();
+  };
+
+  // A press outside ends it: outside the menu and its ⋯, or outside the title for a rename.
+  useEffect(() => {
+    if (!open || open.mode === "delete") return;
+    const onDown = (e: PointerEvent) => {
+      const target = e.target as Node;
+      if (open.mode === "rename") {
+        if (!header.current?.querySelector(".spe-header-rename")?.contains(target)) end();
+        return;
+      }
+      if (popover.current?.contains(target) || trigger.current?.contains(target)) return;
+      end();
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  });
+
+  // Escape: the tag suggestions first, then the menu or editor.
+  useEffect(() => {
+    if (!open || open.mode === "rename" || open.mode === "delete") return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== "Escape" || e.isComposing) return;
+      e.preventDefault();
+      if (open.mode === "tags" && suggestions.length > 0) setOpen({ ...open, suggest: false });
+      else end(true);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  });
+
+  if (session === undefined) {
+    return <header className="spe-header" />; // which session is open is not yet known
+  }
   if (session === null) {
     return (
       <header className="spe-header">
         <h1 className="spe-header-title">New chat</h1>
-        <span className="spe-note">{TOOL_CALL_NOTE}</span>
       </header>
     );
   }
 
-  const save = async (patch: MetaPatch | null) => {
-    if (patch) await onPatch(patch);
+  const toggleMenu = (e: MouseEvent) => {
+    if (open?.mode === "rename") return; // `⋯` is aria-disabled while renaming
+    if (open?.mode === "menu" || open?.mode === "tags") end();
+    else setOpen({ mode: "menu", keyboard: e.detail === 0 });
+  };
+  const startRename = () => setOpen({ mode: "rename", draft: session.title });
+  const choose = (patch: MetaPatch) => {
+    end(true);
+    void save(patch);
+  };
+  const setTags = (change: (m: Extract<Mode, { mode: "tags" }>) => Mode) =>
+    setOpen((m) => (m && m.mode === "tags" ? change(m) : m));
+  // As the sidebar's tag editor: it stays open for the next tag; an add that fails keeps its text
+  // and shows why; a removal (`typed` null) leaves the input as it is.
+  const tagPatch = async (patch: MetaPatch | null, typed: string | null) => {
+    const done = (m: Extract<Mode, { mode: "tags" }>): Mode =>
+      typed === null ? { ...m, error: null } : { ...m, draft: "", suggest: false, error: null };
+    if (!patch) {
+      setTags(done); // already there
+      return;
+    }
+    try {
+      await onPatch(patch);
+      setTags(done);
+    } catch (e) {
+      setTags((m) => ({ ...m, draft: typed ?? m.draft, suggest: false, error: errorText(e, "Saving the tag failed.") }));
+    }
   };
 
+  const menuOpen = open?.mode === "menu" || open?.mode === "tags";
   return (
-    <header className="spe-header">
-      {editing ? (
-        <input
-          className="spe-header-title-input"
-          aria-label="Chat title"
-          autoFocus
-          maxLength={200}
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              setEditing(false);
-              void save(renamePatch(title, session.title));
-            }
-            if (e.key === "Escape") setEditing(false);
-          }}
-          onBlur={() => setEditing(false)}
+    <header className="spe-header" ref={header}>
+      {open?.mode === "rename" ? (
+        <RenameInput
+          label="Chat title"
+          className="spe-header-rename"
+          value={open.draft}
+          onChange={(draft) => setOpen({ ...open, draft })}
+          onSave={() => end(true)}
+          onCancel={() => { setOpen(null); trigger.current?.focus(); }}
         />
       ) : (
-        <h1 className="spe-header-title">
-          <button
-            type="button"
-            className="spe-header-rename"
-            title="Rename"
-            onClick={() => {
-              setTitle(session.title);
-              setEditing(true);
-            }}
-          >
-            {session.title}
-          </button>
-        </h1>
+        <h1 className="spe-header-title" title={session.title} onDoubleClick={startRename}>{session.title}</h1>
       )}
-      <ul className="spe-header-tags" aria-label="Tags of this chat">
-        {session.tags.map((t) => (
-          <li key={t} className="spe-chip">
-            {t}
-            <button type="button" aria-label={`Untag ${t}`} onClick={() => void save(withoutTag(session.tags, t))}>
-              ×
-            </button>
-          </li>
-        ))}
-      </ul>
-      <input
-        className="spe-header-tag-input"
-        aria-label="New tag for this chat"
-        placeholder="add tag"
-        list="spe-header-known-tags"
-        maxLength={32}
-        value={tag}
-        onChange={(e) => setTag(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            setTag("");
-            void save(withTag(session.tags, tag));
-          }
-        }}
-      />
-      <datalist id="spe-header-known-tags">
-        {knownTags.filter((t) => !session.tags.includes(t)).map((t) => <option key={t} value={t} />)}
-      </datalist>
-      <span className="spe-note">{TOOL_CALL_NOTE}</span>
+      <button
+        type="button"
+        className="spe-icon-button spe-header-menu"
+        ref={trigger}
+        aria-label="Chat actions"
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        // Not `disabled`: a disabled button cannot take the focus that ending a rename returns to it
+        // (React applies `setOpen(null)` after the handler's `focus()`), as slice 2's rows do.
+        aria-disabled={open?.mode === "rename" || undefined}
+        tabIndex={open?.mode === "rename" ? -1 : undefined}
+        onClick={toggleMenu}
+      ><Ellipsis /></button>
+
+      {open?.mode === "menu" && (
+        <Popover anchor={trigger.current ?? undefined} box={popover} key="menu">
+          <RowMenu
+            session={session}
+            keyboard={open.keyboard}
+            onRename={startRename}
+            onPin={() => choose({ pinned: !session.pinned })}
+            onTags={() => setOpen({ mode: "tags", draft: "", suggest: false, error: null })}
+            onHide={() => choose({ hidden: !session.hidden })}
+            onDelete={() => setOpen({ mode: "delete" })}
+            deleteDisabled={running}
+          />
+        </Popover>
+      )}
+      {open?.mode === "tags" && (
+        <Popover anchor={trigger.current ?? undefined} box={popover} key="tags">
+          <TagEditor
+            tags={session.tags}
+            draft={open.draft}
+            suggestions={suggestions}
+            error={open.error}
+            onDraft={(draft) => setOpen({ ...open, draft, suggest: true, error: null })}
+            onAdd={(text) => { if (text.trim()) void tagPatch(withTag(session.tags, text), text); }}
+            onRemove={(tag) => {
+              popover.current?.querySelector<HTMLInputElement>(".spe-tag-input")?.focus();
+              void tagPatch(withoutTag(session.tags, tag), null);
+            }}
+          />
+        </Popover>
+      )}
+      {open?.mode === "delete" && (
+        <DeleteDialog
+          onCancel={() => { setOpen(null); trigger.current?.focus(); }}
+          onDelete={() => { setOpen(null); onDelete(); }}
+        />
+      )}
     </header>
   );
 }
 ```
 
 - [ ] **Step 7: Wire them in.** Apply to `CHAT/app/page.tsx` (the hook and the header in; slice 2's run-end effect
-  out; run errors passed to the hook):
+  out; the header's PATCH and DELETE on the open session; run errors passed to the hook):
 
 ```diff
+diff --git a/platform/agui/copilotkit-chat/app/page.tsx b/platform/agui/copilotkit-chat/app/page.tsx
+index 14e3cef..0e1733d 100644
 --- a/platform/agui/copilotkit-chat/app/page.tsx
 +++ b/platform/agui/copilotkit-chat/app/page.tsx
-@@ -12,10 +12,12 @@
+@@ -12,11 +12,13 @@ import {
    useDefaultRenderTool,
  } from "@copilotkit/react-core/v2";
  import { useCallback, useEffect, useRef, useState } from "react";
 -import { fetchSession, fetchSessions } from "../lib/client.ts";
-+import { fetchSession, fetchSessions, updateSession } from "../lib/client.ts";
++import { fetchSession, fetchSessions, removeSession, updateSession } from "../lib/client.ts";
  import { searchWith, sessionFromSearch } from "../lib/session-url.ts";
- import type { SessionMeta } from "../lib/sessions.ts";
+-import type { SessionMeta } from "../lib/sessions.ts";
++import type { MetaPatch, SessionMeta } from "../lib/sessions.ts";
 +import { ChatHeader } from "./chat-header";
+ import { ChevronRight } from "./icons";
  import { Sidebar } from "./sidebar";
 +import { useRunReconcile } from "./use-run-reconcile";
  
  const MAX_RESULT_LINES = 40;
  const MAX_RESULT_CHARS = 4000;
-@@ -94,6 +96,15 @@
+@@ -102,6 +104,15 @@ function Chat() {
    const { agent, isReady } = useAgent({ agentId: "spe" });
    useDefaultRenderTool({ render: (props) => <ToolCard {...props} /> });
  
@@ -1107,7 +1348,7 @@ export function ChatHeader({ session, knownTags, onPatch }: Props) {
    // The history goes onto the agent first, then CopilotChat remounts on the new thread
    // (key={id}): a freshly mounted chat on a non-explicit thread keeps the agent's messages,
    // and makes no connect request that would clear them (README, Sessions).
-@@ -146,20 +157,6 @@
+@@ -160,43 +171,55 @@ function Chat() {
      else startNew(); // no parameter, or a malformed one: dropped
    }, [isReady, open, refresh, startNew]);
  
@@ -1128,32 +1369,60 @@ export function ChatHeader({ session, knownTags, onPatch }: Props) {
    const onDeleted = useCallback((id: string) => {
      if (id === activeRef.current) startNew();
      void refresh();
-@@ -176,9 +173,23 @@
-         onChanged={() => void refresh()}
+   }, [refresh, startNew]);
+ 
++  // The header's menu: the same PATCH and DELETE as the row's, on the open session.
++  const patchOpen = useCallback(async (patch: MetaPatch) => {
++    const id = activeRef.current;
++    if (id === null) return;
++    await updateSession(id, patch);
++    await refresh();
++  }, [refresh]);
++  const deleteOpen = useCallback(async () => {
++    const id = activeRef.current;
++    if (id === null) return;
++    try {
++      await removeSession(id);
++      onDeleted(id);
++    } catch (e) {
++      setError(messageOf(e));
++    }
++  }, [onDeleted]);
++  const knownTags = [...new Set(sessions.flatMap((s) => s.tags))].sort();
++
+   return (
+     <div className="spe-layout">
+       <Sidebar
+         sessions={sessions}
+-        knownTags={[...new Set(sessions.flatMap((s) => s.tags))].sort()}
++        knownTags={knownTags}
+         activeId={active}
+         // Switching sessions mid-run would put the new session's history on the agent that is
+         // still streaming the old one's run, so both are ignored until the run ends.
+         onNew={() => { if (!agent.isRunning) startNew(); }}
+         onOpen={(id) => { if (!agent.isRunning) void open(id); }}
+         onChanged={refresh}
          onDeleted={onDeleted}
          onError={setError}
-+        busy={busy}
++        running={busy}
        />
        <div className="spe-page">
--        <div className="spe-header">SPE agent — every tool call is shown; your sessions are in the sidebar.</div>
+-        <header className="spe-header">
+-          <h1 className="spe-header-title">{sessions.find((s) => s.id === active)?.title ?? "New chat"}</h1>
+-        </header>
 +        <ChatHeader
 +          key={active ?? "none"}
-+          session={sessions.find((s) => s.id === active) ?? null}
-+          knownTags={[...new Set(sessions.flatMap((s) => s.tags))].sort()}
-+          onPatch={async (patch) => {
-+            if (active === null) return;
-+            try {
-+              await updateSession(active, patch);
-+            } catch (e) {
-+              setError(messageOf(e));
-+            }
-+            await refresh();
-+          }}
++          session={active === null ? undefined : (sessions.find((s) => s.id === active) ?? null)}
++          knownTags={knownTags}
++          running={busy}
++          onPatch={patchOpen}
++          onDelete={() => void deleteOpen()}
++          onError={setError}
 +        />
          {error && (
            <div className="spe-error" role="alert">
-             {error}
-@@ -195,7 +206,10 @@
+             <span className="spe-error-text">{error}</span>
+@@ -213,7 +236,10 @@ function Chat() {
                className="spe-chat"
                onError={(event) => {
                  // The prop's type also admits a DOM error event; only CopilotKit's carries `error`.
@@ -1167,93 +1436,146 @@ export function ChatHeader({ session, knownTags, onPatch }: Props) {
            </CopilotChatConfigurationProvider>
 ```
 
-and to `CHAT/app/sidebar.tsx` (task 1's file; `busy` disables *New chat*, every row's open button and the open
-row's *Delete*):
+and to `CHAT/app/sidebar.tsx` (task 1's file, after step 6's cut; `running` disables *New chat* in both the open
+and the collapsed sidebar, every row's open button and the open row's *Delete*):
 
 ```diff
+diff --git a/platform/agui/copilotkit-chat/app/sidebar.tsx b/platform/agui/copilotkit-chat/app/sidebar.tsx
+index 2f1fa35..df25c2b 100644
 --- a/platform/agui/copilotkit-chat/app/sidebar.tsx
 +++ b/platform/agui/copilotkit-chat/app/sidebar.tsx
-@@ -19,9 +19,11 @@
-   onChanged: () => void;
+@@ -9,16 +9,15 @@
+ // closes on a press outside it, Escape or a choice, and gives focus back to its ⋯; a rename is saved
+ // by Enter or a press outside the row and cancelled by Escape; a tag typed but not added is dropped.
+ import { useEffect, useRef, useState } from "react";
+-import type { KeyboardEvent, MouseEvent } from "react";
++import type { MouseEvent } from "react";
+ import { removeSession, renamePatch, tagSuggestions, updateSession, withTag, withoutTag } from "../lib/client.ts";
+-import { menuIndex } from "../lib/menu.ts";
+ import type { MetaPatch, SessionMeta } from "../lib/sessions.ts";
+ import { filterSessions, sections } from "../lib/sidebar-view.ts";
+ import type { ViewFilter } from "../lib/sidebar-view.ts";
+ import { DeleteDialog } from "./delete-dialog";
+-import { Ellipsis, Eye, EyeSlash, PencilSquare, Pencil, Pin, PinSlash, SidebarToggle, Tag, Trash } from "./icons";
+-import { composing } from "./keys.ts";
++import { Ellipsis, PencilSquare, SidebarToggle } from "./icons";
+ import { Popover } from "./popover";
++import { RenameInput, RowMenu } from "./row-menu";
+ import { HiddenToggle, SearchBox } from "./session-filters";
+ import { TagEditor } from "./tag-editor";
+ 
+@@ -31,6 +30,8 @@ type SidebarProps = {
+   onChanged: () => Promise<unknown>; // resolves once the list is fetched again
    onDeleted: (id: string) => void;
    onError: (message: string) => void;
 +  /** A run is in progress: switching session, New chat and the open session's Delete are disabled. */
-+  busy: boolean;
++  running: boolean;
  };
  
+ // What the one busy row is doing. `keyboard`: the menu was opened from the keyboard, so its first
+@@ -44,7 +45,7 @@ type Busy =
+ const errorText = (e: unknown, fallback: string) => (e instanceof Error && e.message ? e.message : fallback);
+ 
+ 
 -export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChanged, onDeleted, onError }: SidebarProps) {
-+export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChanged, onDeleted, onError, busy }: SidebarProps) {
-   const [menuFor, setMenuFor] = useState<string | null>(null);
++export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChanged, onDeleted, onError, running }: SidebarProps) {
+   const [busy, setBusy] = useState<Busy | null>(null);
    const [collapsed, setCollapsed] = useState(false);
-   const [filter, setFilter] = useState<ViewFilter>({ query: "", tags: [], showHidden: false });
-@@ -36,7 +38,7 @@
-   return (
-     <nav className="spe-sidebar" aria-label="Sessions">
-       <div className="spe-sidebar-top">
--        <button type="button" className="spe-new" onClick={onNew}>New chat</button>
-+        <button type="button" className="spe-new" disabled={busy} onClick={onNew}>New chat</button>
-         <button type="button" className="spe-collapse" aria-label="Hide sessions" onClick={() => setCollapsed(true)}>‹</button>
+   const triggers = useRef(new Map<string, HTMLButtonElement>());
+@@ -182,7 +183,7 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
+         <button type="button" className="spe-icon-button" aria-label="Show sessions" title="Show sessions"
+           onClick={() => setCollapsed(false)}><SidebarToggle /></button>
+         <button type="button" className="spe-icon-button" aria-label="New chat" title="New chat"
+-          onClick={newChat}><PencilSquare /></button>
++          disabled={running} onClick={newChat}><PencilSquare /></button>
+       </nav>
+     );
+   }
+@@ -206,7 +207,7 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
+           />
+         ) : (
+           <button type="button" className="spe-row-open" aria-current={s.id === activeId ? "page" : undefined}
+-            onClick={() => { end(); onOpen(s.id); }} onDoubleClick={() => startRename(s)}>
++            disabled={running} onClick={() => { end(); onOpen(s.id); }} onDoubleClick={() => startRename(s)}>
+             {/* The Pinned section shows it; this tells a screen reader too. */}
+             {s.pinned && <span className="spe-pin spe-sr-only">Pinned: </span>}
+             <span className="spe-row-title">{s.title}</span>
+@@ -234,7 +235,7 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
+           onClick={() => { end(); setCollapsed(true); }}><SidebarToggle /></button>
        </div>
-       <datalist id="spe-known-tags">
-@@ -53,6 +55,7 @@
-                   key={s.id}
-                   session={s}
-                   active={s.id === activeId}
-+                  busy={busy}
-                   menuOpen={menuFor === s.id}
-                   onToggleMenu={() => setMenuFor(menuFor === s.id ? null : s.id)}
-                   onCloseMenu={() => setMenuFor(null)}
-@@ -77,6 +80,7 @@
- type RowProps = {
-   session: SessionMeta;
-   active: boolean;
-+  busy: boolean;
-   menuOpen: boolean;
-   onToggleMenu: () => void;
-   onCloseMenu: () => void;
-@@ -88,7 +92,7 @@
- 
- type Mode = "menu" | "rename" | "tags" | "delete";
- 
--function SessionRow({ session, active, menuOpen, onToggleMenu, onCloseMenu, onOpen, onChanged, onDeleted, onError }: RowProps) {
-+function SessionRow({ session, active, busy, menuOpen, onToggleMenu, onCloseMenu, onOpen, onChanged, onDeleted, onError }: RowProps) {
-   const [mode, setMode] = useState<Mode>("menu");
-   const [draft, setDraft] = useState("");
- 
-@@ -140,7 +144,8 @@
-           onKeyDown={keys(() => void save(renamePatch(draft, session.title)))}
-         />
-       ) : (
--        <button type="button" className="spe-row-open" onClick={onOpen} aria-current={active ? "page" : undefined}>
-+        <button type="button" className="spe-row-open" disabled={busy} onClick={onOpen}
-+          aria-current={active ? "page" : undefined}>
-           <span className="spe-row-title">
-             {session.pinned && <span className="spe-pin" aria-label="pinned">📌 </span>}
-             {session.title}
-@@ -164,7 +169,7 @@
-           <button type="button" role="menuitem" onClick={() => void save({ hidden: !session.hidden })}>
-             {session.hidden ? "Unhide" : "Hide"}
-           </button>
--          <button type="button" role="menuitem" onClick={() => setMode("delete")}>Delete</button>
-+          <button type="button" role="menuitem" disabled={busy && active} onClick={() => setMode("delete")}>Delete</button>
-         </div>
+       <div className="spe-sidebar-actions">
+-        <button type="button" className="spe-new" onClick={newChat}><PencilSquare />New chat</button>
++        <button type="button" className="spe-new" disabled={running} onClick={newChat}><PencilSquare />New chat</button>
+         <SearchBox query={filter.query} knownTags={knownTags} onChange={(query) => setFilter({ ...filter, query })} />
+       </div>
+       <div className="spe-sidebar-list">
+@@ -261,6 +262,7 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
+             onTags={() => setBusy({ id: busySession.id, mode: "tags", draft: "", suggest: false, error: null })}
+             onHide={() => choose(busySession, { hidden: !busySession.hidden })}
+             onDelete={() => setBusy({ id: busySession.id, mode: "delete" })}
++            deleteDisabled={running && busySession.id === activeId}
+           />
+         </Popover>
        )}
-       {menuOpen && mode === "tags" && (
 ```
 
-Append to `CHAT/app/globals.css`, and delete slice 2's `.spe-header { … }` rule (the first line below replaces it):
+and to `CHAT/app/globals.css` (the header's focus ring, its rename input and `⋯`, the disabled controls; tokens
+only, light and dark; slice 2's `.spe-header` and `.spe-header-title` rules gain the new properties in place,
+rather than a second rule under the same selector):
 
-```css
-.spe-header { padding: 6px 16px; border-bottom: 1px solid #ddd; font-size: 14px; display: flex; flex-wrap: wrap;
-  align-items: center; gap: 8px; }
-.spe-header-title { margin: 0; font-size: 16px; font-weight: 600; min-width: 0; }
-.spe-header-rename { background: none; border: 0; padding: 0; font: inherit; cursor: text; text-align: left;
-  overflow-wrap: anywhere; }
-.spe-header-title-input { font: inherit; font-size: 16px; min-width: 240px; }
-.spe-header-tags { display: flex; flex-wrap: wrap; gap: 4px; list-style: none; margin: 0; padding: 0; }
-.spe-header-tag-input { width: 90px; font: inherit; font-size: 12px; }
-.spe-header .spe-note { margin-left: auto; }
-.spe-new:disabled, .spe-row-open:disabled, .spe-menu > button:disabled { cursor: not-allowed; opacity: .5; }
+```diff
+diff --git a/platform/agui/copilotkit-chat/app/globals.css b/platform/agui/copilotkit-chat/app/globals.css
+index fb266e3..ad8a85b 100644
+--- a/platform/agui/copilotkit-chat/app/globals.css
++++ b/platform/agui/copilotkit-chat/app/globals.css
+@@ -159,7 +159,7 @@ body {
+ .spe-icon { width: 16px; height: 16px; flex: none; }
+ 
+ /* Visible keyboard focus on our own controls (CopilotKit's carry their own). */
+-:where(.spe-sidebar, .spe-popover, .spe-dialog, .spe-error, .spe-tool) :is(button, summary, input):focus-visible {
++:where(.spe-sidebar, .spe-header, .spe-popover, .spe-dialog, .spe-error, .spe-tool) :is(button, summary, input):focus-visible {
+   outline: 2px solid var(--focus-ring); outline-offset: 2px;
+ }
+ 
+@@ -169,12 +169,21 @@ body {
+ /* ---------- Header: the open session's title, nothing else ---------- */
+ 
+-.spe-header { position: relative; z-index: 10; flex: none; display: flex; align-items: center; height: 48px;
+-  padding: 0 20px; background: var(--bg); }
++/* Renamable in place (double-click or the menu's Rename), with the rows' ⋯ menu beside it. */
++.spe-header { position: relative; z-index: 10; flex: none; display: flex; align-items: center; gap: 4px;
++  height: 48px; padding: 0 20px; background: var(--bg); }
+ /* A soft fade under it, over the chat's top edge, instead of a rule. */
+ .spe-header::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 16px;
+   background: linear-gradient(var(--bg), transparent); pointer-events: none; }
+-.spe-header-title { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+-  font-size: 15px; line-height: 20px; font-weight: 500; color: var(--text-secondary); }
++.spe-header-title { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
++  font-size: 15px; line-height: 20px; font-weight: 500; color: var(--text-secondary); cursor: default; }
++.spe-header-rename { flex: 0 1 480px; min-width: 0; height: 32px; box-sizing: border-box; margin: 0 0 0 -8px;
++  padding: 6px 8px; border: 0; border-radius: var(--radius-item); background: none; color: var(--text);
++  font: inherit; font-size: 15px; line-height: 20px; font-weight: 500; outline: none;
++  box-shadow: inset 0 0 0 1px var(--line-strong); }
++.spe-header-rename:focus-visible { outline: none; box-shadow: inset 0 0 0 1.5px var(--focus-ring); }
++.spe-header-menu .spe-icon { width: 18px; height: 18px; }
++.spe-header-menu[aria-expanded="true"] { background: var(--hover); color: var(--text); }
++.spe-header-menu[aria-disabled="true"] { opacity: 0.4; cursor: default; background: none; } /* while renaming */
+ 
+ .spe-chat { flex: 1; min-height: 0; }
+ .spe-loading { padding: 16px 20px; color: var(--text-muted); font-size: 13px; }
+@@ -266,6 +277,12 @@ body {
+   color: var(--text-muted); cursor: pointer; }
+ .spe-hidden-toggle input { margin: 0; accent-color: var(--button-strong-bg); }
+ 
++/* During a run: New chat, the rows and the open session's Delete are disabled. */
++.spe-new:disabled, .spe-icon-button:disabled, .spe-row-open:disabled, .spe-menu > button:disabled {
++  cursor: not-allowed; color: var(--button-off-text); }
++.spe-new:disabled:hover, .spe-icon-button:disabled:hover, .spe-menu > button:disabled:hover { background: none; }
++.spe-row-active .spe-row-open:disabled { color: inherit; }
++
+ /* ---------- Row popover: menu and tag editor ---------- */
+ 
+ /* Floats over the list (fixed, placed by the sidebar under or above its ⋯). */
 ```
 
 - [ ] **Step 8: Run the suites**
@@ -1271,7 +1593,7 @@ prints nothing (slice 2's effect is gone).
 3. Insert before `def main()`:
 
 ```python
-# --- search, tag filter, date groups, Show hidden, header, a stopped run, a failed save ------
+# --- search with tag: terms, date groups, Show hidden, header, a stopped run, a failed save --
 
 SAVE_FAILED = "this session could not be saved"
 
@@ -1293,10 +1615,6 @@ def seed(r: Run, title: str, days_ago: float, **extra) -> str:
 
 def groups(r: Run) -> list[str]:
     return r.page.locator(".spe-sidebar .spe-group").evaluate_all("els => els.map(e => e.dataset.group)")
-
-
-def chip(r: Run, tag: str):
-    return r.page.locator(f'.spe-filter-chip[data-tag="{tag}"]')
 
 
 def check_view(r: Run) -> None:
@@ -1326,19 +1644,39 @@ def check_view(r: Run) -> None:
     expect(r.rows()).to_have_count(5)
     r.ok("search: case-insensitive title substring; HTML in a title is text")
 
-    expect(chip(r, "beta")).to_contain_text("beta 2")
-    expect(chip(r, "dns")).to_contain_text("dns 1")
-    chip(r, "beta").click()
+    options = page.locator(".spe-search-suggestions [role=option]")
+    search.fill("tag:")
+    expect(options).to_have_text(["tag:alpha", "tag:beta", "tag:dns", "tag:exfil"])
+    search.fill("tag:b")
+    expect(options).to_have_text(["tag:beta"])
+    search.press("ArrowDown")
+    search.press("Enter")
+    expect(search).to_have_value("tag:beta ")
+    expect(options).to_have_count(0)
     expect(r.rows()).to_have_count(2)
-    chip(r, "alpha").click()
+    search.press_sequentially("tag:")
+    expect(options).to_have_text(["tag:alpha", "tag:dns", "tag:exfil"])  # beta is named already
+    options.first.click()
+    expect(search).to_have_value("tag:beta tag:alpha ")
     expect(r.rows()).to_have_count(1)
     expect(r.row("Seeded yesterday")).to_have_count(1)
-    expect(chip(r, "alpha")).to_have_attribute("aria-pressed", "true")
-    r.shot("tag-filter")
-    chip(r, "alpha").click()
-    chip(r, "beta").click()
+    expect(r.rows().locator(".spe-chip")).to_have_count(0)  # rows show the title only
+    r.shot("tag-search")
+    search.fill("tag:beta five")
+    expect(r.rows()).to_have_count(1)
+    expect(r.row("Seeded five days ago")).to_have_count(1)
+    search.fill("tag:al")
+    expect(options).to_have_count(1)
+    search.press("Escape")
+    expect(options).to_have_count(0)
+    expect(search).to_have_value("tag:al")
+    search.fill("tag:nosuch")
+    expect(r.rows()).to_have_count(0)
+    expect(page.locator(".spe-empty")).to_have_text("No session matches.")
+    search.fill("")
     expect(r.rows()).to_have_count(5)
-    r.ok("tag filter: chips with counts; two selected tags must both match")
+    r.ok("tag: search: typing tag: suggests the tags in use (arrows and Enter, or a click); two tag: terms must "
+         "both match; the rest filters titles; rows show no tags")
 
     expect(r.row("Read the dataset")).to_have_count(0)
     expect(page.get_by_text("Deleted sessions are kept in the run archive.")).to_be_visible()
@@ -1352,32 +1690,64 @@ def check_view(r: Run) -> None:
 
 
 def check_header(r: Run, ids: dict[str, str]) -> None:
+    """The header: the title row, renamable in place, and the rows' ⋯ menu; tags only in its tag editor."""
     page = r.page
     title = "List the home directory (exfil try)"
     page.goto(f"{BASE}/?session={ids['first']}")
     header = page.locator(".spe-header")
-    expect(header.locator(".spe-header-rename")).to_have_text(title, timeout=10_000)
-    expect(header.get_by_text("Every tool call the agent makes is shown.")).to_be_visible()
-    header.locator(".spe-header-rename").click()
+    expect(header.locator(".spe-header-title")).to_have_text(title, timeout=10_000)
+    expect(header).not_to_contain_text("tool call")  # the note is the line under the composer
+    actions = header.get_by_role("button", name="Chat actions")
+    actions.click()
+    page.get_by_role("menuitem", name="Rename").click()
     page.get_by_label("Chat title").fill("Renamed in the header")
     page.get_by_label("Chat title").press("Enter")
+    expect(header.locator(".spe-header-title")).to_have_text("Renamed in the header", timeout=5_000)
     expect(r.row("Renamed in the header")).to_have_count(1, timeout=5_000)
-    page.get_by_label("New tag for this chat").fill("Header")
-    page.get_by_label("New tag for this chat").press("Enter")
-    expect(header.locator(".spe-chip", has_text="header")).to_have_count(1, timeout=5_000)
-    header.get_by_role("button", name="Untag exfil").click()
-    expect(header.locator(".spe-chip")).to_have_count(2, timeout=5_000)
+    expect(actions).to_be_focused()
+    header.locator(".spe-header-title").dblclick()
+    page.get_by_label("Chat title").fill("Discarded title")
+    page.get_by_label("Chat title").press("Escape")
+    expect(header.locator(".spe-header-title")).to_have_text("Renamed in the header")
+
+    actions.click()
+    page.get_by_role("menuitem", name="Tags").click()
+    page.get_by_label("Add a tag").fill("Header")
+    page.get_by_label("Add a tag").press("Enter")
+    expect(page.locator(".spe-popover .spe-chip", has_text="header")).to_have_count(1, timeout=5_000)
+    page.get_by_role("button", name="Remove tag exfil").click()
+    expect(page.locator(".spe-popover .spe-chip")).to_have_count(2, timeout=5_000)
+    r.shot("header-tags")
+    page.get_by_label("Add a tag").press("Escape")
+    expect(page.locator(".spe-popover")).to_have_count(0)
+    expect(header.locator(".spe-chip")).to_have_count(0)  # the header shows no tags
     rec = r.files()[ids["first"]]
     assert rec["title"] == "Renamed in the header" and rec["title_source"] == "user", rec["title"]
     assert rec["tags"] == ["dns", "header"], rec["tags"]
     r.shot("header")
+
+    actions.click()
+    page.get_by_role("menuitem", name="Delete").click()
+    dialog = page.get_by_role("alertdialog")
+    expect(dialog).to_contain_text("Delete chat?")
+    # The dialog renders inside the header, whose z-index: 10 puts it above the chat below;
+    # this shot shows the dialog's backdrop covering the chat, not hidden behind it.
+    r.shot("header-delete")
+    page.keyboard.press("Escape")
+    expect(dialog).to_have_count(0)
+    expect(r.row("Renamed in the header")).to_have_count(1)
+    assert r.files()[ids["first"]]["deleted_at"] is None
+
     page.reload()
-    expect(header.locator(".spe-header-rename")).to_have_text("Renamed in the header", timeout=10_000)
+    expect(header.locator(".spe-header-title")).to_have_text("Renamed in the header", timeout=10_000)
     expect(page.locator(".spe-tool")).to_have_count(2)
     assert r.url_session() == ids["first"]
     page.get_by_role("button", name="New chat").click()
     expect(header.locator(".spe-header-title")).to_have_text("New chat")
-    r.ok("header: rename and tags saved to the file; reload reopens it with its tool cards; New chat header")
+    expect(header.get_by_role("button", name="Chat actions")).to_have_count(0)
+    r.ok("header: rename by its menu (Enter saves) and double-click (Esc cancels), tags in the menu's tag editor, "
+         "Delete opens the same dialog above the chat (Escape cancels, keeps the file); saved to the file; "
+         "reload reopens it with its tool cards; New chat has no menu")
 
 
 def check_stop(r: Run) -> str:
@@ -1565,6 +1935,7 @@ def main() -> None:
             r = Run(page, data, args.shots)
             if args.scenario == "all":
                 ids = check_list(r)
+                check_focus(r, ids)
                 check_menu(r, ids)
                 check_close_tab(r, ids)
                 check_view(r)
@@ -1591,21 +1962,21 @@ python3 platform/dev/e2e/sessions.py --shots $E
 python3 platform/dev/e2e/sessions.py --scenario stop --save-delay-ms 1500
 ```
 
-Expected: the first run prints slice 2's `ok - …` lines, then `ok - groups: …`, `ok - search: …`, `ok - tag
-filter: …`, `ok - Show hidden: …`, `ok - header: …`, `ok - stopped run: … (row shown)`, `ok - failed save: …`; the second `ok - stopped
+Expected: the first run prints slice 2's `ok - …` lines, then `ok - groups: …`, `ok - search: …`, `ok - tag:
+search: …`, `ok - Show hidden: …`, `ok - header: …`, `ok - stopped run: … (row shown)`, `ok - failed save: …`; the second `ok - stopped
 run: … (row shown)`: the browser's run ends only after the delayed save (the recorder saves before the stop's
 `RUN_ERROR` is passed on, spec clarification 1), so the first fetch finds it. A stop therefore never reaches the
 error bar after the retries; that path (a save landing late after an unsubscription) is covered by
-`reconcile.test.ts` only. Look at every screenshot in `$E` (Read tool): `groups`, `search`, `tag-filter`,
-`show-hidden`, `header`, `during-run`, `after-stop`, `save-failed`, beside slice 2's.
+`reconcile.test.ts` only. Look at every screenshot in `$E` (Read tool): `groups`, `search`, `tag-search`,
+`show-hidden`, `header-tags`, `header`, `during-run`, `after-stop`, `save-failed`, beside slice 2's.
 
 - [ ] **Step 11: Docs.** In `CHAT/README.md`, *Sessions* (slice 2's section), add after its sidebar sentence:
 
 ```markdown
-The sidebar filters by title (case-insensitive) and by tags (a session must have every selected tag), lists
-pinned sessions first and then *Today*, *Yesterday*, *Previous 7 days* and *Older* by last change, and shows
-hidden sessions only with *Show hidden*. The chat header shows the open session's title and tags, editable
-there too. While a run is in progress, switching session and *New chat* are disabled; after a run the list is
+The sidebar's search filters by title (case-insensitive) and, as in Open WebUI, by `tag:<name>` terms (a
+session must have every one; typing `tag:` suggests the tags in use), lists pinned sessions first and then
+*Today*, *Yesterday*, *Previous 7 days* and *Older* by last change, and shows hidden sessions only with *Show
+hidden*. The chat header shows the open session's title, renamable in place, and the same `⋯` menu as its row. While a run is in progress, switching session and *New chat* are disabled; after a run the list is
 fetched until it shows that run (up to 5 retries, 500 ms apart), else the error bar says the session could not
 be saved. `platform/dev/e2e/sessions.py` drives all of it in a browser against the scripted agent.
 ```
@@ -1617,13 +1988,14 @@ and rewrite any current text it finds that this task made stale.
 
 ```bash
 git add platform/agui/copilotkit-chat/lib/reconcile.ts platform/agui/copilotkit-chat/lib/reconcile.test.ts \
-  platform/agui/copilotkit-chat/app/use-run-reconcile.ts platform/agui/copilotkit-chat/app/chat-header.tsx \
+  platform/agui/copilotkit-chat/app/use-run-reconcile.ts platform/agui/copilotkit-chat/app/row-menu.tsx \
+  platform/agui/copilotkit-chat/app/chat-header.tsx \
   platform/agui/copilotkit-chat/app/page.tsx platform/agui/copilotkit-chat/app/sidebar.tsx \
   platform/agui/copilotkit-chat/app/globals.css platform/agui/copilotkit-chat/README.md \
   platform/dev/e2e/sessions.py docs/superpowers/plans/2026-10-29-agui-chat-sessions/evidence/slice-3
 git commit -s -m "Chat UI: header, controls disabled during a run, list reconciled after it
 
-sessions.py covers search, tags, groups, Show hidden, the header, a stopped run and a
+sessions.py covers search with tag: terms, groups, Show hidden, the header's rename and menu, a stopped run and a
 save delayed by SPE_SESSIONS_TEST_SAVE_DELAY_MS."
 ```
 

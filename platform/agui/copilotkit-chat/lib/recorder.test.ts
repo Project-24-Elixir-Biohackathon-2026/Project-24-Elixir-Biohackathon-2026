@@ -329,6 +329,35 @@ test("closing: new runs are refused once shutdown has begun", async () => {
   }
 });
 
+test("closing set while admission's store read is pending: the run is refused, not admitted", async () => {
+  const { server } = await setup();
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "recorder-"));
+  try {
+    // Simulates SIGTERM landing during `await this.store().read(id)`: admit's first `closing`
+    // check has already passed, so only a re-check right before `running.set` catches it.
+    class ClosesDuringRead extends SessionStore {
+      async read(id: string): Promise<SessionRecord | null> {
+        const record = await super.read(id);
+        shared().closing = true;
+        return record;
+      }
+    }
+    const store = new ClosesDuringRead(dir);
+    const recorder = new SessionRecorder(() => store);
+    const id = randomUUID();
+    const out = await drive(recorder, input(id, "late"), new HttpAgent({ url: server.url, fetch: recorder.fetch }));
+    assert.deepEqual(types(out), [EventType.RUN_STARTED, EventType.RUN_ERROR]);
+    assert.equal((out.events[1] as { message?: string }).message, "the chat UI is shutting down");
+    assert.equal(server.requests.length, 0);
+    await settled(id);
+    assert.equal(shared().running.has(id), false);
+    assert.equal(shared().queue.has(id), false);
+  } finally {
+    shared().closing = false;
+    await server.close();
+  }
+});
+
 test("neither the request's nor the agent's bearer key reaches the session file", async () => {
   const { store, server } = await setup();
   try {

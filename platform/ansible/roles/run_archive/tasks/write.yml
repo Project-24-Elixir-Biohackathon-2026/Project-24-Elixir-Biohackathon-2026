@@ -51,7 +51,42 @@
   register: write_out
   changed_when: true
 
-- name: Overview without a chat export (agui frontend, or no frontend)
+- name: AG-UI chat sessions bundle
+  ansible.builtin.stat:
+    path: "{{ spe_output_dir }}/archive-bundle-agui.tar.gz"
+  register: agui_bundle
+
+- name: Unpack the AG-UI bundle
+  when: agui_bundle.stat.exists
+  block:
+    - name: Remove a leftover bundle directory
+      ansible.builtin.file:
+        path: "{{ spe_output_dir }}/archive-bundle-agui"
+        state: absent
+
+    - name: Bundle directory
+      ansible.builtin.file:
+        path: "{{ spe_output_dir }}/archive-bundle-agui"
+        state: directory
+        mode: "0700"
+
+    - name: Unpack
+      ansible.builtin.command:
+        argv: [tar, -xzf, "{{ spe_output_dir }}/archive-bundle-agui.tar.gz", -C, "{{ spe_output_dir }}/archive-bundle-agui"]
+      changed_when: true
+
+- name: AG-UI sessions and the agent's run log
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - "{{ role_path }}/files/write_agui_run.py"
+      - "{{ spe_output_dir }}/archive-bundle-agui"
+      - "{{ spe_run_dir }}"
+  when: agui_bundle.stat.exists
+  register: write_agui_out
+  changed_when: true
+
+- name: Overview without a chat export (no frontend)
   ansible.builtin.copy:
     dest: "{{ spe_run_dir }}/index.md"
     mode: "0644"
@@ -59,15 +94,19 @@
       # Run {{ spe_run_dir | basename }}
 
       - Archived: {{ spe_archive_time }}
-      - Frontend: {{ spe_frontend }}; no chat export (only the openwebui frontend keeps chats and notes)
+      - Frontend: {{ spe_frontend }}; no chat export (no frontend ran on this instance)
       - Parameters and canary record: [run.yml](run.yml), canaries.json
-  when: not ((spe_output_dir ~ '/archive-bundle.json') is file)
+  when: not ((spe_output_dir ~ '/archive-bundle.json') is file) and not agui_bundle.stat.exists
 
-- name: Remove the staged export
+- name: Remove the staged exports
   ansible.builtin.file:
-    path: "{{ spe_output_dir }}/archive-bundle.json"
+    path: "{{ item }}"
     state: absent
+  loop:
+    - "{{ spe_output_dir }}/archive-bundle.json"
+    - "{{ spe_output_dir }}/archive-bundle-agui.tar.gz"
+    - "{{ spe_output_dir }}/archive-bundle-agui"
 
 - name: Archived
   ansible.builtin.debug:
-    msg: "Run saved to {{ spe_run_dir }} ({{ write_out.stdout | default('no OpenWebUI export') }})"
+    msg: "Run saved to {{ spe_run_dir }} ({{ write_out.stdout | default(write_agui_out.stdout | default('no chat export')) }})"

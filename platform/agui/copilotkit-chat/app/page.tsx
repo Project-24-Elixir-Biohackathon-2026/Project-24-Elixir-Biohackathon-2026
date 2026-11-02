@@ -1,9 +1,22 @@
 "use client";
-// Full-screen chat with agent `spe`. Each tool call is a collapsible card: name, status,
-// arguments and the first lines of the result. Everything is rendered as text, never HTML.
-// No persistence: a reload starts a new conversation.
-import { CopilotChat, CopilotKitProvider, useDefaultRenderTool } from "@copilotkit/react-core/v2";
-import { useState } from "react";
+// Chat with agent `spe`, and a sidebar of sessions. Each tool call is a collapsible card: name,
+// status, arguments and the first lines of the result. Everything is rendered as text, never HTML.
+// Sessions are recorded on the server (lib/recorder.ts); this page only reads them and changes
+// their metadata. The open session is in the URL (`?session=<id>`), so a reload reopens it.
+import type { Message } from "@ag-ui/client";
+import {
+  CopilotChat,
+  CopilotChatConfigurationProvider,
+  CopilotKitProvider,
+  useAgent,
+  useDefaultRenderTool,
+} from "@copilotkit/react-core/v2";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { fetchSession, fetchSessions, listOrder } from "../lib/client.ts";
+import { searchWith, sessionFromSearch } from "../lib/session-url.ts";
+import type { SessionMeta } from "../lib/sessions.ts";
+import { ChevronRight } from "./icons";
+import { Sidebar } from "./sidebar";
 
 const MAX_RESULT_LINES = 40;
 const MAX_RESULT_CHARS = 4000;
@@ -38,6 +51,12 @@ function brief(name: string, parameters: unknown): string {
   return "";
 }
 
+// Under the composer, where claude.ai and chatgpt.com keep their notice; the header holds the title only.
+const LABELS = {
+  chatDisclaimerText: "SPE agent · runs inside the secure processing environment · every tool call is shown",
+  chatInputPlaceholder: "Message the SPE agent",
+};
+
 const STATUS: Record<ToolProps["status"], string> = {
   inProgress: "preparing…",
   executing: "running…",
@@ -48,6 +67,7 @@ function ToolCard({ name, parameters, status, result }: ToolProps) {
   return (
     <details className="spe-tool">
       <summary>
+        <ChevronRight className="spe-tool-chevron" />
         <span className="spe-tool-name">{name}</span>
         <span className="spe-tool-brief">{brief(name, parameters)}</span>
         <span className="spe-tool-status">{STATUS[status]}</span>
@@ -64,31 +84,165 @@ function ToolCard({ name, parameters, status, result }: ToolProps) {
   );
 }
 
+function messageOf(error: unknown): string {
+  return error instanceof Error && error.message ? error.message : "The request failed.";
+}
+
+// Puts `id` into the URL (or drops the parameter), without a navigation or a history entry.
+function showInUrl(id: string | null): void {
+  const { pathname, search, hash } = window.location;
+  window.history.replaceState(null, "", `${pathname}${searchWith(search, id)}${hash}`);
+}
+
 function Chat() {
   const [error, setError] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<SessionMeta[]>([]);
+  const [active, setActive] = useState<string | null>(null);
+  const activeRef = useRef<string | null>(null);
+  // Bumped by every open()/startNew() call, so a response from a call that is no longer the
+  // latest (a second click while the first's fetch is still in flight) is ignored on arrival.
+  const requestRef = useRef(0);
+  const { agent, isReady } = useAgent({ agentId: "spe" });
   useDefaultRenderTool({ render: (props) => <ToolCard {...props} /> });
+
+  // The history goes onto the agent first, then CopilotChat remounts on the new thread
+  // (key={id}): a freshly mounted chat on a non-explicit thread keeps the agent's messages,
+  // and makes no connect request that would clear them (README, Sessions).
+  const select = useCallback((id: string, messages: Message[]) => {
+    agent.setMessages(messages);
+    activeRef.current = id;
+    setActive(id);
+  }, [agent]);
+
+  const refresh = useCallback(async (): Promise<SessionMeta[] | null> => {
+    try {
+      const list = await fetchSessions();
+      setSessions(list);
+      return list;
+    } catch (e) {
+      setError(messageOf(e));
+      return null;
+    }
+  }, []);
+
+  // New chat: a fresh thread id and an empty history; it joins the list once its first run is recorded.
+  const startNew = useCallback(() => {
+    requestRef.current += 1;
+    select(crypto.randomUUID(), []);
+    showInUrl(null);
+  }, [select]);
+
+  const open = useCallback(async (id: string) => {
+    const requestId = (requestRef.current += 1);
+    try {
+      const session = await fetchSession(id);
+      if (requestId !== requestRef.current) return; // superseded by a later open()/startNew()
+      if (!session) {
+        // Deleted, or never recorded: a new session, without an error bar.
+        startNew();
+        void refresh();
+        return;
+      }
+      select(id, session.messages);
+      showInUrl(id);
+    } catch (e) {
+      if (requestId !== requestRef.current) return; // superseded by a later open()/startNew()
+      setError(messageOf(e));
+      // On first load (no session opened yet) this was a failed attempt to open the
+      // id named in the URL: fall back to a new session, and make sure the URL no
+      // longer names a session the page did not open.
+      if (activeRef.current === null) {
+        startNew();
+        showInUrl(null);
+      }
+    }
+  }, [refresh, select, startNew]);
+
+  // First load, once the runtime's agent is there (messages set on the provisional one are lost).
+  useEffect(() => {
+    if (!isReady || activeRef.current !== null) return;
+    void refresh();
+    const id = sessionFromSearch(window.location.search);
+    if (id) void open(id);
+    else startNew(); // no parameter, or a malformed one: dropped
+  }, [isReady, open, refresh, startNew]);
+
+  // After each run (finished, failed or stopped) the list again; once the open session is in
+  // it (its first run recorded), the URL names it.
+  useEffect(() => {
+    if (!isReady) return;
+    const ended = () => {
+      void refresh().then((list) => {
+        const id = activeRef.current;
+        if (list && id && list.some((s) => s.id === id)) showInUrl(id);
+      });
+    };
+    const subscription = agent.subscribe({ onRunFinalized: ended, onRunFailed: ended });
+    return () => subscription.unsubscribe();
+  }, [agent, isReady, refresh]);
+
+  const onDeleted = useCallback((id: string) => {
+    if (id === activeRef.current) startNew();
+    void refresh();
+  }, [refresh, startNew]);
+
   return (
-    <div className="spe-page">
-      <div className="spe-header">SPE agent — every tool call is shown; a reload starts a new conversation.</div>
-      {error && (
-        <div className="spe-error" role="alert">
-          {error}
-          <button type="button" onClick={() => setError(null)}>dismiss</button>
-        </div>
-      )}
-      <CopilotChat
-        agentId="spe"
-        className="spe-chat"
-        onError={(event) => {
-          // The prop's type also admits a DOM error event; only CopilotKit's carries `error`.
-          if ("error" in event && event.error instanceof Error) setError(event.error.message || "The agent run failed.");
-        }}
+    <div className="spe-layout">
+      <Sidebar
+        sessions={listOrder(sessions)}
+        knownTags={[...new Set(sessions.flatMap((s) => s.tags))].sort()}
+        activeId={active}
+        // Switching sessions mid-run would put the new session's history on the agent that is
+        // still streaming the old one's run, so both are ignored until the run ends.
+        onNew={() => { if (!agent.isRunning) startNew(); }}
+        onOpen={(id) => { if (!agent.isRunning) void open(id); }}
+        onChanged={refresh}
+        onDeleted={onDeleted}
+        onError={setError}
       />
+      <div className="spe-page">
+        <header className="spe-header">
+          <h1 className="spe-header-title">{sessions.find((s) => s.id === active)?.title ?? "New chat"}</h1>
+        </header>
+        {error && (
+          <div className="spe-error" role="alert">
+            <span className="spe-error-text">{error}</span>
+            <button type="button" onClick={() => setError(null)}>Dismiss</button>
+          </div>
+        )}
+        {active === null ? (
+          <div className="spe-loading">Loading…</div>
+        ) : (
+          <CopilotChatConfigurationProvider agentId="spe" threadId={active} hasExplicitThreadId={false} labels={LABELS}>
+            <CopilotChat
+              key={active}
+              agentId="spe"
+              className="spe-chat"
+              onError={(event) => {
+                // The prop's type also admits a DOM error event; only CopilotKit's carries `error`.
+                if ("error" in event && event.error instanceof Error) setError(event.error.message || "The agent run failed.");
+              }}
+            />
+          </CopilotChatConfigurationProvider>
+        )}
+      </div>
     </div>
   );
 }
 
+// CopilotKit's own dark styles key on a `dark` class; this page follows the system setting.
+function useSystemColorScheme() {
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-color-scheme: dark)");
+    const apply = () => document.documentElement.classList.toggle("dark", query.matches);
+    apply();
+    query.addEventListener("change", apply);
+    return () => query.removeEventListener("change", apply);
+  }, []);
+}
+
 export default function Page() {
+  useSystemColorScheme();
   return (
     <CopilotKitProvider runtimeUrl="/api/copilotkit" agentId="spe" showDevConsole={false}>
       <Chat />

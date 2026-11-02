@@ -1,6 +1,6 @@
 # AG-UI chat sessions — design
 
-**Status:** approved by the user (2026-10-29), PR #7. **Latest clarification:** 1.
+**Status:** approved by the user (2026-10-29), PR #7. **Latest clarification:** 5.
 Read against this repo at `ff3acc3` (`main`, equal to `upstream/main` plus the fork's files and the
 optional token cap of upstream PR #9).
 
@@ -32,9 +32,9 @@ copies every session and the agent's run log into the run directory, rendered li
 | 6 | Delete is a soft delete: `deleted_at` set, the session gone from every API answer and refused for new runs, the file kept and archived; a run already in progress is not cancelled and is recorded into the deleted file | [Recording](#2-recording-and-the-session-api) | `npm test`: after `DELETE`, list omits it, `GET`/`PATCH`/`DELETE` give 404, a run on its id ends with `RUN_ERROR` and does not reach the agent; the file still exists with `deleted_at` |
 | 7 | Titles start as the first user message cut to 60 characters and are never overwritten once the user renames | [Storage](#1-storage-and-the-session-record) | `npm test`: auto title after the first run; after `PATCH {title}` (`title_source: "user"`) a later run leaves it unchanged |
 | 8 | Tags are normalised (trim, lower-case, `[a-z0-9._-]`, ≤ 32 chars, ≤ 20 per session, de-duplicated) | [Storage](#1-storage-and-the-session-record) | `npm test`: table of inputs → stored tags or 400 |
-| 9 | The sidebar: new chat, title search, tag filter (all selected tags must match), pinned first then date groups, row menu (rename, pin, tags, hide, delete with confirmation), show-hidden toggle; the open session is in the URL (`?session=`) | [Sidebar](#3-the-sidebar) | Playwright run against `fake_agent.py`: each action, then a reload reopens the same session with its tool cards; screenshots in the slice's handoff |
+| 9 | The sidebar, in Open WebUI's look and behaviour (clarification 4): new chat, title search with Open WebUI's `tag:` filter (all named tags must match), pinned first then date groups, a popover row menu (rename, pin, tags, hide, delete with confirmation) that closes on outside click and Escape, show-hidden toggle; the open session is in the URL (`?session=`) | [Sidebar](#3-the-sidebar) | Playwright run against `fake_agent.py`: each action, then a reload reopens the same session with its tool cards; outside click, Escape and opening another row close the menu and commit or end an edit; screenshots (light and dark) in the slice's handoff |
 | 10 | Switching session and New chat are disabled while a run is in progress; after a run ends the list is reconciled until it shows that run | [Sidebar](#3-the-sidebar) | Playwright: during a scripted slow run both controls are disabled; after stop they are enabled, the stopped run is recorded as `cancelled` and a new session's row appears, also with the save delayed by a test hook |
-| 11 | `archive.yml` exports, for `spe_frontend: agui`, every session file (hidden and deleted included) and the agent's `runs.jsonl`, after stopping `chat-ui` and then `agent` so no run is in progress or unsaved; an absent run log is allowed, a missing `chat-ui` container fails the export | [Archive](#4-the-archive) | On the dev VM: `archive.yml` after the Playwright run gives a run directory with one `agui-sessions/<id>.json` per file on the volume and `agent-runs.jsonl`; `archive.yml` during a slow run has that run, `cancelled`, in both; on a fresh instance with zero runs it succeeds with an empty `agui-sessions/`; with `chat-ui` removed, `archive.yml` fails and `destroy.yml` deletes nothing |
+| 11 | `archive.yml` exports, for `spe_frontend: agui`, every session file (hidden and deleted included) and the agent's `runs.jsonl`, after stopping `chat-ui` and then `agent` so no run is in progress or unsaved; an absent run log is allowed, a missing `chat-ui` container fails the export | [Archive](#4-the-archive) | On the dev VM: `archive.yml` after the Playwright run gives a run directory with one `agui-sessions/<id>.json` per file on the volume and `agent-runs.jsonl`; `archive.yml` during a slow run has that run, `cancelled`, in both; on a fresh instance with zero runs it succeeds with an empty `agui-sessions/` and no `agent-runs.jsonl` (the run log's copy fails with `Could not find the file`, which the export accepts); with `chat-ui` removed, `archive.yml` fails and `destroy.yml` deletes nothing |
 | 12 | `write_agui_run.py` renders the bundle in the Open WebUI run layout: `index.md`, `chats/NN-<title>.md` and `.json`, plus the raw files; re-runnable on an archived run; no run log or no sessions is a valid bundle | [Archive](#4-the-archive) | `pytest platform/dev/tests -k agui_run`: a fixture with active, hidden and deleted sessions renders the expected index rows and state, a deleted marker, fenced tool calls; a bundle with no sessions and no run log renders an index saying so; a second run on the output directory gives identical files |
 | 13 | Session files and the archive never hold what comes from the request headers or the chat UI's configuration (the agent key); message content is stored unchanged, not redacted | [Security](#5-security-and-limits) | `npm test`: a run whose request carries `Authorization: Bearer <k1>` and whose runtime is configured with agent key `<k2>`, neither in the messages, leaves neither in the file; `checks.yml`'s key scan extended to the volume as a detector |
 | 14 | Model text is rendered as text in the sidebar and fenced in the archive with a fence longer than any backtick run inside | [Security](#5-security-and-limits) | `npm test`/Playwright: a title of `<img src=x onerror=…>` shows as literal text; pytest: tool results containing a line of three, four and six backticks each render inside a longer fence (`write_run.py` too) |
@@ -198,17 +198,28 @@ is out of scope here (*Out of scope*).
 
 Plain React and CSS in `app/` (no new dependencies); all session data is rendered as React text.
 
+- **Look:** Open WebUI's sidebar and chat chrome, finished to the standard of claude.ai and chatgpt.com
+  (clarification 4): its gray scale, type sizes, row and menu geometry and transitions, light and dark
+  (`prefers-color-scheme`), Heroicons-style inline SVG icons; the CopilotKit chat restyled to the same
+  palette. Still plain React and CSS.
 - **Layout:** a left sidebar (about 260 px, collapsible) and the chat to its right. Top to bottom: *New
-  chat*; a search box filtering by title (case-insensitive substring, in the browser); tag chips for every
-  tag in use with a count, where selecting several shows sessions that have all of them; the list, pinned
-  first, then grouped *Today*, *Yesterday*, *Previous 7 days*, *Older* by `updated_at`, each row with title
-  and tags, the open one highlighted; at the bottom a *Show hidden* toggle and the note "Deleted sessions
-  are kept in the run archive."
-- **Row menu (`⋯`):** *Rename* (inline; Enter saves, Esc cancels), *Pin* / *Unpin*, *Tags* (add with an
-  input suggesting existing tags; remove with a chip's ×), *Hide* / *Unhide*, *Delete* (confirmation: "This
-  removes it from your list. It is kept in the run archive.").
-- **Chat header:** replaces today's one-line banner: the session's title and tags, editable there too, and
-  the note that every tool call is shown.
+  chat*; a search box filtering by title (case-insensitive substring, in the browser), where Open WebUI's
+  `tag:<name>` terms filter by tag (several must all match) and typing `tag:` suggests the tags in use;
+  the list, pinned first, then grouped *Today*, *Yesterday*, *Previous 7 days*, *Older* by `updated_at`,
+  each row with its title only (as in Open WebUI), the open one highlighted, `⋯` shown on hover, focus,
+  the open row and the row whose menu is open; at the bottom a *Show hidden* toggle and the note "Deleted
+  sessions are kept in the run archive."
+- **Row menu (`⋯`):** a popover anchored to the button, one open at a time; it closes on a click outside,
+  Escape, choosing an item, opening a session or *New chat*, and returns focus to its `⋯`; arrow keys move
+  between items. *Rename* (inline in the row, also by double-click; text selected; Enter or a click outside
+  saves, Esc cancels), *Pin* / *Unpin*, *Tags* (Open WebUI's tag editor: the session's tags as pills, each
+  removed by its ×, and an "Add a tag…" input whose suggestions are the tags in use; Enter adds), *Hide* /
+  *Unhide*, *Delete* (a dialog "Delete chat?" with "This removes it from your list. It is kept in the run
+  archive.", *Cancel* and *Delete*; Escape cancels).
+- **Chat header:** replaces today's one-line banner: a quiet row with the session's title (*New chat*
+  before the first run), renamable in place, and the same `⋯` menu. No banner sentence: the note that this
+  is the SPE agent and that every tool call is shown is the muted line under the composer, where claude.ai
+  and chatgpt.com put theirs.
 - **Open session in the URL:** `?session=<id>`. Loading the page with it fetches the session; without it,
   or with an id that answers 404, the page starts a new session (and drops the parameter).
 - **Opening a session:** `GET /api/sessions/{id}`, then CopilotChat's `threadId` set to the id and
@@ -251,13 +262,18 @@ becomes "Export the frontend's chats"):
    session was copied would be missing from the archive and then destroyed with the volume. So first
    `docker compose -p spe-frontend stop -t 30 chat-ui`, then `… stop -t 30 agent`. On `SIGTERM` the chat
    UI refuses new runs, stops every run in progress (each is finalised `cancelled`), waits for the session
-   queue to drain and exits (a handler registered in `instrumentation.ts`; the plan's task checks that
-   Next.js's own `SIGTERM` handling leaves it time). The agent, stopped second, has then seen its last
-   request and closed its run log. A missing `chat-ui` container fails here.
+   queue to drain and exits (a handler registered in `instrumentation.ts`; the image sets
+   `NEXT_MANUAL_SIG_HANDLE=true`, because Next.js's own handler closes the server and exits without
+   waiting for a detached run's save). The agent, stopped second, has then seen its last
+   request and closed its run log. A missing `chat-ui` container fails here, and so does a stop that did not
+   end cleanly: each service running before the barrier must have exited 0 (`docker compose ps -a --format
+   '{{.Service}} {{.ExitCode}}'`), since a drain timeout (the chat UI exits 1) or a kill after `-t 30` (137)
+   leaves `stop` itself at rc 0. The containers are started again either way.
 2. **Copy** from the stopped containers: `docker compose -p spe-frontend cp chat-ui:/data/sessions
    <tmp>/sessions` (always present: the image creates it, §1) and `… cp agent:/var/lib/spe-agent/runs.jsonl
-   <tmp>/agent-runs.jsonl`. Only an absent run log is tolerated (no run reached the agent yet): the task
-   checks for the file first and skips that copy; any other copy error fails the export.
+   <tmp>/agent-runs.jsonl`. Only an absent run log is tolerated (no run reached the agent yet): the copy's own
+   `Could not find the file` error is accepted, since the stopped agent cannot be asked whether the file
+   exists; any other copy error fails the export.
 3. **Restart** both (`docker compose -p spe-frontend start agent chat-ui`), so `archive.yml` run on its
    own leaves a working instance; under `destroy.yml` they are removed right after.
 4. Pack `<tmp>` into `/tmp/spe-agui-export.tar.gz`, fetch it to
@@ -406,3 +422,33 @@ The same slice rewrites every current text that says the AG-UI chat is not archi
    ends the stream, rather than the client unsubscribing. Unsubscription before a terminal event stays
    `cancelled`. *Reason:* read in `@ag-ui/client` 1.0.2 and pinned by `lib/clone.test.ts`. *Amends:* §2
    (termination table), decision 4, §3 *Refresh* (which run can be saved after the fetch). *Status:* folded.
+2. **The chat UI's `SIGTERM` handler replaces Next.js's** (2026-10-30; slice 2/3). The image sets
+   `NEXT_MANUAL_SIG_HANDLE=true` and `lib/shutdown.ts` drains the sessions and exits by itself. *Reason:* Next.js
+   16.4.1's handler (`start-server.js`) closes the HTTP server and calls `process.exit(143)`; a run whose browser has
+   gone holds no response open, so its save would be cut off. *Amends:* §4 *Export*, step 1 (*Barrier*).
+   *Status:* folded.
+3. **An absent run log is recognised by the copy's own error, not by a check before it** (2026-10-30; slice 2/3).
+   The export copies `agent:/var/lib/spe-agent/runs.jsonl` from the stopped agent and accepts only `docker compose
+   cp`'s `Could not find the file` error; any other error fails the export. *Reason:* the agent is stopped by the
+   time of the copy, so nothing can be checked inside it, and a check before stopping it races with its last write
+   (Docker Compose 5.5.1: `cp` copies from a stopped container; a missing file fails with rc 1 and that message).
+   *Amends:* §4 *Export*, step 2; decision 11 (acceptance check). *Status:* folded.
+4. **The sidebar and chat follow Open WebUI's look and behaviour** (2026-11-02; slice 2/3, at the user's request
+   on the early output). The row menu is a popover with Open WebUI's close and focus rules (outside click,
+   Escape, choosing an item, opening a session; focus back to `⋯`); a rename is committed by Enter or a click
+   outside and cancelled by Esc; tags are edited in Open WebUI's tag editor (pills with ×, "Add a tag…" with
+   suggestions) and filtered with its `tag:` search syntax instead of tag chips; rows show the title only; the
+   chat header is a title row and the "SPE agent — every tool call is shown" banner becomes the line under the
+   composer. *Reason:* the user found the first sidebar's menu and rename left open after a click elsewhere,
+   and asked for Open WebUI's look, polished like claude.ai and chatgpt.com, with identical tag features.
+   Open WebUI (`main`, read 2026-11-02: `Sidebar/ChatItem.svelte`, `ChatMenu.svelte`, `SearchInput.svelte`,
+   `common/Tags.svelte`, `chat/Navbar.svelte`) renders no tag editor in its menu today; the editor component
+   it ships for that is the one followed. *Amends:* §3 *Look*, *Layout*, *Row menu*, *Chat header*; decision 9.
+   *Status:* folded.
+5. **The barrier fails on a stopped service's exit code** (2026-11-02; slice 2/3, review round on #10). After
+   the two stops, the export reads each service's exit code and fails unless every service running before the
+   barrier exited 0. *Reason:* `docker compose stop` returns 0 whether the chat UI drained (exit 0), timed out
+   (exit 1) or was killed after `-t 30` (137), so a barrier that did not hold went unnoticed and the archive could
+   lack the last run before `destroy.yml` drops the volume (§4: any failed step fails `archive.yml`). A service
+   already stopped before the barrier keeps an old exit code, so it is not checked. *Amends:* §4 *Export*, step 1.
+   *Status:* folded.

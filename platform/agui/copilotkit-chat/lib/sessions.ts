@@ -5,6 +5,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Message } from "@ag-ui/client";
+import { isSessionId } from "./session-id.ts";
+export { isSessionId };
 
 export type RunStatus = "completed" | "failed" | "cancelled";
 export type RunEntry = { run_id: string; started_at: string; ended_at: string; status: RunStatus };
@@ -28,16 +30,11 @@ export type MetaPatch = Partial<Pick<SessionRecord, "title" | "tags" | "pinned" 
 
 export class ValidationError extends Error {}
 
-const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const TAG = /^[a-z0-9._-]{1,32}$/;
 const MAX_TAGS = 20;
 const MAX_TITLE = 200;
 const AUTO_TITLE = 60;
 const MAX_LIST = 1000;
-
-export function isSessionId(value: unknown): value is string {
-  return typeof value === "string" && UUID_V4.test(value);
-}
 
 export function normaliseTags(value: unknown): string[] {
   if (!Array.isArray(value)) throw new ValidationError("tags must be a list");
