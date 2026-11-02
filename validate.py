@@ -13,18 +13,19 @@ Checks per entry (threats/TM-*.md):
 Usage:
     python validate.py [--threats-dir threats] [--vocab vocabulary.yaml]
 
-Exit code 0 if all checks pass, 1 otherwise.
+Exit code 0 if all checks pass, 1 otherwise. platform/site/build.py imports
+`validate_catalog` and `load_vocabulary` to build the catalog page.
 
 Dependencies:
-    pip install pyyaml python-frontmatter
+    pip install pyyaml
 """
 
 import argparse
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
-import frontmatter
 import yaml
 
 ID_PATTERN = re.compile(r"^TM-\d{3}$")
@@ -60,6 +61,13 @@ BODY_HEADINGS = [
 ]
 
 
+@dataclass
+class Entry:
+    path: Path
+    meta: dict
+    body: str
+
+
 def load_vocabulary(path: Path) -> dict:
     with open(path, encoding="utf-8") as f:
         vocab = yaml.safe_load(f)
@@ -72,9 +80,29 @@ def load_vocabulary(path: Path) -> dict:
     return vocab
 
 
-def check_entry(path: Path, post: frontmatter.Post, vocab: dict) -> list[str]:
+def split_frontmatter(text: str) -> tuple[dict, str]:
+    """Split '---\\n<yaml>\\n---\\n<body>' into (metadata, body)."""
+    text = text.replace("\r\n", "\n")
+    if not text.startswith("---\n"):
+        raise ValueError("file does not start with a '---' frontmatter block")
+    end = text.find("\n---\n", 4)
+    if end < 0:
+        raise ValueError("frontmatter block is not closed by a '---' line")
+    meta = yaml.safe_load(text[4:end])
+    if not isinstance(meta, dict):
+        raise ValueError("frontmatter is not a YAML mapping")
+    return meta, text[end + 5:]
+
+
+def load_entry(path: Path) -> Entry:
+    meta, body = split_frontmatter(path.read_text(encoding="utf-8"))
+    return Entry(path=path, meta=meta, body=body)
+
+
+def check_entry(entry: Entry, vocab: dict) -> list[str]:
     errors = []
-    meta = post.metadata
+    meta = entry.meta
+    path = entry.path
 
     for field in REQUIRED_FIELDS:
         if field not in meta:
@@ -124,7 +152,7 @@ def check_entry(path: Path, post: frontmatter.Post, vocab: dict) -> list[str]:
                     f"(not in vocabulary.yaml [{section}])"
                 )
 
-    errors.extend(check_body(post.content, entry_id, meta["name"]))
+    errors.extend(check_body(entry.body, entry_id, meta["name"]))
     return errors
 
 
@@ -146,19 +174,48 @@ def check_body(content: str, entry_id: str, name: str) -> list[str]:
     return errors
 
 
-def check_catalog(entries: dict[str, dict]) -> list[str]:
+def check_catalog(entries: list[Entry]) -> list[str]:
     """Cross-entry checks: duplicate ids."""
     errors = []
     ids_seen: dict[str, str] = {}
-    for fname, meta in entries.items():
-        entry_id = meta.get("id")
+    for entry in entries:
+        entry_id = entry.meta.get("id")
         if entry_id in ids_seen:
             errors.append(
-                f"duplicate id '{entry_id}' in {fname} and {ids_seen[entry_id]}"
+                f"duplicate id '{entry_id}' in {entry.path.name} "
+                f"and {ids_seen[entry_id]}"
             )
         else:
-            ids_seen[entry_id] = fname
+            ids_seen[entry_id] = entry.path.name
     return errors
+
+
+def validate_catalog(threats_dir: Path, vocab: dict) -> tuple[list[Entry], list[str]]:
+    """Load and check every TM-*.md. Returns (valid entries, problems).
+
+    Each problem is one line, '<file>: <message>'. The entries list holds only
+    the entries that passed their own checks, sorted by filename.
+    """
+    files = sorted(threats_dir.glob("TM-*.md"))
+    if not files:
+        return [], [f"no TM-*.md files found in '{threats_dir}'"]
+
+    entries: list[Entry] = []
+    problems: list[str] = []
+    for path in files:
+        try:
+            entry = load_entry(path)
+        except (ValueError, yaml.YAMLError, UnicodeDecodeError) as exc:
+            problems.append(f"{path.name}: cannot parse frontmatter: {exc}")
+            continue
+        errors = check_entry(entry, vocab)
+        if errors:
+            problems.extend(f"{path.name}: {err}" for err in errors)
+        else:
+            entries.append(entry)
+
+    problems.extend(f"catalog: {err}" for err in check_catalog(entries))
+    return entries, problems
 
 
 def main() -> int:
@@ -171,40 +228,12 @@ def main() -> int:
         sys.exit(f"threats directory '{args.threats_dir}' not found")
     vocab = load_vocabulary(args.vocab)
 
-    files = sorted(args.threats_dir.glob("TM-*.md"))
-    if not files:
-        sys.exit(f"no TM-*.md files found in '{args.threats_dir}'")
-
-    failed = False
-    entries: dict[str, dict] = {}
-
-    for path in files:
-        try:
-            post = frontmatter.load(path)
-        except Exception as exc:  # malformed YAML, encoding issues, ...
-            print(f"FAIL {path.name}: cannot parse frontmatter: {exc}")
-            failed = True
-            continue
-
-        errors = check_entry(path, post, vocab)
-        if errors:
-            failed = True
-            print(f"FAIL {path.name}")
-            for err in errors:
-                print(f"  - {err}")
-        else:
-            entries[path.name] = post.metadata
-
-    catalog_errors = check_catalog(entries)
-    if catalog_errors:
-        failed = True
-        print("FAIL catalog-level checks")
-        for err in catalog_errors:
-            print(f"  - {err}")
-
-    if failed:
+    entries, problems = validate_catalog(args.threats_dir, vocab)
+    if problems:
+        for line in problems:
+            print(f"FAIL {line}")
         return 1
-    print(f"OK: {len(files)} entries validated")
+    print(f"OK: {len(entries)} entries validated")
     return 0
 
 

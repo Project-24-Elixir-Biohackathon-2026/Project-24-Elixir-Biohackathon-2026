@@ -9,6 +9,7 @@ guide for humans and coding agents working in this repository.
 | `threats/`, `vocabulary.yaml`, `validate.py` | Threat model catalog (`TM-NNN-*.md`, new entries start from `threats/TEMPLATE.md`), its controlled vocabulary and validator |
 | `platform/ansible/` | Playbooks that create, verify, archive and destroy one SPE instance (`platform/ansible/README.md`) |
 | `platform/coder/` | The self-service portal (Coder) that runs those playbooks for participants (`platform/coder/README.md`) |
+| `platform/site/` | The landing page and the threat catalog page served next to the portal, built from `threats/` (`platform/site/README.md`) |
 | `platform/agui/` | The AG-UI frontend (`spe_frontend: agui`): `pydantic-ai-agent/` (Pydantic AI agent served over AG-UI) and `copilotkit-chat/` (Next.js + CopilotKit chat) |
 | `platform/promptfoo-evals/` | promptfoo provider, assertions and starter suite against an instance's agent |
 | `platform/dev/` | Development helpers: dummy dataset generator, scripted agent, tests for host-side scripts |
@@ -50,8 +51,9 @@ pinned commit; move the pin there after the push.
 ## Running things
 
 ```bash
-uv run --with pyyaml --with python-frontmatter python validate.py   # threat catalog
-uv run --with pytest pytest platform/dev/tests -q    # dataset generator, host preflight
+uv run --with pyyaml python validate.py              # threat catalog
+uv run --with pyyaml --with markdown python platform/site/build.py   # landing page + catalog page -> platform/site/dist/
+uv run --with pytest --with pyyaml --with markdown pytest platform/dev/tests -q   # dataset generator, host preflight, site build
 (cd platform/agui/pydantic-ai-agent && uv run --group dev pytest -q)   # agent
 (cd platform/promptfoo-evals && uv run --group dev pytest -q)          # promptfoo provider and assertions
 (cd platform/agui/copilotkit-chat && npm ci && npm run build)          # chat UI (type check)

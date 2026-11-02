@@ -9,7 +9,21 @@
 	}
 }
 
-# Dashboard and every workspace app (openwebui--<agent>--<ws>--<user>.…).
-sperange.example.org, *.sperange.example.org {
+# The apex: the static site (landing page at /, threat catalog at /threats/,
+# built by platform/site/build.py) and, for every other path, the Coder
+# dashboard (/workspaces, /login, /api, ...).
+sperange.example.org {
+	root * /home/ubuntu/sperange/platform/site/dist
+	@site path / /threats /threats/*
+	handle @site {
+		file_server
+	}
+	handle {
+		reverse_proxy 127.0.0.1:7080
+	}
+}
+
+# Every workspace app (openwebui--<agent>--<ws>--<user>.…).
+*.sperange.example.org {
 	reverse_proxy 127.0.0.1:7080
 }
