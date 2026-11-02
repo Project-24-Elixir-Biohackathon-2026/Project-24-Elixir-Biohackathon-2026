@@ -32,9 +32,9 @@ assets:
   agent-integrity: Correctness of the agent's own behavior/outputs
 
 stride:
-  spoofing: Authenticity
-  tampering: Integrity
-  repudiation: Non-repudiability (missing/destroyed evidence)
-  information-disclosure: Confidentiality
-  denial-of-service: Availability
-  elevation-of-privilege: Authorization
+  spoofing: Pretending to be another user, service or tool (authenticity)
+  tampering: Changing data, code or instructions without permission (integrity)
+  repudiation: Acting without leaving evidence of who did it, or destroying that evidence (non-repudiation)
+  information-disclosure: Exposing data to someone who should not see it (confidentiality)
+  denial-of-service: Making a system or resource unavailable, or using it up (availability)
+  elevation-of-privilege: Gaining access or abilities beyond what was granted (authorization)
