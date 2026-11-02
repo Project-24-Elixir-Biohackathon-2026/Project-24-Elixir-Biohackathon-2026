@@ -1,3 +1,3 @@
 # Status
 
-How far the threat has been shown on an SPE instance. A status beyond `hypothesised` must be backed by a promptfoo test in `platform/promptfoo-evals/` or an archived run.
+How far a threat has been shown on a testbed. A new entry starts as `hypothesised`. Once the attack has been reproduced on a testbed, the status becomes `reproduced`. Once a mitigation has been shown on a testbed to prevent the attack, the status becomes `mitigated`.

@@ -1,3 +1,3 @@
 # STRIDE
 
-The [STRIDE](https://en.wikipedia.org/wiki/STRIDE_model) categories the threat falls into, a fixed external standard; the meaning column names the property each category violates.
+The [STRIDE](https://en.wikipedia.org/wiki/STRIDE_model) categories a threat falls into; each names the security property the attack violates.
