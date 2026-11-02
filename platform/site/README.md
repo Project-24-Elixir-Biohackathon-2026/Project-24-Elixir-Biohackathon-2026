@@ -15,6 +15,7 @@ two paths from the built directory and proxies everything else to Coder
 | `hooks.py` | MkDocs hooks: validation, the pages from `pages/` with their generated tables, each entry's frontmatter shown on its page |
 | `pages/` | The hand-written pages: `index.md` (Overview), `interactive-table.md` (the table is appended), `metadata/*.md` (the value table is appended). Edit freely |
 | `assets/catalog.js`, `assets/catalog.css` | Sorting and filtering of the Interactive table, added to the site by `hooks.py` |
+| `assets/images/` | Images used by the pages, published with the site at `assets/images/` |
 | `landing/index.html` | The landing page; `<!-- site.css -->` is replaced by the stylesheet at build time |
 | `static/site.css` | The landing page's stylesheet |
 | `dist/` | Build output, ignored by git: `index.html` and `threats/` |

@@ -6,8 +6,8 @@
 - on_files: validate the catalog with validate.py (a problem stops the
   build), then add the pages that are not entries from pages/ (the overview
   as written; the table of all threats and the value table of each metadata
-  page appended to the text written there) and the table's script and
-  stylesheet from assets/.
+  page appended to the text written there), the table's script and
+  stylesheet from assets/, and the images from assets/images/.
 - on_page_markdown: show an entry's frontmatter on its page: the description
   under the heading, then status, entry points, assets and STRIDE, each value
   linked to its explanation; and a link to the entry's source file at the end.
@@ -68,6 +68,8 @@ def on_files(files, config):
     for name in ("catalog.js", "catalog.css"):
         files.append(File.generated(
             config, f"assets/catalog/{name}", content=(HERE / "assets" / name).read_text(encoding="utf-8")))
+    for image in sorted((HERE / "assets" / "images").glob("*")):
+        files.append(File.generated(config, f"assets/images/{image.name}", content=image.read_bytes()))
     return files
 
 
