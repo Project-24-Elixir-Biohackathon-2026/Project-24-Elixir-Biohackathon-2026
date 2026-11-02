@@ -9,15 +9,6 @@ assets:
   - external-systems
 stride:
   - denial-of-service
-agent-capabilities:
-  - tool-use
-  - code-execution
-  - autonomous-execution
-related: []
-references:
-  - "OWASP LLM10: Unbounded Consumption"
-  - "OWASP LLM08: Excessive Agency"
-last_reviewed: 2026-07-15
 ---
 
 # TM-002: Infrastructure Overload via Excessive Resource Requests
@@ -35,11 +26,6 @@ degrading or exhausting shared infrastructure.
 Shared computational infrastructure, e.g. CPU/GPU time, memory, storage, API
 quota, and budget (compute-resources), as well as third-party systems the
 pipeline calls into (external-systems).
-
-## Threat Categories (STRIDE)
-
-- **Denial of Service**: exhausting or degrading compute, quota, or budget so
-  that the infrastructure becomes unavailable to this or other workloads.
 
 ## Attack Scenarios
 

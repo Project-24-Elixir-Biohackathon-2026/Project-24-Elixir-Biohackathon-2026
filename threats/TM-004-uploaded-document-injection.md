@@ -9,15 +9,6 @@ assets:
   - agent-integrity
 stride:
   - tampering
-agent-capabilities:
-  - file-system-access
-  - context-ingestion
-related:
-  - TM-003
-  - TM-005
-references:
-  - "OWASP LLM01: Prompt Injection"
-last_reviewed: 2026-07-15
 ---
 
 # TM-004: Untrusted Uploaded Documents as Supplementary Context
@@ -34,11 +25,6 @@ that the agent then ingests and acts upon (prompt injection).
 
 The correctness of the agent's own behavior and outputs (agent-integrity):
 tampered document content steers the pipeline the agent builds.
-
-## Threat Categories (STRIDE)
-
-- **Tampering**: manipulated document content alters the agent's reasoning and
-  the resulting pipeline.
 
 ## Attack Scenarios
 

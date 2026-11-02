@@ -1,6 +1,6 @@
-# Controlled vocabularies for threat model entries.
-# This file is the source of truth; VOCABULARY.md explains conventions
-# and may render these tables for humans.
+# Controlled vocabularies for threat model entries (threats/TM-*.md).
+# validate.py checks the `assets` and `stride` frontmatter lists against
+# the keys below.
 #
 # Extending: add a new key with a one-line description. Check for existing
 # synonyms first (e.g. don't add `user-data` next to `user-records`).
@@ -25,16 +25,3 @@ stride:
   information-disclosure: Confidentiality
   denial-of-service: Availability
   elevation-of-privilege: Authorization
-
-agent-capabilities:
-  data-access: Reads (or writes/deletes) data stores or documents
-  chat-output: Returns free-form output to a user-visible channel
-  tool-use: Invokes external tools / function calls
-  code-execution: Runs generated code (sandboxed or not)
-  web-access: Fetches or browses external web content
-  email-messaging: Sends messages on a user's behalf (email, chat, etc.)
-  file-system-access: Reads/writes a local or mounted file system
-  persistent-memory: Retains state across sessions
-  multi-agent: Interacts with or orchestrates other agents
-  autonomous-execution: Acts without per-step human approval
-  context-ingestion: Incorporates external content (uploads, pasted text, fetched pages, tool output) into its working context

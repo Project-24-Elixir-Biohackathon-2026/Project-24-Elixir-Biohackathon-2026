@@ -9,14 +9,6 @@ assets:
   - agent-integrity
 stride:
   - tampering
-agent-capabilities:
-  - context-ingestion
-related:
-  - TM-003
-  - TM-004
-references:
-  - "OWASP LLM01: Prompt Injection"
-last_reviewed: 2026-07-15
 ---
 
 # TM-005: Untrusted Pasted Text as Supplementary Context
@@ -34,11 +26,6 @@ acts upon (prompt injection).
 
 The correctness of the agent's own behavior and outputs (agent-integrity):
 injected instructions in the pasted text steer the pipeline the agent builds.
-
-## Threat Categories (STRIDE)
-
-- **Tampering**: manipulated pasted content alters the agent's reasoning and
-  the resulting pipeline.
 
 ## Attack Scenarios
 

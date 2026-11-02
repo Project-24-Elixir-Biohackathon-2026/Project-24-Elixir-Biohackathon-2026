@@ -9,18 +9,6 @@ assets:
   - agent-integrity
 stride:
   - tampering
-agent-capabilities:
-  - web-access
-  - context-ingestion
-related:
-  - TM-001
-  - TM-004
-  - TM-005
-  - TM-006
-references:
-  - "OWASP LLM01: Prompt Injection"
-  - "OWASP LLM08: Excessive Agency"
-last_reviewed: 2026-07-15
 ---
 
 # TM-003: Prompt Injection via Unreliable Web Sources
@@ -37,11 +25,6 @@ they were legitimate guidance (indirect prompt injection).
 
 The correctness of the agent's own behavior and outputs (agent-integrity):
 injected instructions steer the pipeline the agent builds.
-
-## Threat Categories (STRIDE)
-
-- **Tampering**: untrusted web content alters the agent's reasoning and the
-  resulting pipeline, subverting its integrity.
 
 ## Attack Scenarios
 

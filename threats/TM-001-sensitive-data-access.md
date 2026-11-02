@@ -11,16 +11,6 @@ assets:
 stride:
   - information-disclosure
   - tampering
-agent-capabilities:
-  - data-access
-  - chat-output
-related:
-  - TM-003
-  - TM-006
-references:
-  - "OWASP LLM06: Sensitive Information Disclosure"
-  - "OWASP LLM08: Excessive Agency"
-last_reviewed: 2026-07-15
 ---
 
 # TM-001: Sensitive Data Access During Pipeline Reasoning
@@ -35,12 +25,6 @@ process becomes the vehicle for unauthorized data access.
 
 Sensitive/private data accessible to the agent, e.g. user records,
 credentials, and internal documents.
-
-## Threat Categories (STRIDE)
-
-- **Information Disclosure**: reading and exposing sensitive data in the
-  chat output.
-- **Tampering**: modifying or deleting the data during pipeline execution.
 
 ## Attack Scenarios
 

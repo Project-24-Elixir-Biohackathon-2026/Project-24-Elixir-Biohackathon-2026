@@ -13,17 +13,6 @@ stride:
   - tampering
   - information-disclosure
   - elevation-of-privilege
-agent-capabilities:
-  - tool-use
-  - data-access
-  - context-ingestion
-related:
-  - TM-001
-  - TM-003
-references:
-  - "OWASP LLM01: Prompt Injection"
-  - "OWASP LLM08: Excessive Agency"
-last_reviewed: 2026-07-15
 ---
 
 # TM-006: Expanded Attack Surface from User-Connected MCPs
@@ -42,15 +31,6 @@ opportunities.
 Third-party systems the agent can now reach (external-systems), the agent's own
 behavioral integrity (agent-integrity), and any secrets exposed to or through
 the MCP (credentials).
-
-## Threat Categories (STRIDE)
-
-- **Tampering**: malicious MCP tool descriptions or outputs alter the agent's
-  reasoning (a tool-output injection vector; see [[TM-003]]).
-- **Information Disclosure**: an MCP with broad access reads and exfiltrates
-  sensitive data or credentials (see [[TM-001]]).
-- **Elevation of Privilege**: a connected MCP grants the agent capabilities
-  beyond what the task requires, enabling confused-deputy abuse.
 
 ## Attack Scenarios
 
