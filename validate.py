@@ -6,7 +6,8 @@ Checks per entry (threats/TM-*.md):
     fields are present (the format is fixed; see threats/TEMPLATE.md)
   - `id` has format TM-NNN and matches the filename prefix
   - no duplicate IDs across the catalog
-  - `assets` and `stride` only use vocabulary.yaml values
+  - `status` is one vocabulary.yaml value; `entry-points`, `assets` and
+    `stride` are non-empty lists of vocabulary.yaml values
   - the body has exactly the headings of the template, in order
 
 Usage:
@@ -30,18 +31,26 @@ ID_PATTERN = re.compile(r"^TM-\d{3}$")
 FILENAME_PATTERN = re.compile(r"^(TM-\d{3})-[a-z0-9-]+\.md$")
 HEADING_PATTERN = re.compile(r"^(#{1,3}) (.+?)\s*$", re.MULTILINE)
 
-REQUIRED_FIELDS = ["id", "name", "description", "assets", "stride"]
+REQUIRED_FIELDS = [
+    "id",
+    "name",
+    "description",
+    "status",
+    "entry-points",
+    "assets",
+    "stride",
+]
 
 # frontmatter field -> vocabulary.yaml section
+SCALAR_VOCAB_FIELDS = {"status": "status"}
 VOCAB_FIELDS = {
+    "entry-points": "entry-points",
     "assets": "assets",
     "stride": "stride",
 }
 
 # (level, text) of every heading, in order; the H1 text is checked separately.
 BODY_HEADINGS = [
-    (2, "Description"),
-    (2, "Affected Assets"),
     (2, "Attack Scenarios"),
     (2, "Preconditions"),
     (2, "Mitigations"),
@@ -54,7 +63,7 @@ BODY_HEADINGS = [
 def load_vocabulary(path: Path) -> dict:
     with open(path, encoding="utf-8") as f:
         vocab = yaml.safe_load(f)
-    for section in VOCAB_FIELDS.values():
+    for section in [*SCALAR_VOCAB_FIELDS.values(), *VOCAB_FIELDS.values()]:
         if section not in vocab or not isinstance(vocab[section], dict):
             sys.exit(f"vocabulary file {path} is missing section '{section}'")
         # Guard against a silently broken/emptied vocabulary.
@@ -95,6 +104,13 @@ def check_entry(path: Path, post: frontmatter.Post, vocab: dict) -> list[str]:
     for field in ("name", "description"):
         if not isinstance(meta[field], str) or not meta[field].strip():
             errors.append(f"'{field}' must be a non-empty string")
+
+    for field, section in SCALAR_VOCAB_FIELDS.items():
+        if meta[field] not in vocab[section]:
+            errors.append(
+                f"unknown {field} value '{meta[field]}' "
+                f"(not in vocabulary.yaml [{section}])"
+            )
 
     for field, section in VOCAB_FIELDS.items():
         values = meta[field]
