@@ -174,9 +174,7 @@ def all_threats(entries) -> str:
 
 
 def metadata_page(field, title, intro, values) -> str:
-    out = [f"# {title}", "", intro, "", f"Field `{field}` in an entry's header; the values come from",
-           "`vocabulary.yaml` in the repository and the validator rejects any other.", "",
-           "| Value | Meaning |", "|---|---|"]
+    out = [f"# {title}", "", intro, "", "| Value | Meaning |", "|---|---|"]
     out += [f"| `{value}` | {meaning} |" for value, meaning in values.items()]
     out.append("")
     return "\n".join(out)
