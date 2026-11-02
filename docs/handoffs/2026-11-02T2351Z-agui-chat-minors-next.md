@@ -1,6 +1,6 @@
-# 2026-11-03: AG-UI chat minors next
+# 2026-11-02: AG-UI chat minors next
 
-Written 2026-11-03 on `main`, after PR #13 (`44a7649`, the upstream ports ledger) merged and the parent
+Written 2026-11-02 on `main`, after PR #13 (`44a7649`, the upstream ports ledger) merged and the parent
 `biohackathon` was pinned at it (`e9ff4ab`). No plan holds this run of work; its handoffs live here.
 
 ## The user's instruction (2026-11-02, in chat)
