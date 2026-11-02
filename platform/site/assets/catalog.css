@@ -10,6 +10,3 @@
 .catalog-table th.sortable:hover { color: var(--md-accent-fg-color); }
 .catalog-table th[aria-sort="ascending"]::after { content: " \2191"; }
 .catalog-table th[aria-sort="descending"]::after { content: " \2193"; }
-
-/* Figures are transparent; keep their dark text readable in dark mode. */
-[data-md-color-scheme="slate"] .md-typeset img[src$=".svg"] { background: #fff; border-radius: .4rem; padding: .4rem; }
