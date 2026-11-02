@@ -1,4 +1,5 @@
-"""build.py renders every entry and refuses a catalog that does not validate."""
+"""build.py renders the landing page and every entry, and refuses a catalog
+that does not validate."""
 import shutil
 import subprocess
 import sys
@@ -18,27 +19,35 @@ def build(repo_root: Path, out: Path) -> subprocess.CompletedProcess:
 def test_builds_landing_and_catalog(tmp_path):
     res = build(REPO, tmp_path / "dist")
     assert res.returncode == 0, res.stderr
-    landing = (tmp_path / "dist" / "index.html").read_text()
-    catalog = (tmp_path / "dist" / "threats" / "index.html").read_text()
+    out = tmp_path / "dist"
+    landing = (out / "index.html").read_text()
     assert 'href="/workspaces"' in landing and 'href="/threats/"' in landing
     assert "<!-- site.css -->" not in landing  # the stylesheet was inlined
-    ids = sorted(p.name[:6] for p in (REPO / "threats").glob("TM-*.md"))
-    assert ids, "no entries in threats/"
-    for tm in ids:
-        assert f'id="{tm}"' in catalog, tm
-        assert f'data-id="{tm}"' in catalog, tm
-    assert "<h3>Attack Scenarios</h3>" in catalog  # body headings shifted under the entry's h2
+    overview = (out / "threats" / "index.html").read_text()
+    entries = sorted(p for p in (REPO / "threats").glob("TM-*.md"))
+    assert entries, "no entries in threats/"
+    for path in entries:
+        tm = path.name[:6]
+        page = out / "threats" / path.stem / "index.html"
+        assert page.is_file(), page
+        text = page.read_text()
+        assert f"{tm}:" in text and "Attack Scenarios" in text
+        assert "hypothesised" in text or "reproduced" in text or "mitigated" in text
+        assert f'href="{path.stem}/"' in overview or f'href="../{path.stem}/"' in overview or path.stem in overview
+    assert (out / "threats" / "vocabulary" / "index.html").is_file()
+    assert not (out / "threats" / "TEMPLATE").exists()
+    assert sorted(p.name for p in out.iterdir()) == ["index.html", "threats"]
 
 
 def test_rebuild_replaces_output(tmp_path):
     out = tmp_path / "dist"
     assert build(REPO, out).returncode == 0
     (out / "stale.html").write_text("old")
+    (out / "threats" / "stale.html").write_text("old")
     assert build(REPO, out).returncode == 0
     assert not (out / "stale.html").exists()
-    assert not (out / ".staging").exists()
-    assert sorted(p.relative_to(out).as_posix() for p in out.rglob("*") if p.is_file()) == [
-        "index.html", "threats/index.html"]
+    assert not (out / "threats" / "stale.html").exists()
+    assert sorted(p.name for p in out.iterdir()) == ["index.html", "threats"]
 
 
 def test_invalid_catalog_stops_the_build(tmp_path):

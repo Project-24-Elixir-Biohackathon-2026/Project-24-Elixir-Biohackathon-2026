@@ -216,7 +216,7 @@ OpenWebUI uses; it reaches Ansible through the workspace build environment.
 
 ```bash
 sudo apt install -y caddy        # or the official Caddy apt repo for a current version
-sudo apt install -y python3-yaml python3-markdown         # for the static site
+sudo apt install -y python3-yaml mkdocs-material          # for the static site
 sudo mkdir -p /srv/sperange-site && sudo chown ubuntu:ubuntu /srv/sperange-site
 python3 platform/site/build.py --out /srv/sperange-site    # the sync timer repeats this (SPE_SITE_DIR)
 sudo cp platform/coder/deploy/Caddyfile.example /etc/caddy/Caddyfile

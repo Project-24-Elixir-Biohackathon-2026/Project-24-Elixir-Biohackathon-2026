@@ -52,8 +52,8 @@ pinned commit; move the pin there after the push.
 
 ```bash
 uv run --with pyyaml python validate.py              # threat catalog
-uv run --with pyyaml --with markdown python platform/site/build.py   # landing page + catalog page -> platform/site/dist/
-uv run --with pytest --with pyyaml --with markdown pytest platform/dev/tests -q   # dataset generator, host preflight, site build
+uv run --with pyyaml --with mkdocs-material python platform/site/build.py   # landing page + catalog -> platform/site/dist/
+uv run --with pytest --with pyyaml --with mkdocs-material pytest platform/dev/tests -q   # dataset generator, host preflight, site build
 (cd platform/agui/pydantic-ai-agent && uv run --group dev pytest -q)   # agent
 (cd platform/promptfoo-evals && uv run --group dev pytest -q)          # promptfoo provider and assertions
 (cd platform/agui/copilotkit-chat && npm ci && npm run build)          # chat UI (type check)

@@ -19,7 +19,7 @@ git checkout --quiet "$SPE_BRANCH"
 git merge --quiet --ff-only "origin/$SPE_BRANCH"
 
 # The site: cheap, so built on every run; a failure is logged, never fatal
-# (needs python3-yaml and python3-markdown).
+# (needs python3-yaml and mkdocs-material).
 if ! python3 platform/site/build.py --out "${SPE_SITE_DIR:-$SPE_REPO_DIR/platform/site/dist}"; then
   echo "site build failed; the previous build stays in place" >&2
 fi

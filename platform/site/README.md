@@ -2,30 +2,41 @@
 
 The static pages served at the portal's domain next to Coder: the landing page
 (`/`) with the two entrances, Workspaces and Threats, and the threat catalog
-(`/threats/`) rendered from `threats/*.md`. Coder keeps its own paths
-(`/workspaces`, `/login`, `/api`, …); Caddy serves these two paths from the
-built directory and proxies everything else to Coder
+(`/threats/`) built from `threats/*.md` with
+[Material for MkDocs](https://squidfunk.github.io/mkdocs-material/). Coder
+keeps its own paths (`/workspaces`, `/login`, `/api`, …); Caddy serves these
+two paths from the built directory and proxies everything else to Coder
 (`platform/coder/deploy/Caddyfile.example`).
 
 | Path | What |
 |---|---|
-| `build.py` | Validates the catalog with the repository's `validate.py`, then writes `dist/` |
+| `build.py` | Validates the catalog with the repository's `validate.py`, writes the landing page, runs `mkdocs build` |
+| `mkdocs.yml` | The catalog site: theme, navigation features, `docs_dir` is `threats/` itself |
+| `hooks.py` | MkDocs hooks: validation, the generated Overview and Vocabulary pages, each entry's frontmatter shown on its page |
 | `landing/index.html` | The landing page; `<!-- site.css -->` is replaced by the stylesheet at build time |
-| `static/site.css` | One stylesheet for both pages, inlined so the pages are single files |
-| `dist/` | Build output, ignored by git: `index.html` and `threats/index.html` |
+| `static/site.css` | The landing page's stylesheet |
+| `dist/` | Build output, ignored by git: `index.html` and `threats/` |
 
 ```bash
-sudo apt install -y python3-yaml python3-markdown     # the only dependencies
-python3 platform/site/build.py                        # writes platform/site/dist/
-python3 platform/site/build.py --out /srv/sperange-site   # the portal VM's layout
-python3 -m http.server -d platform/site/dist 8000     # look at it locally
+sudo apt install -y python3-yaml mkdocs-material           # the only dependencies
+python3 platform/site/build.py                              # writes platform/site/dist/
+python3 platform/site/build.py --out /srv/sperange-site     # the portal VM's layout
+python3 -m http.server -d platform/site/dist 8000           # look at it locally
+(cd platform/site && python3 -m mkdocs serve)               # live preview of the catalog only
 ```
 
-The build refuses to run when the catalog does not validate, and it moves each
-page into place with an atomic rename and removes files of earlier builds, so
-the web server never serves a half-written page. The
-catalog page is self-contained: sorting, the status and entry-point filters
-and the search are a few lines of inline JavaScript, no framework.
+The catalog: the Overview page groups the entries by status and lists them
+all in one table; each entry is its own page with the navigation on the left
+(Overview, every threat, Vocabulary) and the entry's sections on the right.
+The entry's description and its status, entry points, assets and STRIDE
+categories appear under the heading, taken from the frontmatter. `threats/`
+stays data only: the pages that are not entries are generated at build time,
+and `TEMPLATE.md` is excluded.
+
+The build refuses to run when the catalog does not validate, or when MkDocs
+reports a problem (`--strict`), and leaves the previous output in place. The
+landing page is replaced with an atomic rename and the catalog directory is
+swapped in whole.
 
 On the portal VM, `platform/coder/deploy/sync-template.sh` rebuilds the site on
 every run of the sync timer (every 5 minutes), after pulling `main`, into
