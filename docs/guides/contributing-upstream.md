@@ -23,20 +23,23 @@ upstream*, plus `AGENTS.md` itself, and changes with it:
 ```bash
 X=(":(exclude).gitmodules" ":(exclude).methodology" ":(exclude).claude" ":(exclude)AGENTS.md"
    ":(exclude)BACKLOG.md" ":(exclude)docs/README.md" ":(exclude)docs/guides" ":(exclude)docs/knowledge"
-   ":(exclude)docs/investigations" ":(exclude)docs/proposals" ":(exclude)docs/superpowers")
+   ":(exclude)docs/investigations" ":(exclude)docs/proposals" ":(exclude)docs/superpowers" ":(exclude)docs/handoffs"
+   ":(exclude)docs/upstream-ports.md")
 ```
 
-A ported commit never leaves `upstream/main..main` (upstream gets a rewritten commit, not ours), so each port
-carries a `Fork-commit: <full sha>` trailer (step 3), and the candidates are the fork commits with project changes
-that no upstream or `contrib/` commit names yet, oldest first:
+A ported commit never leaves `upstream/main..main` (upstream gets a rewritten commit, not ours), so the fork keeps
+a ledger, `docs/upstream-ports.md`: one line per fork commit already ported or ruled out. The candidates are the
+fork commits with project changes that have no line there yet, oldest first:
 
 ```bash
 git fetch upstream && git fetch origin
-git log --format='%H %s' --reverse upstream/main..origin/main -- . "${X[@]}" \
-  | grep -v -F -f <(git log --format='%(trailers:key=Fork-commit,valueonly)' upstream/main --remotes='origin/contrib/*' | grep .; echo none)
+git log --abbrev=7 --format='%h %s' --reverse upstream/main..origin/main -- . "${X[@]}" \
+  | grep -v -f <(git show origin/main:docs/upstream-ports.md | sed -n 's/^- `\([0-9a-f]*\)`.*/^\1 /p')
 ```
 
-`bc5d944` predates the trailer; it is ported as kraatz #9.
+The ledger is read from `origin/main`, so its lines are committed and pushed to `main` directly. A candidate
+upstream should not get (a fork-only change to a shared file) gets a `not for upstream` line there, so it stops
+showing up.
 
 If the work builds on an upstream PR that is still open, wait for it to merge, as with stacked PRs on the fork
 (`development-workflow.md`, *Review and merge*, step 1). Work that only touches the same area can go in
@@ -84,8 +87,8 @@ git commit -s -F <message file>
 
 The message is the fork commit's, rewritten for a reader who has never seen the fork: drop the `(#n)` suffix
 (fork PR numbers mean nothing upstream) and any plan, slice, handoff or review reference; keep the *why*. The
-fork commit's subject `AG-UI chat sessions: the store (1/3) (#9)` becomes `AG-UI chat sessions: the store`. End
-it with the trailer step 1 looks for, before the sign-off: `Fork-commit: <full sha>`.
+fork commit's subject `AG-UI chat sessions: the store (1/3) (#9)` becomes `AG-UI chat sessions: the store`. No
+fork hash goes upstream: the link from fork commit to upstream PR lives in the ledger (step 6).
 
 ### 4. Clean the text and check
 
@@ -93,7 +96,7 @@ Docs and code upstream also reads must not point at fork-only files. Grep what w
 
 ```bash
 git diff -U0 upstream/main...HEAD | grep -E '^\+[^+]' \
-  | grep -E 'superpowers|BACKLOG|docs/(knowledge|guides|investigations|proposals)|\.methodology|\.claude/|handoff|slice [0-9]|\(#[0-9]+\)'
+  | grep -E 'superpowers|BACKLOG|upstream-ports|docs/(knowledge|guides|investigations|proposals)|\.methodology|\.claude/|handoff|slice [0-9]|\(#[0-9]+\)'
 ```
 
 Each hit is rewritten or removed. Then run, in this worktree:
@@ -125,12 +128,15 @@ fork-only: no plan, slice, backlog or fork PR links.
 
 ### 6. Track it on the fork
 
-Upstream PRs don't show in the fork's PR list, so `AGENTS.md`, *Current work*, gets a line while one is open,
-committed to `main` directly, in this shape:
+Once the PR has a number, record it on the fork, committed and pushed to `main` directly:
 
-```
-- **Upstream PR kraatz #<n>** (`contrib/<slug>`): <what>; waits on upstream's review.
-```
+- `docs/upstream-ports.md` gets one line per fork commit the PR carries: `` - `<short sha>` <fork subject> →
+  kraatz #<n> (open)``.
+- Upstream PRs don't show in the fork's PR list, so `AGENTS.md`, *Current work*, gets a line while one is open:
+
+  ```
+  - **Upstream PR kraatz #<n>** (`contrib/<slug>`): <what>; waits on upstream's review.
+  ```
 
 Review comments upstream are fixed on the same branch, in new commits, pushed without force.
 
@@ -138,8 +144,10 @@ Review comments upstream are fixed on the same branch, in new commits, pushed wi
 
 Merge `upstream/main` back into our `main` (below), then clean up from the main checkout: `git worktree remove
 .claude/worktrees/contrib-<slug>`, `git branch -D contrib/<slug>`, `git push origin --delete contrib/<slug>`,
-and drop the *Current work* line. If upstream closes the PR without merging, record why and where the work goes
-instead (`development-workflow.md`, *Deferred items land somewhere durable*), then clean up the same way.
+drop the *Current work* line, and mark its ledger lines `(merged)`. If upstream closes the PR without merging,
+mark them `(closed: <why>)`, record where the work goes instead (`development-workflow.md`, *Deferred items land
+somewhere durable*), then clean up the same way. A closed line keeps its commit off the candidate list; delete the
+line instead to offer the commit again later.
 
 ## Merge upstream into our `main`
 
