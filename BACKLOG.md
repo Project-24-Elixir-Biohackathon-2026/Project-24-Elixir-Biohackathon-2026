@@ -14,8 +14,8 @@ start reads this section; keep it short.
 
 - Canary ladder: fold `biohackathon` knowledge 0015 (matched clean and injected trials; proposed) into the spec
   and plan as 0014's findings were (clarifications, tasks rewritten) — from the user's comment on #3
-  (2026-10-23, "check 0015 review point as well"); due: before slice 2 of the ladder, which 0015 touches via
-  slice 5's suite.
+  (2026-10-23, "check 0015 review point as well"); waits on the user: 0015 is `proposed`, accept it first;
+  due: before the ladder's slice 5 (agent suite), whose plan 0015 reviews.
 
 ## Unscheduled
 
