@@ -12,7 +12,8 @@ two paths from the built directory and proxies everything else to Coder
 |---|---|
 | `build.py` | Validates the catalog with the repository's `validate.py`, writes the landing page, runs `mkdocs build` |
 | `mkdocs.yml` | The catalog site: theme, navigation features, `docs_dir` is `threats/` itself |
-| `hooks.py` | MkDocs hooks: validation, the generated Overview, All threats and Metadata pages, each entry's frontmatter shown on its page |
+| `hooks.py` | MkDocs hooks: validation, the pages from `pages/` with their generated tables, each entry's frontmatter shown on its page |
+| `pages/` | The hand-written pages: `index.md` (Overview), `all-threats.md` (the table is appended), `metadata/*.md` (the value table is appended). Edit freely |
 | `assets/catalog.js`, `assets/catalog.css` | Sorting and filtering of the All threats table, added to the site by `hooks.py` |
 | `landing/index.html` | The landing page; `<!-- site.css -->` is replaced by the stylesheet at build time |
 | `static/site.css` | The landing page's stylesheet |
@@ -33,8 +34,12 @@ on the right; and Metadata, one page per frontmatter field (status, entry
 points, assets, STRIDE) with a table of its values and their meaning. The
 entry's description and its field values appear under its heading,
 taken from the frontmatter, each value linked to its explanation. `threats/`
-stays data only: the pages that are not entries are generated at build time,
-and `TEMPLATE.md` is excluded.
+stays data only: the pages that are not entries are written in `pages/` and
+completed with their tables at build time, and `TEMPLATE.md` is excluded.
+
+Writing: Markdown ignores single line breaks inside a paragraph, so write
+each paragraph and list item as one long line and let the editor wrap it;
+the entries and the template are kept that way.
 
 The build refuses to run when the catalog does not validate, or when MkDocs
 reports a problem (`--strict`), and leaves the previous output in place. The

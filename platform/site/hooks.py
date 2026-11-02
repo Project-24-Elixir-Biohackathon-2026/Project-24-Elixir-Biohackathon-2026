@@ -4,8 +4,9 @@
   this repository) and build the navigation: Overview, All threats, Threats,
   Metadata (one page per frontmatter field).
 - on_files: validate the catalog with validate.py (a problem stops the
-  build), then generate the pages that are not entries (overview, the table
-  of all threats, the metadata pages) and add the table's script and
+  build), then add the pages that are not entries from pages/ (the overview
+  as written; the table of all threats and the value table of each metadata
+  page appended to the text written there) and the table's script and
   stylesheet from assets/.
 - on_page_markdown: show an entry's frontmatter on its page: the description
   under the heading, then status, entry points, assets and STRIDE, each value
@@ -27,23 +28,10 @@ import validate  # noqa: E402  (the repository's validator)
 _vocab = None
 _entries = None
 
-# The metadata pages: field -> (page title, vocabulary section, what the field is for)
-FIELDS = (
-    ("status", "Status", "status",
-     "How far the threat has been shown on an SPE instance. A status beyond "
-     "`hypothesised` must be backed by a promptfoo test in "
-     "`platform/promptfoo-evals/` or an archived run."),
-    ("entry-points", "Entry points", "entry-points",
-     "Through which channel the threat reaches the agent: where the triggering "
-     "content or instruction comes from."),
-    ("assets", "Assets", "assets",
-     "What is at stake: the things the agent can read, change or spend that "
-     "the threat puts at risk."),
-    ("stride", "STRIDE", "stride",
-     "The [STRIDE](https://en.wikipedia.org/wiki/STRIDE_model) categories the "
-     "threat falls into, a fixed external standard; the meaning column names "
-     "the property each category violates."),
-)
+PAGES = HERE / "pages"  # the hand-written pages that are not entries
+
+# The metadata pages: one per frontmatter field, each a vocabulary.yaml section.
+FIELDS = ("status", "entry-points", "assets", "stride")
 
 
 def _catalog():
@@ -63,19 +51,20 @@ def on_config(config):
         {"Overview": "index.md"},
         {"All threats": "all-threats.md"},
         {"Threats": [e.path.name for e in entries]},
-        {"Metadata": [{title: f"metadata/{field}.md"} for field, title, _, _ in FIELDS]},
+        {"Metadata": [f"metadata/{field}.md" for field in FIELDS]},
     ]
     return config
 
 
 def on_files(files, config):
     vocab, entries = _catalog()
-    files.append(File.generated(config, "index.md", content=overview()))
-    files.append(File.generated(config, "all-threats.md", content=all_threats(entries)))
-    for field, title, section, intro in FIELDS:
+    files.append(File.generated(config, "index.md", content=page("index.md")))
+    files.append(File.generated(
+        config, "all-threats.md", content=page("all-threats.md") + all_threats(entries)))
+    for field in FIELDS:
         files.append(File.generated(
             config, f"metadata/{field}.md",
-            content=metadata_page(field, title, intro, vocab[section])))
+            content=page(f"metadata/{field}.md") + value_table(vocab[field])))
     for name in ("catalog.js", "catalog.css"):
         files.append(File.generated(
             config, f"assets/catalog/{name}", content=(HERE / "assets" / name).read_text(encoding="utf-8")))
@@ -123,47 +112,13 @@ def link(entry) -> str:
     return f"[{entry.meta['id']}: {entry.meta['name']}]({entry.path.name})"
 
 
-def overview() -> str:
-    return "\n".join([
-        "# Threat catalog",
-        "",
-        "What the SPE instances are tested for: each threat an AI agent poses, or",
-        "is exposed to, inside a Secure Processing Environment, written against the",
-        "stack the instances run.",
-        "",
-        "- [All threats](all-threats.md): one table, sortable and filterable.",
-        "- **Threats**: one page per entry, in the navigation.",
-        "- **Metadata**: what each field of an entry means and every value it can",
-        "  take, with the entries that use it.",
-        "",
-        "## How to read an entry",
-        "",
-        "Every entry has the same shape. Under its heading: the description, then",
-        "its [status](metadata/status.md), [entry points](metadata/entry-points.md),",
-        "[assets](metadata/assets.md) and [STRIDE](metadata/stride.md) categories.",
-        "Then three sections:",
-        "",
-        "- **Attack Scenarios**: who or what triggers the threat, through which entry",
-        "  point, and what the agent then does, with the real commands, endpoints and",
-        "  files of the stack.",
-        "- **Preconditions**: what must be true of the agent, its access or its",
-        "  environment for the scenarios to work.",
-        "- **Mitigations**: preventive (stop it), detective (notice it) and",
-        "  responsive (what to do once detected).",
-        "",
-        "The entries are Markdown files with a YAML header in the repository's",
-        "`threats/` directory; a validator holds every entry to the template and to",
-        "the controlled values. Each page links to its source file at the end.",
-        "",
-    ])
+def page(name: str) -> str:
+    """A hand-written page from pages/, ending in a blank line."""
+    return (PAGES / name).read_text(encoding="utf-8").rstrip() + "\n\n"
 
 
 def all_threats(entries) -> str:
     out = [
-        "# All threats",
-        "",
-        "Click a column to sort; the controls filter the rows.",
-        "",
         '<div class="catalog-table" markdown="block">',
         "",
         "| ID | Name | Status | Entry points | Assets | STRIDE |",
@@ -179,8 +134,8 @@ def all_threats(entries) -> str:
     return "\n".join(out)
 
 
-def metadata_page(field, title, intro, values) -> str:
-    out = [f"# {title}", "", intro, "", "| Value | Meaning |", "|---|---|"]
+def value_table(values: dict) -> str:
+    out = ["| Value | Meaning |", "|---|---|"]
     out += [f"| `{value}` | {meaning} |" for value, meaning in values.items()]
     out.append("")
     return "\n".join(out)
