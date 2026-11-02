@@ -49,7 +49,6 @@ markdown_extensions:
   - def_list
   - md_in_html
   - tables
-  - toc:
-      permalink: true
+  - toc
 plugins:
   - search

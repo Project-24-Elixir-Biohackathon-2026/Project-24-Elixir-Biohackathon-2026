@@ -40,8 +40,9 @@ FIELDS = (
      "What is at stake: the things the agent can read, change or spend that "
      "the threat puts at risk."),
     ("stride", "STRIDE", "stride",
-     "The STRIDE categories the threat falls into, a fixed external standard "
-     "(the property each category violates is given in brackets)."),
+     "The [STRIDE](https://en.wikipedia.org/wiki/STRIDE_model) categories the "
+     "threat falls into, a fixed external standard; the meaning column names "
+     "the property each category violates."),
 )
 
 
