@@ -36,7 +36,7 @@ PAGE = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Threats | sperange</title>
+<title>Threats | SPE Range</title>
 <meta name="description" content="The threat model catalog for AI agents in Secure Processing Environments, with the status of each threat.">
 <style>
 {{CSS}}
@@ -45,11 +45,7 @@ PAGE = """<!doctype html>
 <body>
 <div class="wrap">
   <header class="top">
-    <a class="brand" href="/">sperange</a>
-    <nav>
-      <a href="/workspaces">Workspaces</a>
-      <a href="/threats/" aria-current="page">Threats</a>
-    </nav>
+    <a class="brand" href="/">SPE Range</a>
   </header>
 
   <section class="page-title">

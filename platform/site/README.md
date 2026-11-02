@@ -1,4 +1,4 @@
-# sperange site
+# SPE Range site
 
 The static pages served at the portal's domain next to Coder: the landing page
 (`/`) with the two entrances, Workspaces and Threats, and the threat catalog

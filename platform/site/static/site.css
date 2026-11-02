@@ -76,6 +76,8 @@ code { font: 0.92em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; ba
 .card p { margin: 0 0 1.25rem; color: var(--muted); }
 .card .go { color: var(--accent); font-weight: 600; }
 footer { border-top: 1px solid var(--line); color: var(--muted); font-size: 0.9rem; padding: 1.25rem 0 2.5rem; }
+footer .gh { display: inline-flex; color: var(--muted); }
+footer .gh:hover { color: var(--fg); }
 
 /* Catalog */
 .page-title { padding: 2rem 0 0.5rem; }
