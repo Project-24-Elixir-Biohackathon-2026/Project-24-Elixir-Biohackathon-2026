@@ -1,3 +1,3 @@
 # STRIDE
 
-The [STRIDE](https://en.wikipedia.org/wiki/STRIDE_model) categories a threat falls into; each names the security property the attack violates.
+This field puts the threat into one or more [STRIDE](https://en.wikipedia.org/wiki/STRIDE_model) categories. The second column says which security property each one is about.

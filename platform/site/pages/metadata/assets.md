@@ -1,3 +1,3 @@
 # Assets
 
-The assets a threat affects: what the agent can read, change or spend that the attack puts at risk.
+This field says what the attack affects: the data, systems or resources that get exposed, changed or used up.

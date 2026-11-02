@@ -1,3 +1,3 @@
 # Entry points
 
-The channels through which a threat reaches the agent: where the triggering content or instruction comes from.
+This field says where the attack comes in: the channel through which the malicious content or instruction reaches the agent.
