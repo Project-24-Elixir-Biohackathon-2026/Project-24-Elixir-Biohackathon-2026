@@ -1,0 +1,50 @@
+---
+# The repository clone on the instance: the source the chat frontend runs from
+# (platform/instance/compose.yml, the sandbox's runbook and helper scripts, the
+# agent's prompt and Python source are bind mounts from it) and the working
+# directory of the Coder agent. Checked out at spe_repo_ref, by default the
+# commit the controller's checkout is at. A clone with local changes is left
+# alone and the run stops, so nobody's work in a workspace is overwritten.
+- name: Clone state
+  ansible.builtin.command: git -C {{ spe_repo_dir | quote }} status --porcelain
+  register: repo_status
+  changed_when: false
+  failed_when: false
+
+- name: A clone with local changes is not touched
+  ansible.builtin.assert:
+    that: repo_status.rc != 0 or repo_status.stdout | trim | length == 0
+    fail_msg: >-
+      {{ spe_repo_dir }} has uncommitted changes; commit or stash them (or remove the
+      directory) before running the playbook again.
+    quiet: true
+
+- name: Repository at {{ spe_repo_ref }}
+  ansible.builtin.git:
+    repo: "{{ spe_repo_url }}"
+    dest: "{{ spe_repo_dir }}"
+    version: "{{ spe_repo_ref }}"
+    update: true
+    force: false
+
+- name: spe-apply on the PATH (a link into the clone, so edits to it are live)
+  ansible.builtin.file:
+    src: "{{ spe_repo_dir }}/platform/instance/spe-apply"
+    dest: /usr/local/bin/spe-apply
+    state: link
+    force: true
+  become: true
+
+- name: Instructions and skills for Coder Agents, linked into the workspace home
+  ansible.builtin.file:
+    src: "{{ spe_repo_dir }}/platform/instance/workspace/{{ item.src }}"
+    dest: "/home/{{ spe_ssh_user }}/{{ item.dest }}"
+    state: link
+    force: true
+    owner: "{{ spe_ssh_user }}"
+    group: "{{ spe_ssh_user }}"
+  loop:
+    - { src: AGENTS.md, dest: AGENTS.md }
+    - { src: skills, dest: .agents/skills }
+  loop_control:
+    label: "{{ item.dest }}"

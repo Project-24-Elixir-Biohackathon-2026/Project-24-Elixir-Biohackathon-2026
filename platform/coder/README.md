@@ -52,6 +52,30 @@ Ansible playbooks in `../ansible`; the Coder template only wraps them.
 | `platform/ansible/reports/run_report.md.j2` | **Run report template**, becomes the pinned "Run report" note in OpenWebUI | anyone (via PR) |
 | `platform/ansible/roles/run_archive/` | Exports OpenWebUI and writes the run directory | maintainers |
 
+### Working in a workspace
+
+A workspace is for changing the setup and trying the change in its chat right
+away, with Coder Agents (the portal's chat agent, Admin settings > AI) or by hand
+over the web terminal. The VM holds a clone of this repository at
+`~/sperange`, checked out at the commit the workspace was built from, and the chat
+frontend runs from it:
+
+| Change | What it needs |
+|---|---|
+| the SPE agent's runbook or a helper script (`platform/ansible/roles/sandbox/files/agent/`, mounted at `/opt/agent` in the sandbox) | nothing: live on the next message |
+| the SPE agent's system prompt (`platform/ansible/roles/sandbox/files/system_prompt.txt`, AG-UI frontend) | nothing: read on every run |
+| the agent's Python source (`platform/agui/pydantic-ai-agent/src/`) | nothing: the agent restarts itself on a saved file |
+| the chat UI's source, with `spe_agui_ui_dev: true` | nothing: hot reload |
+| the compose file (`platform/instance/compose.yml`) or `~/spe-frontend/agent.yaml` | `spe-apply up` |
+| the agent's dependencies, the chat UI (built mode), `Dockerfile.terminal`, the GA4GH images | `spe-apply` (build, then up): the **Rebuild** button on the workspace page |
+| the Ansible roles, the Coder template | merge, then restart the workspace |
+
+Coder Agents finds `AGENTS.md` and the `spe-apply` skill in the workspace
+(`platform/instance/workspace/`, linked into the home directory), so it knows this
+table. The VM is destroyed when the workspace stops: a change worth keeping is
+committed on a branch and pushed from the clone (pushing needs a GitHub token in
+the workspace, not set up yet), or ported into a pull request from the controller.
+
 ### Adding a testbed
 
 There are two presets, one per frontend, both with all samples, all tiers and

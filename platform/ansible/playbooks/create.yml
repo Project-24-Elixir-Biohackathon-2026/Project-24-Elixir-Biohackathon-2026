@@ -66,6 +66,7 @@
                 stack_dir: "{{ spe_stack_dir }}"
                 frontend_dir: "{{ spe_frontend_dir }}"
                 data_root: "{{ spe_data_root }}"
+                repo_dir: "{{ spe_repo_dir }}"
               ports: "{{ spe_owned_ports }}"
               projects: "{{ spe_compose_projects }}"
               min_free_gb: "{{ spe_min_free_gb | int }}"
@@ -102,6 +103,11 @@
       ansible.builtin.import_role:
         name: prefetch
       tags: [stack, frontend]
+
+    - name: Repository clone (what the frontend runs from)
+      ansible.builtin.import_role:
+        name: repo
+      tags: [frontend]
 
     - name: Certificate and trust anchor
       ansible.builtin.import_role:

@@ -220,6 +220,9 @@ locals {
 resource "coder_agent" "main" {
   os   = "linux"
   arch = "amd64"
+  # The repository clone on the VM (role repo): what the chat frontend runs from and
+  # where Coder Agents reads AGENTS.md and .agents/skills from.
+  dir = "/home/ubuntu/sperange"
 
   display_apps {
     vscode          = false
@@ -255,7 +258,7 @@ resource "coder_app" "chat" {
   agent_id     = coder_agent.main.id
   slug         = "chat"
   display_name = "Chat (AG-UI)"
-  icon         = "/icon/terminal.svg"
+  icon         = "/icon/openai.svg"
   url          = "http://localhost:3000"
   subdomain    = true
   share        = "owner"
@@ -265,6 +268,18 @@ resource "coder_app" "chat" {
     interval  = 10
     threshold = 30
   }
+}
+
+# Rebuild: applies the clone to the running frontend (spe-apply: build the images
+# that changed, recreate the containers, wait for health) in a web terminal.
+# Edits to the runbook, the prompt and the agent's source are live without it;
+# see platform/instance/workspace/AGENTS.md.
+resource "coder_app" "rebuild" {
+  agent_id     = coder_agent.main.id
+  slug         = "rebuild"
+  display_name = "Rebuild"
+  icon         = "/icon/docker.svg"
+  command      = "spe-apply"
 }
 
 # --- the instance (Ansible) ----------------------------------------------------

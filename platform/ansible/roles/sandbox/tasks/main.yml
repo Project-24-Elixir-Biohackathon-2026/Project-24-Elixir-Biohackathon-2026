@@ -1,8 +1,12 @@
 ---
-# The agent's sandbox: the open-terminal image with this instance's own CA,
-# the WES/DRS/TRS runbook and the system prompt. Shared by the openwebui and
-# agui frontends. Runs right after role tls (the CA) and starts the build in
-# the background (a 5.7 GB base image); the frontend role joins it (wait.yml).
+# The agent's sandbox: the open-terminal image with this instance's own CA, built
+# from the clone's Dockerfile. Shared by the openwebui and agui frontends. Also
+# prepares the frontend directory: the .env that selects the frontend and the
+# link to the compose file in the clone; each frontend role adds its secret env
+# files and then runs `spe-apply up`. The runbook, the helper scripts and the
+# system prompt are not copied anywhere: the containers mount them from the
+# clone. Runs right after role tls (the CA) and starts the build in the
+# background (a 5.7 GB base image); the frontend role joins it (wait.yml).
 - name: Frontend directory
   ansible.builtin.file:
     path: "{{ spe_frontend_dir }}"
@@ -11,17 +15,31 @@
     group: "{{ spe_ssh_user }}"
     mode: "0750"
 
-- name: Build-context files (Dockerfile, agent runbook) and system prompt
-  ansible.builtin.copy:
-    src: "{{ item }}"
-    dest: "{{ spe_frontend_dir }}/{{ item }}"
+- name: Frontend selection and images (.env, read by docker compose and spe-apply)
+  ansible.builtin.template:
+    src: frontend.env.j2
+    dest: "{{ spe_frontend_dir }}/.env"
     owner: "{{ spe_ssh_user }}"
     group: "{{ spe_ssh_user }}"
     mode: "0644"
-  loop:
-    - Dockerfile.terminal
-    - AGENTS.md
-    - system_prompt.txt
+
+- name: Compose file is the clone's (a link, so edits to it are live)
+  ansible.builtin.file:
+    src: "{{ spe_repo_dir }}/platform/instance/compose.yml"
+    dest: "{{ spe_frontend_dir }}/docker-compose.yml"
+    state: link
+    force: true
+    owner: "{{ spe_ssh_user }}"
+    group: "{{ spe_ssh_user }}"
+
+- name: Sandbox Dockerfile from the clone (the build context is this directory)
+  ansible.builtin.copy:
+    src: "{{ spe_repo_dir }}/platform/ansible/roles/sandbox/files/Dockerfile.terminal"
+    dest: "{{ spe_frontend_dir }}/Dockerfile.terminal"
+    remote_src: true
+    owner: "{{ spe_ssh_user }}"
+    group: "{{ spe_ssh_user }}"
+    mode: "0644"
   register: sandbox_ctx_files
 
 - name: SPE trust anchor into the build context

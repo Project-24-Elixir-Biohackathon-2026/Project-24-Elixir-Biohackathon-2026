@@ -15,7 +15,7 @@
     spe_manifest:
       instance: "{{ spe_instance }}"
       provision: "{{ spe_provision }}"
-      paths: "{{ (spe_preflight | default({})).resolved | default({'stack_dir': spe_stack_dir, 'frontend_dir': spe_frontend_dir, 'data_root': spe_data_root}, true) }}"
+      paths: "{{ (spe_preflight | default({})).resolved | default({'stack_dir': spe_stack_dir, 'frontend_dir': spe_frontend_dir, 'data_root': spe_data_root, 'repo_dir': spe_repo_dir}, true) }}"
       compose_projects: "{{ spe_compose_projects }}"
 
 - name: Detect existing Docker apt source

@@ -1,6 +1,7 @@
 """The Pydantic AI agent: model from config, prompt, sandbox tools."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from pydantic_ai import Agent, Tool
@@ -37,5 +38,14 @@ def build_model(cfg: ModelCfg, api_key: str) -> Model:
     return OpenAIChatModel(cfg.name, provider=OpenAIProvider(base_url=cfg.base_url, api_key=api_key))
 
 
-def build_agent(model: Model, prompt: str, tools: list[Tool]) -> Agent[RunDeps, str]:
-    return Agent(model, system_prompt=prompt, tools=tools, deps_type=RunDeps, name="spe-agent")
+def build_agent(model: Model, prompt: str | Callable[[], str], tools: list[Tool]) -> Agent[RunDeps, str]:
+    """`prompt` is the system prompt, or a function returning it; a function is called at the
+    start of every run, so a prompt read from a file follows the file without a restart."""
+    agent: Agent[RunDeps, str] = Agent(model, tools=tools, deps_type=RunDeps, name="spe-agent")
+    source = prompt if callable(prompt) else (lambda: prompt)
+
+    @agent.system_prompt
+    def _system_prompt() -> str:
+        return source()
+
+    return agent
