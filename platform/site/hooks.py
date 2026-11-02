@@ -86,6 +86,11 @@ def on_page_markdown(markdown, page, config, files):
     meta = page.meta
     if "id" not in meta:
         return markdown
+    # Material shows a status icon in the navigation for any page whose meta
+    # has a `status` key (its own page-status feature). Ours means something
+    # else, so take it out of the page meta once read.
+    meta = dict(meta)
+    page.meta.pop("status", None)
     lines = markdown.split("\n")
     h1 = next(i for i, line in enumerate(lines) if line.strip())
     block = [
