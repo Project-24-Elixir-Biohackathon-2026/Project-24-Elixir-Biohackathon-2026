@@ -30,6 +30,9 @@ set -a; . "$dir/.env"; set +a
 agui_dir=$SPE_REPO_DIR/platform/agui
 sandbox_dir=$SPE_REPO_DIR/platform/ansible/roles/sandbox/files
 compose=(docker compose --project-directory "$dir" -f "$dir/docker-compose.yml")
+# Without provenance attestations a fully cached build reproduces the same image id, so
+# compose recreates a container only when its image really changed.
+build_cmd=(docker build --provenance=false)
 
 has_profile() { [[ ",$COMPOSE_PROFILES," == *",$1,"* ]]; }
 
@@ -49,14 +52,14 @@ build() {
     case $c in
       agent)
         echo "== build agent ($SPE_AGENT_IMAGE) from platform/agui/pydantic-ai-agent"
-        docker build -t "$SPE_AGENT_IMAGE" "$agui_dir/pydantic-ai-agent" ;;
+        "${build_cmd[@]}" -t "$SPE_AGENT_IMAGE" "$agui_dir/pydantic-ai-agent" ;;
       chat-ui)
         echo "== build chat-ui ($SPE_CHAT_UI_IMAGE) from platform/agui/copilotkit-chat"
-        docker build -t "$SPE_CHAT_UI_IMAGE" "$agui_dir/copilotkit-chat" ;;
+        "${build_cmd[@]}" -t "$SPE_CHAT_UI_IMAGE" "$agui_dir/copilotkit-chat" ;;
       sandbox)
         echo "== build sandbox ($SPE_TERMINAL_IMAGE) from roles/sandbox/files/Dockerfile.terminal + the instance CA"
         install -m 0644 "$sandbox_dir/Dockerfile.terminal" "$dir/Dockerfile.terminal"
-        docker build -t "$SPE_TERMINAL_IMAGE" -f "$dir/Dockerfile.terminal" "$dir" ;;
+        "${build_cmd[@]}" -t "$SPE_TERMINAL_IMAGE" -f "$dir/Dockerfile.terminal" "$dir" ;;
       *) echo "spe-apply: unknown component '$c' (agent, chat-ui, sandbox)" >&2; exit 2 ;;
     esac
   done

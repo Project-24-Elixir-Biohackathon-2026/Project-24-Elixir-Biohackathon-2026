@@ -13,10 +13,7 @@
 
 - name: Agent and chat UI images built (started by build.yml)
   ansible.builtin.async_status:
-    jid: "{{ item.ansible_job_id }}"
-  loop: "{{ agui_build_jobs.results }}"
-  loop_control:
-    label: "{{ item.item.image }}"
+    jid: "{{ agui_build_job.ansible_job_id }}"
   register: agui_builds
   until: agui_builds.finished
   retries: 720

@@ -52,15 +52,10 @@
     mode: "0644"
   register: sandbox_ca_file
 
-- name: Build the open-terminal image with the SPE CA, in the background
-  community.docker.docker_image:
-    name: "{{ spe_frontend_terminal_image }}"
-    build:
-      path: "{{ spe_frontend_dir }}"
-      dockerfile: Dockerfile.terminal
-      pull: false
-    source: build
-    force_source: "{{ sandbox_ctx_files.changed or sandbox_ca_file.changed }}"
+# The same command the workspace's Rebuild button runs (spe-apply, linked by role
+# repo), so the images it builds later are cache hits and nothing is recreated.
+- name: Build the open-terminal image with the SPE CA, in the background (spe-apply build sandbox)
+  ansible.builtin.command: spe-apply build sandbox
   async: 3600
   poll: 0
   register: sandbox_build_job

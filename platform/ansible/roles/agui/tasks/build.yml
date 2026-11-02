@@ -32,24 +32,12 @@
     quiet: true
 
 # --- images, built on the instance from the clone (role repo ran before) ----
-# Fixed tags: Docker's layer cache makes a build with unchanged sources take
-# seconds, and compose recreates a container only when its image changed. The
-# same builds are what `spe-apply build` runs later from the workspace.
-- name: Agent and chat UI images, built in the background
-  community.docker.docker_image:
-    name: "{{ item.image.split(':')[0] }}"
-    tag: "{{ item.image.split(':')[1] }}"
-    build:
-      path: "{{ spe_repo_dir }}/platform/agui/{{ item.dir }}"
-      pull: false
-    source: build
-    force_source: true
-  loop: >-
-    {{ [{'image': spe_agui_agent_image, 'dir': 'pydantic-ai-agent'}]
-       + ([] if spe_agui_ui_dev | bool else [{'image': spe_agui_ui_image, 'dir': 'copilotkit-chat'}]) }}
-  loop_control:
-    label: "{{ item.image }}"
+# The same command the workspace's Rebuild button runs (spe-apply build), with
+# fixed tags: Docker's layer cache makes a build with unchanged sources take
+# seconds, and compose recreates a container only when its image changed.
+- name: Agent and chat UI images, built in the background (spe-apply build)
+  ansible.builtin.command: "spe-apply build agent{{ '' if spe_agui_ui_dev | bool else ' chat-ui' }}"
   async: 3600
   poll: 0
-  register: agui_build_jobs
+  register: agui_build_job
   changed_when: false   # the join (main.yml) reports the change
