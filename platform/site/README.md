@@ -30,8 +30,8 @@ The catalog: an Overview that explains how to read an entry; All threats, one
 table that sorts by any column and filters by text, status or entry point;
 one page per entry with the navigation on the left and the entry's sections
 on the right; and Metadata, one page per frontmatter field (status, entry
-points, assets, STRIDE) with every value explained and the entries that use
-it. The entry's description and its field values appear under its heading,
+points, assets, STRIDE) with a table of its values and their meaning. The
+entry's description and its field values appear under its heading,
 taken from the frontmatter, each value linked to its explanation. `threats/`
 stays data only: the pages that are not entries are generated at build time,
 and `TEMPLATE.md` is excluded.

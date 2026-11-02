@@ -74,7 +74,7 @@ def on_files(files, config):
     for field, title, section, intro in FIELDS:
         files.append(File.generated(
             config, f"metadata/{field}.md",
-            content=metadata_page(field, title, intro, vocab[section], entries)))
+            content=metadata_page(field, title, intro, vocab[section])))
     for name in ("catalog.js", "catalog.css"):
         files.append(File.generated(
             config, f"assets/catalog/{name}", content=(HERE / "assets" / name).read_text(encoding="utf-8")))
@@ -110,7 +110,7 @@ def codes(values) -> str:
 
 def linked(field: str, values) -> str:
     """Values as links to their explanation on the field's metadata page."""
-    return " ".join(f"[`{v}`](metadata/{field}.md#{v})" for v in values)
+    return " ".join(f"[`{v}`](metadata/{field}.md)" for v in values)
 
 
 def link(entry) -> str:
@@ -173,19 +173,10 @@ def all_threats(entries) -> str:
     return "\n".join(out)
 
 
-def metadata_page(field, title, intro, values, entries) -> str:
+def metadata_page(field, title, intro, values) -> str:
     out = [f"# {title}", "", intro, "", f"Field `{field}` in an entry's header; the values come from",
-           "`vocabulary.yaml` in the repository and the validator rejects any other.", ""]
-    for value, meaning in values.items():
-        users = [e for e in entries if value in listed(e.meta[field])]
-        out += [f"## {value}", "", f"{meaning}.", ""]
-        if users:
-            out += [f"- [{e.meta['id']}: {e.meta['name']}](../{e.path.name})" for e in users]
-        else:
-            out.append("- no entry yet")
-        out.append("")
+           "`vocabulary.yaml` in the repository and the validator rejects any other.", "",
+           "| Value | Meaning |", "|---|---|"]
+    out += [f"| `{value}` | {meaning} |" for value, meaning in values.items()]
+    out.append("")
     return "\n".join(out)
-
-
-def listed(value) -> list:
-    return value if isinstance(value, list) else [value]
