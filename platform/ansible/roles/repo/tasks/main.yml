@@ -35,6 +35,14 @@
     force: true
   become: true
 
+- name: Skills directory for Coder Agents
+  ansible.builtin.file:
+    path: "/home/{{ spe_ssh_user }}/.agents"
+    state: directory
+    owner: "{{ spe_ssh_user }}"
+    group: "{{ spe_ssh_user }}"
+    mode: "0755"
+
 - name: Instructions and skills for Coder Agents, linked into the workspace home
   ansible.builtin.file:
     src: "{{ spe_repo_dir }}/platform/instance/workspace/{{ item.src }}"
