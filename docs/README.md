@@ -15,5 +15,5 @@ One line per document: what it covers and who reads it. Open the document only w
 | `superpowers/specs/2026-10-22-canary-eval-ladder-design/` | spec: the promptfoo canary evaluation ladder L0–L5 (approved) | you plan, build or run the evaluation pipeline |
 | `superpowers/plans/2026-10-22-canary-eval-ladder/` | plan: the ladder in nine slices; shared interfaces in its `README.md`, handoffs in `handoffs/` | you implement a slice of the ladder |
 | `superpowers/specs/2026-10-29-agui-chat-sessions-design.md` | spec: AG-UI chat sessions: sidebar, tags, server-side record, archive export (approved, #7) | you plan or build the CopilotKit chat's sessions or the agui archive |
-| `superpowers/plans/2026-10-29-agui-chat-sessions/` | plan: AG-UI chat sessions in three slices; shared interfaces in its `README.md`, handoffs in `handoffs/` | you implement a slice of the chat sessions |
+| `superpowers/plans/2026-10-29-agui-chat-sessions/` | plan: AG-UI chat sessions in three slices, done (all three merged); shared interfaces in its `README.md`, handoffs in `handoffs/` | you change the CopilotKit chat's sessions or the agui archive, or look for why they work as they do |
 <!-- Add one row per spec and plan as they merge, with where its Inputs for / handoffs are. -->

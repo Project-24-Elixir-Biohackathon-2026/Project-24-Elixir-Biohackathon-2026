@@ -7,13 +7,15 @@ The model runs one `run_command` per turn and then answers; a message containing
 "fail" makes the model raise, so the run ends in RUN_ERROR; a message containing
 "slow" streams its answer in SLOW_STEPS chunks, SLOW_STEP_SECONDS apart (about 10 s),
 for stopping, closing or archiving a run in progress. The run log goes to a
-temporary directory.
+temporary directory, or to --run-log PATH; --key defaults to $SPE_AGENT_API_KEY, so
+the key need not sit in argv.
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
 import json
+import os
 import tempfile
 from pathlib import Path
 
@@ -70,23 +72,28 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--port", type=int, default=18100)
     ap.add_argument("--host", default="127.0.0.1")
-    ap.add_argument("--key", required=True, help="bearer key clients must send")
+    ap.add_argument("--key", default=os.environ.get("SPE_AGENT_API_KEY"),
+                    help="bearer key clients must send (default: $SPE_AGENT_API_KEY)")
+    ap.add_argument("--run-log", type=Path, help="run log path (default: in a temporary directory)")
     args = ap.parse_args()
+    if not args.key:
+        ap.error("--key or SPE_AGENT_API_KEY is required")
     tmp = Path(tempfile.mkdtemp(prefix="fake-agent-"))
+    run_log = args.run_log or tmp / "runs.jsonl"
     (tmp / "prompt.txt").write_text("You are a scripted test agent.")
     config = Config.model_validate({
         # Placeholder only: the scripted model replaces it and no LLM is called.
         "model": {"provider": "anthropic", "name": "claude-haiku-5-5"},
         "prompt": {"file": str(tmp / "prompt.txt")},
         "tools": {"sandbox_url": "http://sandbox:8000"},
-        "run_log": str(tmp / "runs.jsonl"),
+        "run_log": str(run_log),
     })
     secrets = Secrets(agent_api_key=args.key, sandbox_api_key="fake-sandbox-key", llm_api_key="no-llm")
     client = SandboxClient("http://sandbox:8000", "fake-sandbox-key",
                            http=httpx.AsyncClient(transport=httpx.MockTransport(fake_sandbox)))
     app = create_app(config, secrets, model_override=FunctionModel(stream_function=scripted), sandbox_client=client,
                      retry_delay=0.1)
-    print(f"fake agent on http://{args.host}:{args.port}/agent, run log {tmp / 'runs.jsonl'}", flush=True)
+    print(f"fake agent on http://{args.host}:{args.port}/agent, run log {run_log}", flush=True)
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 
 

@@ -17,9 +17,9 @@ import type { RunEntry, SessionRecord } from "./sessions.ts";
 import { startTestAgent } from "./test-agent.ts";
 import type { TestAgent } from "./test-agent.ts";
 
-async function setup(delayMs = 0) {
+async function setup(delayMs = 0, headerDelayMs = 0) {
   const store = new SessionStore(await fs.mkdtemp(path.join(os.tmpdir(), "recorder-")));
-  const server = await startTestAgent(delayMs);
+  const server = await startTestAgent(delayMs, headerDelayMs);
   const recorder = new SessionRecorder(() => store);
   // As the CopilotKit route builds `spe`: the recorder's fetch lets it close the agent request.
   return { store, server, recorder, agent: () => new HttpAgent({ url: server.url, fetch: recorder.fetch }) };
@@ -168,6 +168,31 @@ test("the stop button (abortRun, RUN_ERROR code abort): cancelled", async () => 
         if (event.type === EventType.TEXT_MESSAGE_CONTENT) clone.abortRun();
       },
     }).catch(() => {});
+    await settled(id);
+    const [, run] = await onlyRun(store, id);
+    assert.equal(run.status, "cancelled");
+  } finally {
+    await server.close();
+  }
+});
+
+test("the stop button before the agent's response headers arrive (a raw AbortError): cancelled", async () => {
+  // @ag-ui/client 1.0.2 only converts an aborted fetch into RUN_ERROR{code:"abort"} inside its SSE
+  // parser, which subscribes after the HEADERS frame; an abort before that reaches the recorder's
+  // stream as a plain AbortError through its `error:` callback, not as a next()+complete(). The
+  // agent's response headers are held back here so the abort below lands well before them.
+  const { store, server, recorder } = await setup(0, 300);
+  try {
+    const id = randomUUID();
+    const base = new HttpAgent({ url: server.url, fetch: recorder.fetch });
+    base.use(recorder);
+    const clone = base.clone(); // as the runtime does per request
+    clone.threadId = id;
+    clone.setMessages(input(id, "hang before headers").messages);
+    const running = clone.runAgent({ runId: randomUUID() }).catch(() => {});
+    await requestsReach(server, 1); // the fetch reached the agent; its headers are still 300ms away
+    clone.abortRun();
+    await running;
     await settled(id);
     const [, run] = await onlyRun(store, id);
     assert.equal(run.status, "cancelled");

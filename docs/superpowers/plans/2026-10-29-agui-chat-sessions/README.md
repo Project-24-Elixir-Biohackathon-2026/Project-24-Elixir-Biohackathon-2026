@@ -168,7 +168,7 @@ N = 3. Sequential: slice n+1 starts from `main` after slice n merged. The user m
 |---|---|---|---|---|---|---|---|
 | 1/3 | `impl/agui-chat-sessions-1-store` | 5 | store, recorder, session API, volume, image, slow fake run; no visible change | ~950 | `npm test`; `node scripts/check-built-server.mjs`; `docker build` | [slice-1-store.md](slice-1-store.md) | merged #9 |
 | 2/3 | `impl/agui-chat-sessions-2-sidebar` | 5 | **early output**: sidebar list, open, New chat, URL, row menu; archive export and writer; docs | ~1,070 | Playwright run (three sessions) with screenshots; `archive.yml` run directory; pytest | [slice-2-sidebar.md](slice-2-sidebar.md) | merged #10 |
-| 3/3 | `impl/agui-chat-sessions-3-complete` | 5 | search, tag filter, groups, *Show hidden*, header, disabled controls, reconciliation; instance checks; dev-VM archive checks; paid check | ~700 | full Playwright run; `verify.yml`; four `archive.yml` runs | [slice-3-complete.md](slice-3-complete.md) | planned |
+| 3/3 | `impl/agui-chat-sessions-3-complete` | 6 | search, tag filter, groups, *Show hidden*, header, disabled controls, reconciliation; instance checks; dev-VM archive checks; paid check; action buttons disabled until the page is ready | ~700 | full Playwright run; `verify.yml`; four `archive.yml` runs | [slice-3-complete.md](slice-3-complete.md) | merged #11 |
 
 The early output (spec, *Early output*) is slice 2: it needs slice 1's store and recorder, and nothing that
 depends on decisions 9 and 12 comes before it. Its PR body carries the screenshots and the run directory's

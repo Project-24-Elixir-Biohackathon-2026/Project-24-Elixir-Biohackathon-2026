@@ -100,6 +100,8 @@ async function startSlowRun(threadId, keepReading) {
     void (async () => { try { for (;;) { const { done } = await reader.read(); if (done) return; } } catch { /* server gone */ } })();
   } else {
     controller.abort();
+    // Margin for the server to see this connection close before stopAndTime() sends SIGTERM, so
+    // this phase tests a run already detached from its client, not one still racing the abort.
     await sleep(300);
   }
 }

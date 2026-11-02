@@ -1,5 +1,6 @@
 "use client";
-// The sessions sidebar: New chat, the list (pinned first, then newest) and each row's menu.
+// The sessions sidebar: New chat, the title search (with `tag:` terms), the list the search shows
+// (pinned first, then Today / Yesterday / Previous 7 days / Older), each row's menu, and Show hidden.
 // Titles and tags are model or participant text: rendered as React text only, never as HTML.
 //
 // One owner for what a row is doing: `Sidebar` holds which row has its menu, rename, tag editor or
@@ -8,14 +9,16 @@
 // closes on a press outside it, Escape or a choice, and gives focus back to its ⋯; a rename is saved
 // by Enter or a press outside the row and cancelled by Escape; a tag typed but not added is dropped.
 import { useEffect, useRef, useState } from "react";
-import type { KeyboardEvent, MouseEvent } from "react";
+import type { MouseEvent } from "react";
 import { removeSession, renamePatch, tagSuggestions, updateSession, withTag, withoutTag } from "../lib/client.ts";
-import { menuIndex } from "../lib/menu.ts";
 import type { MetaPatch, SessionMeta } from "../lib/sessions.ts";
+import { filterSessions, sections } from "../lib/sidebar-view.ts";
+import type { ViewFilter } from "../lib/sidebar-view.ts";
 import { DeleteDialog } from "./delete-dialog";
-import { Ellipsis, Eye, EyeSlash, PencilSquare, Pencil, Pin, PinSlash, SidebarToggle, Tag, Trash } from "./icons";
-import { composing } from "./keys.ts";
+import { Ellipsis, PencilSquare, SidebarToggle } from "./icons";
 import { Popover } from "./popover";
+import { RenameInput, RowMenu } from "./row-menu";
+import { HiddenToggle, SearchBox } from "./session-filters";
 import { TagEditor } from "./tag-editor";
 
 type SidebarProps = {
@@ -27,6 +30,14 @@ type SidebarProps = {
   onChanged: () => Promise<unknown>; // resolves once the list is fetched again
   onDeleted: (id: string) => void;
   onError: (message: string) => void;
+  /** A run is in progress: switching session, New chat and the open session's Delete are disabled. */
+  running: boolean;
+  /** False until the page is safe to click: hydrated, the agent ready, and the page's own
+   *  first-load `startNew()`/`open()` has actually run (not just become due). Every button here
+   *  starts an action, so each stays disabled until then rather than risk a click landing before
+   *  its handler is attached, before the agent can run anything, or in the sub-frame window
+   *  between the agent becoming ready and that first-load effect running. */
+  ready: boolean;
 };
 
 // What the one busy row is doing. `keyboard`: the menu was opened from the keyboard, so its first
@@ -40,7 +51,7 @@ type Busy =
 const errorText = (e: unknown, fallback: string) => (e instanceof Error && e.message ? e.message : fallback);
 
 
-export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChanged, onDeleted, onError }: SidebarProps) {
+export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChanged, onDeleted, onError, running, ready }: SidebarProps) {
   const [busy, setBusy] = useState<Busy | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const triggers = useRef(new Map<string, HTMLButtonElement>());
@@ -49,7 +60,11 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
   // the whole tag list, so a second add or remove before then (ignored) would start from the
   // list without the first change and undo it.
   const savingTag = useRef<string | null>(null);
-  const busySession = busy ? sessions.find((s) => s.id === busy.id) : undefined;
+  const [filter, setFilter] = useState<ViewFilter>({ query: "", showHidden: false });
+  // `sessions` is every session the server lists; the filter decides which rows show.
+  const visible = filterSessions(sessions, filter);
+  const shown = sections(visible, new Date());
+  const busySession = busy ? visible.find((s) => s.id === busy.id) : undefined;
   const suggestions = busy?.mode === "tags" && busy.suggest && busySession
     ? tagSuggestions(knownTags, busySession.tags, busy.draft)
     : [];
@@ -185,7 +200,7 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
         <button type="button" className="spe-icon-button" aria-label="Show sessions" title="Show sessions"
           onClick={() => setCollapsed(false)}><SidebarToggle /></button>
         <button type="button" className="spe-icon-button" aria-label="New chat" title="New chat"
-          onClick={newChat}><PencilSquare /></button>
+          disabled={running || !ready} onClick={newChat}><PencilSquare /></button>
       </nav>
     );
   }
@@ -195,10 +210,11 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
     const popoverOpen = mine?.mode === "menu" || mine?.mode === "tags";
     const classes = ["spe-row"];
     if (s.id === activeId) classes.push("spe-row-active");
+    if (s.hidden) classes.push("spe-row-hidden");
     if (popoverOpen) classes.push("spe-row-menu-open");
     if (mine?.mode === "rename") classes.push("spe-row-renaming");
     return (
-      <li key={s.id} className={classes.join(" ")}>
+      <li key={s.id} className={classes.join(" ")} data-session-id={s.id}>
         {mine?.mode === "rename" ? (
           <RenameInput
             value={mine.draft}
@@ -208,7 +224,7 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
           />
         ) : (
           <button type="button" className="spe-row-open" aria-current={s.id === activeId ? "page" : undefined}
-            onClick={() => { end(); onOpen(s.id); }} onDoubleClick={() => startRename(s)}>
+            disabled={running || !ready} onClick={() => { end(); onOpen(s.id); }} onDoubleClick={() => startRename(s)}>
             {/* The Pinned section shows it; this tells a screen reader too. */}
             {s.pinned && <span className="spe-pin spe-sr-only">Pinned: </span>}
             <span className="spe-row-title">{s.title}</span>
@@ -221,6 +237,7 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
           aria-label={`Menu for ${s.title}`}
           aria-haspopup="menu"
           aria-expanded={popoverOpen}
+          disabled={!ready}
           aria-disabled={mine?.mode === "rename" || undefined}
           tabIndex={mine?.mode === "rename" ? -1 : undefined}
           onClick={(e) => toggleMenu(s.id, e)}
@@ -228,10 +245,6 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
       </li>
     );
   };
-  // `sessions` comes ordered, pinned first.
-  const pinned = sessions.filter((s) => s.pinned);
-  const others = sessions.filter((s) => !s.pinned);
-
   return (
     <nav className="spe-sidebar" aria-label="Sessions">
       <div className="spe-sidebar-top">
@@ -240,25 +253,22 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
           onClick={() => { end(); setCollapsed(true); }}><SidebarToggle /></button>
       </div>
       <div className="spe-sidebar-actions">
-        <button type="button" className="spe-new" onClick={newChat}><PencilSquare />New chat</button>
-        {/* Title search goes here. */}
+        <button type="button" className="spe-new" disabled={running || !ready} onClick={newChat}><PencilSquare />New chat</button>
+        <SearchBox query={filter.query} knownTags={knownTags} onChange={(query) => setFilter({ ...filter, query })} />
       </div>
       <div className="spe-sidebar-list">
-        {pinned.length > 0 && (
-          <>
-            <h2 className="spe-section" id="spe-section-pinned">Pinned</h2>
-            <ul className="spe-list" aria-labelledby="spe-section-pinned">{pinned.map(row)}</ul>
-          </>
+        {shown.map((section, i) => (
+          <section key={section.label} className="spe-group" data-group={section.label}
+            aria-labelledby={`spe-section-${i}`}>
+            <h2 className="spe-section" id={`spe-section-${i}`}>{section.label}</h2>
+            <ul className="spe-list">{section.sessions.map(row)}</ul>
+          </section>
+        ))}
+        {shown.length === 0 && (
+          <p className="spe-empty">{sessions.length === 0 ? "No sessions yet." : "No session matches."}</p>
         )}
-        {pinned.length > 0 && others.length > 0 && <h2 className="spe-section" id="spe-section-chats">Chats</h2>}
-        {others.length > 0 && (
-          <ul className="spe-list" aria-labelledby={pinned.length > 0 ? "spe-section-chats" : undefined}>
-            {others.map(row)}
-          </ul>
-        )}
-        {sessions.length === 0 && <p className="spe-empty">No sessions yet.</p>}
       </div>
-      <p className="spe-note">Deleted sessions are kept in the run archive.</p>
+      <HiddenToggle showHidden={filter.showHidden} onChange={(showHidden) => { end(); setFilter({ ...filter, showHidden }); }} />
 
       {busySession && busy?.mode === "menu" && (
         <Popover anchor={triggers.current.get(busy.id)} box={popover} key={`menu-${busy.id}`}>
@@ -270,6 +280,7 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
             onTags={() => setBusy({ id: busySession.id, mode: "tags", draft: "", suggest: false, error: null })}
             onHide={() => choose(busySession, { hidden: !busySession.hidden })}
             onDelete={() => setBusy({ id: busySession.id, mode: "delete" })}
+            deleteDisabled={running && busySession.id === activeId}
           />
         </Popover>
       )}
@@ -293,71 +304,5 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
         />
       )}
     </nav>
-  );
-}
-
-type RowMenuProps = {
-  session: SessionMeta;
-  keyboard: boolean;
-  onRename: () => void;
-  onPin: () => void;
-  onTags: () => void;
-  onHide: () => void;
-  onDelete: () => void;
-};
-
-function RowMenu({ session, keyboard, onRename, onPin, onTags, onHide, onDelete }: RowMenuProps) {
-  const menu = useRef<HTMLDivElement>(null);
-  const items = () => [...(menu.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
-  // From the keyboard the first item takes focus; from a click the menu itself, so arrows work.
-  useEffect(() => {
-    if (keyboard) items()[0]?.focus();
-    else menu.current?.focus();
-  }, [keyboard]);
-  const onKeyDown = (e: KeyboardEvent) => {
-    const list = items();
-    const next = menuIndex(e.key, list.indexOf(document.activeElement as HTMLElement), list.length);
-    if (next === null) return;
-    e.preventDefault();
-    list[next].focus();
-  };
-  return (
-    <div className="spe-menu" role="menu" aria-label={`Menu for ${session.title}`} tabIndex={-1} ref={menu} onKeyDown={onKeyDown}>
-      <button type="button" role="menuitem" onClick={onRename}><Pencil />Rename</button>
-      <button type="button" role="menuitem" onClick={onPin}>
-        {session.pinned ? <><PinSlash />Unpin</> : <><Pin />Pin</>}
-      </button>
-      <button type="button" role="menuitem" onClick={onTags}><Tag />Tags</button>
-      <button type="button" role="menuitem" onClick={onHide}>
-        {session.hidden ? <><Eye />Unhide</> : <><EyeSlash />Hide</>}
-      </button>
-      <div role="separator" className="spe-menu-separator" />
-      <button type="button" role="menuitem" className="spe-menu-danger" onClick={onDelete}><Trash />Delete</button>
-    </div>
-  );
-}
-
-// Replaces the row's title in place, focused with the text selected.
-function RenameInput({ value, onChange, onSave, onCancel }:
-  { value: string; onChange: (v: string) => void; onSave: () => void; onCancel: () => void }) {
-  const input = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    input.current?.focus();
-    input.current?.select();
-  }, []);
-  return (
-    <input
-      ref={input}
-      className="spe-rename"
-      aria-label="Session title"
-      maxLength={200}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      onKeyDown={(e) => {
-        if (composing(e)) return;
-        if (e.key === "Enter") { e.preventDefault(); onSave(); }
-        if (e.key === "Escape") { e.preventDefault(); onCancel(); }
-      }}
-    />
   );
 }

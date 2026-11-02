@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ApiError, fetchSession, fetchSessions, listOrder, removeSession, tagSuggestions, updateSession } from "./client.ts";
+import { ApiError, fetchSession, fetchSessions, removeSession, tagSuggestions, updateSession } from "./client.ts";
 import type { Fetch } from "./client.ts";
 import type { SessionMeta } from "./sessions.ts";
 
@@ -39,16 +39,6 @@ test("removeSession: 204 resolves, 404 rejects; fetchSessions returns the list",
   await removeSession(ID, fake(204, null));
   await assert.rejects(removeSession(ID, fake(404, { error: "not found" })), ApiError);
   assert.deepEqual(await fetchSessions(fake(200, [meta(ID, "t")])), [meta(ID, "t")]);
-});
-
-test("listOrder: hidden out, pinned first, then newest first", () => {
-  const rows = listOrder([
-    meta("old", "2026-10-29T08:00:00.000Z"),
-    meta("hid", "2026-10-29T12:00:00.000Z", { hidden: true }),
-    meta("new", "2026-10-29T11:00:00.000Z"),
-    meta("pin", "2026-10-28T09:00:00.000Z", { pinned: true }),
-  ]);
-  assert.deepEqual(rows.map((r) => r.id), ["pin", "new", "old"]);
 });
 
 test("row menu patches: rename, add and remove a tag", async () => {

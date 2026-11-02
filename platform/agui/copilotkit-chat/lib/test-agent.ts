@@ -7,6 +7,8 @@
 //   a body that is not JSON: HTTP 400, not kept in `requests`
 //   anything else: a text message echoing it, then RUN_FINISHED (after `delayMs`, default 0)
 // Each request is kept in `requests`; `closed` turns true when its connection closes.
+// `headerDelayMs`: wait this long after the request is parsed, before writing any response (status
+// line included) — for a test that must abort before the agent's response headers arrive.
 import { createServer } from "node:http";
 import type { IncomingMessage, Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -17,7 +19,7 @@ export type TestAgent = {
   close: () => Promise<void>;
 };
 
-export async function startTestAgent(delayMs = 0): Promise<TestAgent> {
+export async function startTestAgent(delayMs = 0, headerDelayMs = 0): Promise<TestAgent> {
   const requests: TestAgent["requests"] = [];
   const server: Server = createServer((req, res) => {
     let raw = "";
@@ -35,6 +37,8 @@ export async function startTestAgent(delayMs = 0): Promise<TestAgent> {
       requests.push(entry);
       const users = (body.messages ?? []).filter((m: any) => m.role === "user");
       const text = String(users.at(-1)?.content ?? "");
+      if (headerDelayMs) await new Promise((r) => setTimeout(r, headerDelayMs));
+      if (res.destroyed || res.writableEnded) return; // the client (e.g. an abort) already closed this
       if (text.includes("boom")) {
         res.writeHead(500, { "content-type": "application/json" }).end('{"detail":"agent down"}');
         return;

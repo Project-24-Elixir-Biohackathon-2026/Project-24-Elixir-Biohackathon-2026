@@ -147,7 +147,10 @@ test("a new session is absent from the list until a run on it ends", async () =>
     agent.threadId = id;
     agent.setMessages([{ id: randomUUID(), role: "user", content: "new chat" } as Message]);
     const run = agent.runAgent({ runId: randomUUID() });
-    while (server.requests.length === 0) await new Promise((r) => setTimeout(r, 5));
+    // A deadline, so a stuck case fails clearly instead of hanging.
+    const deadline = Date.now() + 5000;
+    while (server.requests.length === 0 && Date.now() < deadline) await new Promise((r) => setTimeout(r, 5));
+    assert.ok(server.requests.length > 0, "the agent got no request within 5 s");
     assert.deepEqual(await (await listSessions(store)).json(), []);
     assert.equal((await getSession(store, id)).status, 404);
     await run;

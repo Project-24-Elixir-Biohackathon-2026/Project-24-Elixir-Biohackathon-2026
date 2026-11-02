@@ -27,7 +27,7 @@ copies every session and the agent's run log into the run directory, rendered li
 | 1 | One JSON file per session, `/data/sessions/<uuid>.json` on volume `chat-sessions`, schema `version: 1`; the image creates `/data/sessions` owned by `node`, so a fresh volume starts writable; root filesystem stays read-only | [Storage](#1-storage-and-the-session-record) | `npm test`: a recorded run produces a file that validates against the schema; `docker build` of the image succeeds and, with a freshly created volume and the compose hardening, a first run is saved; `docker inspect` on an instance: `chat-ui` has `ReadonlyRootfs: true`, exactly one volume mount (`/data`) and tmpfs exactly `/tmp` and `/app/.next/cache` |
 | 2 | Session ids are canonical UUIDs; nothing else ever names a file | [Storage](#1-storage-and-the-session-record) | `npm test`: ids like `../x`, `a/b`, upper-case or non-v4 strings get 400 from every route and a refused run from the recorder; no file is created |
 | 3 | Writes are atomic (temp file + rename in the same directory) and serialised per session by one process-wide queue that every route bundle shares | [Storage](#1-storage-and-the-session-record) | `npm test`: a write interrupted before the rename leaves the previous file intact; 20 concurrent metadata updates to one session all land; against the built standalone server, `PATCH`es overlapping a run's finalisation all land and the run's messages too |
-| 4 | The conversation is recorded by the server from the run stream, once per run, whatever its outcome; at most one run per session at a time; finalisation merges into the latest record | [Recording](#2-recording-and-the-session-api) | `npm test` with scripted event sequences: finished, `RUN_ERROR`, agent HTTP error before streaming, stream error, EOF without a terminal event, the stop button (`RUN_ERROR` with `code: "abort"`), unsubscription before a terminal event, and terminal event followed by unsubscription each leave `messages` and exactly one `runs[]` entry with the status of §2's table; a second run on a running session is refused and never reaches the agent; `DELETE` or `PATCH {title}` during a run survive its finalisation; end-to-end against `fake_agent.py`: closing the tab mid-run leaves the whole run on disk, status `completed` |
+| 4 | The conversation is recorded by the server from the run stream, once per run, whatever its outcome; at most one run per session at a time; finalisation merges into the latest record | [Recording](#2-recording-and-the-session-api) | `npm test` with scripted event sequences: finished, `RUN_ERROR`, agent HTTP error before streaming, stream error, EOF without a terminal event, the stop button (`RUN_ERROR` with `code: "abort"` once the agent's response headers have arrived, or a raw `AbortError` before them: clarification 1), unsubscription before a terminal event, and terminal event followed by unsubscription each leave `messages` and exactly one `runs[]` entry with the status of §2's table; a second run on a running session is refused and never reaches the agent; `DELETE` or `PATCH {title}` during a run survive its finalisation; end-to-end against `fake_agent.py`: closing the tab mid-run leaves the whole run on disk, status `completed` |
 | 5 | The browser changes metadata only, through `/api/sessions` (`GET` list, `GET`/`PATCH`/`DELETE` one); no `POST`: a session exists once its first run is recorded | [Recording](#2-recording-and-the-session-api) | `npm test`: `PATCH` with `messages`, `runs`, `id` or any unknown key gets 400 and changes nothing; a new UUID is absent from `GET /api/sessions` until a run on it ends |
 | 6 | Delete is a soft delete: `deleted_at` set, the session gone from every API answer and refused for new runs, the file kept and archived; a run already in progress is not cancelled and is recorded into the deleted file | [Recording](#2-recording-and-the-session-api) | `npm test`: after `DELETE`, list omits it, `GET`/`PATCH`/`DELETE` give 404, a run on its id ends with `RUN_ERROR` and does not reach the agent; the file still exists with `deleted_at` |
 | 7 | Titles start as the first user message cut to 60 characters and are never overwritten once the user renames | [Storage](#1-storage-and-the-session-record) | `npm test`: auto title after the first run; after `PATCH {title}` (`title_source: "user"`) a later run leaves it unchanged |
@@ -155,8 +155,9 @@ For each run:
    | Termination | `status` |
    |---|---|
    | `RUN_FINISHED` | `completed` |
-   | `RUN_ERROR` with `code: "abort"` (the stop button: the runner's `stop` aborts the agent's request) | `cancelled` |
-   | any other `RUN_ERROR`, or the stream errors (including an HTTP error from the agent before any event) | `failed` |
+   | `RUN_ERROR` with `code: "abort"` (the stop button, once the agent's response headers have arrived) | `cancelled` |
+   | the stream errors with a raw `AbortError` (the stop button, before the agent's response headers arrive: clarification 1) | `cancelled` |
+   | any other `RUN_ERROR`, or the stream errors with any other error (including an HTTP error from the agent before any event) | `failed` |
    | the stream completes without a terminal event | `failed` |
    | unsubscribed before a terminal event | `cancelled` |
 
@@ -231,9 +232,11 @@ Plain React and CSS in `app/` (no new dependencies); all session data is rendere
   This is a convenience: the server's one-run-per-session admission (§2) is what keeps two tabs from
   overwriting each other.
 - **Refresh:** the list is fetched on load, after each run ends and after each metadata change; no polling.
-  A run that ends with a terminal event, the stop button's included (clarification 1: it aborts the
-  agent's request, and the recorder records `RUN_ERROR` `code: "abort"`), is saved before that event
-  reaches the browser, so the fetch after it finds the run, or the `spe.session_save_failed` event has
+  A run that ends with a terminal event or a stream error — the stop button's included, as `RUN_ERROR`
+  `code: "abort"` once the agent's response headers have arrived, or, on a stop clicked earlier, as a raw
+  `AbortError` on the stream's own error path (clarification 1); either way `cancelled` — is saved before
+  that event is passed on to the browser, so the fetch after it finds the run, or the
+  `spe.session_save_failed` event has
   already said it was not saved. Only a run whose stream to the browser ends early (the connection dropped
   while the detached run goes on, §2) is saved after the browser's run has ended, and so can land after that
   fetch: after a
@@ -416,12 +419,26 @@ The same slice rewrites every current text that says the AG-UI chat is not archi
 
 ## Clarifications
 
-1. **The stop button arrives as `RUN_ERROR` with `code: "abort"` and is recorded `cancelled`** (2026-10-30;
-   slice 1/3). The runner's `stop` calls `HttpAgent.abortRun()`, which aborts the agent's request; the HTTP
-   transform of `@ag-ui/client` 1.0.2 turns the `AbortError` into a `RUN_ERROR` event with `code: "abort"` and
-   ends the stream, rather than the client unsubscribing. Unsubscription before a terminal event stays
-   `cancelled`. *Reason:* read in `@ag-ui/client` 1.0.2 and pinned by `lib/clone.test.ts`. *Amends:* §2
-   (termination table), decision 4, §3 *Refresh* (which run can be saved after the fetch). *Status:* folded.
+1. **The stop button arrives as `RUN_ERROR` with `code: "abort"`, or a raw `AbortError` before the agent's
+   response headers, and either way is recorded `cancelled`** (2026-10-30, amended 2026-11-02; slice 1/3,
+   then slice 3/3's header task). The runner's `stop` calls `HttpAgent.abortRun()`, which aborts the agent's
+   request. `@ag-ui/client` 1.0.2's HTTP transform converts the resulting `AbortError` into a `RUN_ERROR`
+   event with `code: "abort"` only inside its SSE parser, which subscribes once the HEADERS frame has
+   arrived (read from the package's minified bundle, `dist/index.mjs`: the outer byte-stream subscription's
+   own `error:` handler passes anything through unconverted until a HEADERS frame has been seen); a stop
+   clicked earlier — during admission, or after the request was sent but before the agent's response headers
+   arrive — surfaces instead as the fetch's own raw `AbortError`, reaching the recorder's stream through its
+   `error:` callback (never as a `RUN_ERROR` next() event). `lib/recorder.ts`'s `isAbort()` tells this apart
+   from an actual failure (a dropped connection, a malformed frame) by `error.name === "AbortError"`, the one
+   name the Fetch/DOM spec gives this case and nothing else in the chain produces; the Fetch/DOM spec gives a
+   *timeout* its own different name (`TimeoutError`, from `AbortSignal.timeout()`), and neither
+   `@ag-ui/client` 1.0.2 nor this project's fetch calls use one, so there is no name clash to confuse a stop
+   with. Unsubscription before a terminal event stays `cancelled`, as before. *Reason:* read in
+   `@ag-ui/client` 1.0.2 and pinned by `lib/clone.test.ts` (post-headers) and `lib/recorder.test.ts`
+   (pre-headers, with `lib/test-agent.ts`'s `headerDelayMs`); the pre-headers gap was found by
+   `platform/dev/e2e/sessions.py`'s `check_stop` recording `failed` on a stop clicked very soon after the
+   sidebar showed the run as started. *Amends:* §2 (termination table), decision 4, §3 *Refresh* (which run
+   can be saved after the fetch). *Status:* folded.
 2. **The chat UI's `SIGTERM` handler replaces Next.js's** (2026-10-30; slice 2/3). The image sets
    `NEXT_MANUAL_SIG_HANDLE=true` and `lib/shutdown.ts` drains the sessions and exits by itself. *Reason:* Next.js
    16.4.1's handler (`start-server.js`) closes the HTTP server and calls `process.exit(143)`; a run whose browser has

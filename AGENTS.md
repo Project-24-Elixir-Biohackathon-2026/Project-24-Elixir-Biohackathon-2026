@@ -184,8 +184,6 @@ Each unit's PR updates its track's line; the last slice removes it.
 
 - **Canary evaluation ladder** (biohackathon 0013): spec (#1) and plan (#2) merged. **Next: slice 1/9**
   `impl/canary-eval-ladder-1-scoring`. Handoff: `ls docs/superpowers/plans/2026-10-22-canary-eval-ladder/handoffs | tail -1`.
-- **AG-UI chat sessions**: spec (#7) and plan (#8) merged. **Next: slice 3/3** `impl/agui-chat-sessions-3-complete`.
-  Handoff: `ls docs/superpowers/plans/2026-10-29-agui-chat-sessions/handoffs | tail -1`.
 - **Not scheduled**: `BACKLOG.md` holds every deferred item without a slice; its *Next*, the ones due soon or
   waiting on the user.
 
@@ -260,8 +258,9 @@ How to deploy and use it: [`docs/getting-started.md`](docs/getting-started.md).
 All 13 tasks are done, including the model-backed checks on the development VM
 (Anthropic `claude-haiku-5-5`) and on de.NBI (`qwen3.8-27b`). Merged into `main`
 on 2026-10-19 together with the Coder portal, which offers it as the `agui`
-frontend. Chat sessions (sidebar, archive) are being added by the *AG-UI chat
-sessions* track. Not done yet: a run-report equivalent in the CopilotKit chat.
+frontend. Chat sessions (sidebar, archive) were added by the *AG-UI chat
+sessions* plan (`docs/superpowers/plans/2026-10-29-agui-chat-sessions/`, done).
+Not done yet: a run-report equivalent in the CopilotKit chat.
 
 ## Development workflow
 

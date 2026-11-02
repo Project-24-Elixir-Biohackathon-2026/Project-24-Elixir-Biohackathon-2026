@@ -55,13 +55,6 @@ export async function removeSession(id: string, f?: Fetch): Promise<void> {
   if (!response.ok) throw await failure(response, "Deleting the session");
 }
 
-// The list as the sidebar shows it: hidden sessions left out, pinned first, then newest updated_at.
-export function listOrder(list: SessionMeta[]): SessionMeta[] {
-  return list
-    .filter((s) => !s.hidden)
-    .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updated_at.localeCompare(a.updated_at));
-}
-
 // The row menu's edits, as the PATCH bodies they send. The server normalises and validates tags
 // (lib/sessions.ts, normaliseTags); here only blanks and duplicates are dropped.
 export function renamePatch(input: string, current: string): MetaPatch | null {

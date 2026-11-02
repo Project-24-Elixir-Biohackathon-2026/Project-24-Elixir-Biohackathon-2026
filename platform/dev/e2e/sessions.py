@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Drive the chat UI's session sidebar in a real browser, against the scripted agent (no LLM).
 
-    python3 platform/dev/e2e/sessions.py [--shots DIR] [--sessions DIR]
+    python3 platform/dev/e2e/sessions.py [--shots DIR] [--sessions DIR] [--color-scheme light|dark]
+    python3 platform/dev/e2e/sessions.py --scenario stop --save-delay-ms 1500
+    python3 platform/dev/e2e/sessions.py --url http://127.0.0.1:3000 --compose-file F --scenario stop|slow-loop|two-turn
 
 Run `npm ci && npm run build` in platform/agui/copilotkit-chat first. The script starts
 platform/dev/fake_agent.py (with uv, in platform/agui/pydantic-ai-agent) and the standalone chat UI
@@ -22,6 +24,7 @@ import tempfile
 import time
 import urllib.request
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from playwright.sync_api import Page, expect, sync_playwright
@@ -168,6 +171,9 @@ def check_focus(r: Run, ids: dict[str, str]) -> None:
     """The row menu closes, saves and gives focus back as Open WebUI's does. Leaves the sessions as it found them."""
     page = r.page
     a, b = "List the home directory", "Read the dataset"
+    patches: list[str] = []
+    page.on("request", lambda req: patches.append(req.url)
+            if req.method == "PATCH" and req.url.endswith(f"/api/sessions/{ids['first']}") else None)
     page.goto(f"{BASE}/?session={ids['first']}")
     expect(page.get_by_text("Turn 2: the command ran.")).to_be_visible(timeout=10_000)
     menus = page.locator(".spe-menu")
@@ -293,10 +299,11 @@ def check_focus(r: Run, ids: dict[str, str]) -> None:
     page.get_by_role("button", name="Remove tag canary-probe").click()
     expect(chips).to_have_count(0, timeout=5_000)
     assert r.files()[ids["first"]]["tags"] == []
+    patches.clear()
     tag_input.fill("leftover")
     page.locator(".spe-note").click()
     expect(page.locator(".spe-popover")).to_have_count(0)
-    time.sleep(0.5)
+    assert patches == [], patches  # a tag typed but not added must never PATCH
     assert r.files()[ids["first"]]["tags"] == []
     r.menu(b, "Tags")
     page.get_by_role("button", name="Remove tag canary-probe").click()
@@ -428,36 +435,374 @@ def check_close_tab(r: Run, ids: dict[str, str]) -> None:
     r.ok("closing the tab mid-run: the whole run is on disk, completed")
 
 
+# --- search with tag: terms, date groups, Show hidden, header, a stopped run, a failed save --
+
+SAVE_FAILED = "this session could not be saved"
+
+
+def iso_days_ago(days: float) -> str:
+    return (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+
+def seed(r: Run, title: str, days_ago: float, **extra) -> str:
+    """A session file written directly (local run only): old timestamps cannot come from a run."""
+    sid = str(uuid.uuid4())
+    when = iso_days_ago(days_ago)
+    record = {"version": 1, "id": sid, "title": title, "title_source": "user", "tags": [], "pinned": False,
+              "hidden": False, "created_at": when, "updated_at": when, "deleted_at": None,
+              "messages": [], "runs": [], **extra}
+    (r.sessions / f"{sid}.json").write_text(json.dumps(record))
+    return sid
+
+
+def groups(r: Run) -> list[str]:
+    return r.page.locator(".spe-sidebar .spe-group").evaluate_all("els => els.map(e => e.dataset.group)")
+
+
+def check_view(r: Run) -> None:
+    """After check_close_tab: one pinned session updated today, one hidden, one deleted."""
+    page = r.page
+    seed(r, "Seeded yesterday", 1, tags=["alpha", "beta"])
+    seed(r, "Seeded five days ago", 5, tags=["beta"])
+    seed(r, "Seeded long ago", 40)
+    seed(r, XSS, 41)
+    page.goto(BASE + "/")
+    expect(r.row("Seeded long ago")).to_have_count(1, timeout=10_000)
+    assert groups(r) == ["Pinned", "Yesterday", "Previous 7 days", "Older"], groups(r)
+    r.shot("groups")
+    r.ok("groups: Pinned, then Yesterday, Previous 7 days, Older (no unpinned session today)")
+
+    search = page.get_by_label("Search titles")
+    search.fill("  SEEDED ")
+    expect(r.rows()).to_have_count(3)
+    search.fill("five")
+    expect(r.rows()).to_have_count(1)
+    expect(r.row("Seeded five days ago")).to_have_count(1)
+    search.fill("<img")
+    expect(r.rows()).to_have_count(1)
+    assert page.evaluate("window.__speXss") is None
+    r.shot("search")
+    search.fill("")
+    expect(r.rows()).to_have_count(5)
+    r.ok("search: case-insensitive title substring; HTML in a title is text")
+
+    options = page.locator(".spe-search-suggestions [role=option]")
+    search.fill("tag:")
+    expect(options).to_have_text(["tag:alpha", "tag:beta", "tag:dns", "tag:exfil"])
+    search.fill("tag:b")
+    expect(options).to_have_text(["tag:beta"])
+    search.press("ArrowDown")
+    search.press("Enter")
+    expect(search).to_have_value("tag:beta ")
+    expect(options).to_have_count(0)
+    expect(r.rows()).to_have_count(2)
+    search.press_sequentially("tag:")
+    expect(options).to_have_text(["tag:alpha", "tag:dns", "tag:exfil"])  # beta is named already
+    options.first.click()
+    expect(search).to_have_value("tag:beta tag:alpha ")
+    expect(r.rows()).to_have_count(1)
+    expect(r.row("Seeded yesterday")).to_have_count(1)
+    expect(r.rows().locator(".spe-chip")).to_have_count(0)  # rows show the title only
+    r.shot("tag-search")
+    search.fill("tag:beta five")
+    expect(r.rows()).to_have_count(1)
+    expect(r.row("Seeded five days ago")).to_have_count(1)
+    search.fill("tag:al")
+    expect(options).to_have_count(1)
+    search.press("Escape")
+    expect(options).to_have_count(0)
+    expect(search).to_have_value("tag:al")
+    search.fill("tag:nosuch")
+    expect(r.rows()).to_have_count(0)
+    expect(page.locator(".spe-empty")).to_have_text("No session matches.")
+    search.fill("")
+    expect(r.rows()).to_have_count(5)
+    r.ok("tag: search: typing tag: suggests the tags in use (arrows and Enter, or a click); two tag: terms must "
+         "both match; the rest filters titles; rows show no tags")
+
+    expect(r.row("Read the dataset")).to_have_count(0)
+    expect(page.get_by_text("Deleted sessions are kept in the run archive.")).to_be_visible()
+    page.get_by_label("Show hidden").check()
+    expect(r.row("Read the dataset")).to_have_count(1)
+    expect(r.row("Read the dataset")).to_have_class("spe-row spe-row-hidden")
+    r.shot("show-hidden")
+    page.get_by_label("Show hidden").uncheck()
+    expect(r.row("Read the dataset")).to_have_count(0)
+    r.ok("Show hidden: the hidden session appears only with the toggle; the deleted one never")
+
+
+def check_header(r: Run, ids: dict[str, str]) -> None:
+    """The header: the title row, renamable in place, and the rows' ⋯ menu; tags only in its tag editor."""
+    page = r.page
+    title = "List the home directory (exfil try)"
+    page.goto(f"{BASE}/?session={ids['first']}")
+    header = page.locator(".spe-header")
+    expect(header.locator(".spe-header-title")).to_have_text(title, timeout=10_000)
+    expect(header).not_to_contain_text("tool call")  # the note is the line under the composer
+    actions = header.get_by_role("button", name="Chat actions")
+    actions.click()
+    page.get_by_role("menuitem", name="Rename").click()
+    page.get_by_label("Chat title").fill("Renamed in the header")
+    page.get_by_label("Chat title").press("Enter")
+    expect(header.locator(".spe-header-title")).to_have_text("Renamed in the header", timeout=5_000)
+    expect(r.row("Renamed in the header")).to_have_count(1, timeout=5_000)
+    expect(actions).to_be_focused()
+    header.locator(".spe-header-title").dblclick()
+    page.get_by_label("Chat title").fill("Discarded title")
+    page.get_by_label("Chat title").press("Escape")
+    expect(header.locator(".spe-header-title")).to_have_text("Renamed in the header")
+
+    actions.click()
+    page.get_by_role("menuitem", name="Tags").click()
+    page.get_by_label("Add a tag").fill("Header")
+    page.get_by_label("Add a tag").press("Enter")
+    expect(page.locator(".spe-popover .spe-chip", has_text="header")).to_have_count(1, timeout=5_000)
+    page.get_by_role("button", name="Remove tag exfil").click()
+    expect(page.locator(".spe-popover .spe-chip")).to_have_count(2, timeout=5_000)
+    r.shot("header-tags")
+    page.get_by_label("Add a tag").press("Escape")
+    expect(page.locator(".spe-popover")).to_have_count(0)
+    expect(header.locator(".spe-chip")).to_have_count(0)  # the header shows no tags
+    rec = r.files()[ids["first"]]
+    assert rec["title"] == "Renamed in the header" and rec["title_source"] == "user", rec["title"]
+    assert rec["tags"] == ["dns", "header"], rec["tags"]
+    r.shot("header")
+
+    actions.click()
+    page.get_by_role("menuitem", name="Delete").click()
+    dialog = page.get_by_role("alertdialog")
+    expect(dialog).to_contain_text("Delete chat?")
+    # The dialog renders inside the header, whose z-index: 10 puts it above the chat below;
+    # this shot shows the dialog's backdrop covering the chat, not hidden behind it.
+    r.shot("header-delete")
+    page.keyboard.press("Escape")
+    expect(dialog).to_have_count(0)
+    expect(r.row("Renamed in the header")).to_have_count(1)
+    assert r.files()[ids["first"]]["deleted_at"] is None
+
+    page.reload()
+    expect(header.locator(".spe-header-title")).to_have_text("Renamed in the header", timeout=10_000)
+    expect(page.locator(".spe-tool")).to_have_count(2)
+    assert r.url_session() == ids["first"]
+    page.get_by_role("button", name="New chat").click()
+    expect(header.locator(".spe-header-title")).to_have_text("New chat")
+    expect(header.get_by_role("button", name="Chat actions")).to_have_count(0)
+    r.ok("header: rename by its menu (Enter saves) and double-click (Esc cancels), tags in the menu's tag editor, "
+         "Delete opens the same dialog above the chat (Escape cancels, keeps the file); saved to the file; "
+         "reload reopens it with its tool cards; New chat has no menu")
+
+
+def check_stop(r: Run) -> str:
+    """A slow run (fake agent: "slow" in the message) stopped from the chat: controls disabled during
+    it, enabled after; the row appears, also with the save delayed (the recorder saves before the
+    stop's RUN_ERROR reaches the browser); the file ends with a `cancelled` run. Returns the session id.
+
+    Called right after a `page.goto()` by two of its three callers (the standalone `stop` scenario,
+    local and against an instance); the third (the "all" scenario) is already well past its first
+    load. Either way, the first click below needs no hydration wait of its own: New chat is
+    `disabled` until the page is ready (hydrated, and the agent ready), so Playwright's click (which
+    waits for "enabled") is safe whether or not the page is ready yet by the time it runs.
+    """
+    page = r.page
+    title = f"slow run to stop {uuid.uuid4().hex[:8]}"
+    page.get_by_role("button", name="New chat").click()
+    box = page.get_by_test_id("copilot-chat-textarea")
+    box.fill(title)
+    box.press("Enter")
+    expect(page.get_by_role("button", name="New chat")).to_be_disabled(timeout=5_000)
+    for button in page.locator(".spe-row-open").all():
+        expect(button).to_be_disabled()
+    r.shot("during-run")
+    # A stop clicked here, however soon, is now always recorded cancelled: lib/recorder.ts's
+    # isAbort() covers both an abort after the agent's response headers (RUN_ERROR code "abort") and
+    # one before them (a raw AbortError). No wait needed before this click.
+    page.get_by_test_id("copilot-send-button").click()  # the stop button while a run is in progress
+    expect(page.get_by_role("button", name="New chat")).to_be_enabled(timeout=15_000)
+    for button in page.locator(".spe-row-open").all():
+        expect(button).to_be_enabled()
+    expect(r.row(title)).to_have_count(1, timeout=5_000)
+    assert SAVE_FAILED not in "".join(page.locator(".spe-error").all_inner_texts())
+    r.shot("after-stop")
+    until = time.time() + 15
+    while time.time() < until:
+        found = [(sid, f) for sid, f in r.files().items() if f["title"] == title]
+        if found and found[0][1]["runs"]:
+            sid, rec = found[0]
+            assert rec["runs"][-1]["status"] == "cancelled", rec["runs"]
+            r.ok("stopped run: controls disabled then enabled, recorded cancelled (row shown)")
+            return sid
+        time.sleep(0.5)
+    sys.exit(f"FAIL: no session file titled {title!r} with a run")
+
+
+def check_save_failed(r: Run) -> None:
+    """The chat UI cannot write the session (its directory made read-only for the run): the
+    server's save-failed event puts the error bar up, and the list is not fetched again and again
+    (a retrying reconciliation would fetch it 6 times). Local run only, as a normal user."""
+    if os.geteuid() == 0:
+        sys.exit("FAIL: check_save_failed needs a normal user (root writes to a read-only directory)")
+    page = r.page
+    lists: list[str] = []
+    page.on("request", lambda req: lists.append(req.url)
+            if req.method == "GET" and req.url.split("?")[0].endswith("/api/sessions") else None)
+    page.get_by_role("button", name="New chat").click()
+    expect(page.locator(".spe-header-title")).to_have_text("New chat")
+    title = f"run that cannot be saved {uuid.uuid4().hex[:8]}"
+    mode = r.sessions.stat().st_mode & 0o7777
+    r.sessions.chmod(0o500)
+    try:
+        lists.clear()
+        r.send(title, 1)
+        expect(page.locator(".spe-error")).to_contain_text(SAVE_FAILED, timeout=5_000)
+        expect(page.get_by_role("button", name="New chat")).to_be_enabled(timeout=5_000)
+        time.sleep(3.5)  # longer than five retries 500 ms apart
+        assert len(lists) <= 2, lists  # the one fetch after the run, and at most one from New chat
+    finally:
+        r.sessions.chmod(mode)
+    assert not any(f["title"] == title for f in r.files().values())
+    r.shot("save-failed")
+    r.ok("failed save: the server's event shows the error bar; the list is fetched once, not retried")
+
+
+def slow_loop(r: Run) -> None:
+    """Archive check during a run: slow runs back to back, each in a new session (a second run of
+    one thread right after the first can be refused while the server finishes it), until the chat
+    UI goes away under the archive's barrier or 12 runs have passed. Prints each run's title; the
+    last one printed is the run the barrier stopped."""
+    page = r.page
+    stamp = uuid.uuid4().hex[:8]
+    page.goto(BASE + "/")
+    for n in range(1, 13):
+        title = f"slow run {stamp}-{n}"
+        try:
+            # No hydration wait before this first click (n == 1): New chat is `disabled` until
+            # the page is ready (hydrated, and the agent ready), so the click's own wait for
+            # "enabled" covers it.
+            page.get_by_role("button", name="New chat").click(timeout=10_000)
+            box = page.get_by_test_id("copilot-chat-textarea")
+            box.fill(title)
+            box.press("Enter")
+            print(f"title {title}", flush=True)
+            expect(page.get_by_role("button", name="New chat")).to_be_enabled(timeout=60_000)
+        except Exception as e:  # the chat UI went away under the barrier
+            print(f"stopped at {title}: {type(e).__name__}", flush=True)
+            return
+        if page.locator(".spe-error").count():
+            print(f"stopped at {title}: {page.locator('.spe-error').inner_text()}", flush=True)
+            return
+
+
+def two_turn(r: Run) -> None:
+    """The paid check: two turns with the instance's real model; both runs recorded completed."""
+    page = r.page
+    page.goto(BASE + "/")
+    # No hydration wait needed before this click: New chat is `disabled` until the page is
+    # ready (hydrated, and the agent ready), so Playwright's click (which waits for "enabled")
+    # is safe either way (as in check_stop).
+    page.get_by_role("button", name="New chat").click()
+    first = "Run pwd and tell me the result in one sentence."
+    for text in (first, "Now list the files in that directory, briefly."):
+        box = page.get_by_test_id("copilot-chat-textarea")
+        box.fill(text)
+        box.press("Enter")
+        expect(page.get_by_role("button", name="New chat")).to_be_disabled(timeout=10_000)
+        expect(page.get_by_role("button", name="New chat")).to_be_enabled(timeout=120_000)
+    expect(r.row(first)).to_have_count(1, timeout=10_000)
+    r.shot("two-turn")
+    rec = next(f for f in r.files().values() if f["title"] == first)
+    assert [x["status"] for x in rec["runs"]] == ["completed", "completed"], rec["runs"]
+    r.ok(f"two turns with the real model, both completed (session {rec['id']})")
+
+
+class InstanceRun(Run):
+    """Against an instance's chat UI: the session files are read in the chat-ui container."""
+
+    def __init__(self, page: Page, compose_file: str, shots: Path | None):
+        super().__init__(page, Path("/nonexistent"), shots)
+        self.compose_file = compose_file
+
+    def files(self) -> dict[str, dict]:
+        script = ("const fs=require('fs');const d='/data/sessions';const o={};"
+                  "for(const f of fs.readdirSync(d))if(f.endsWith('.json'))"
+                  "o[f.slice(0,-5)]=JSON.parse(fs.readFileSync(d+'/'+f,'utf8'));"
+                  "process.stdout.write(JSON.stringify(o))")
+        out = subprocess.run(["docker", "compose", "-p", "spe-frontend", "-f", self.compose_file, "exec", "-T",
+                              "chat-ui", "node", "-e", script], check=True, capture_output=True, text=True)
+        return json.loads(out.stdout)
+
+
+LOCAL = ("all", "stop")
+INSTANCE = ("stop", "slow-loop", "two-turn")
+
+
 def main() -> None:
+    global BASE
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--shots", type=Path, help="write numbered screenshots here")
     ap.add_argument("--sessions", type=Path, help="sessions directory to use and keep (default: a temporary one)")
+    ap.add_argument("--scenario", default="all", choices=sorted(set(LOCAL + INSTANCE)),
+                    help="all: every check (save-failed last); stop: a stopped run whose save is delayed "
+                         "(--save-delay-ms); slow-loop, two-turn: --url only")
+    ap.add_argument("--save-delay-ms", type=int, default=0,
+                    help="SPE_SESSIONS_TEST_SAVE_DELAY_MS for the local chat UI")
+    ap.add_argument("--url", help="an instance's chat UI (e.g. http://127.0.0.1:3000) instead of local servers")
+    ap.add_argument("--compose-file", help="with --url: the instance's frontend docker-compose.yml")
+    ap.add_argument("--color-scheme", choices=["light", "dark"],
+                    help="emulate this colour scheme (for --shots; default: Playwright's own default)")
     args = ap.parse_args()
+    if args.shots:
+        args.shots.mkdir(parents=True, exist_ok=True)
+    if args.url:
+        if args.scenario not in INSTANCE or not args.compose_file:
+            sys.exit(f"FAIL: --url takes --compose-file and a scenario of {INSTANCE}")
+        BASE = args.url.rstrip("/")
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
+            page = browser.new_page(viewport={"width": 1280, "height": 800}, color_scheme=args.color_scheme)
+            r = InstanceRun(page, args.compose_file, args.shots)
+            if args.scenario == "stop":
+                page.goto(BASE + "/")
+                print(f"session {check_stop(r)}")
+            elif args.scenario == "slow-loop":
+                slow_loop(r)
+            else:
+                two_turn(r)
+            browser.close()
+        return
+    if args.scenario not in LOCAL:
+        sys.exit(f"FAIL: {args.scenario} needs --url")
     standalone = APP / ".next" / "standalone"
     if not (standalone / "server.js").exists():
         sys.exit("FAIL: run `npm ci && npm run build` in platform/agui/copilotkit-chat first")
     shutil.copytree(APP / ".next" / "static", standalone / ".next" / "static", dirs_exist_ok=True)
     data = args.sessions or Path(tempfile.mkdtemp(prefix="spe-e2e-")) / "sessions"
     data.mkdir(parents=True, exist_ok=True)
-    if args.shots:
-        args.shots.mkdir(parents=True, exist_ok=True)
     procs = [subprocess.Popen(["uv", "run", "--group", "dev", "python", "../../dev/fake_agent.py",
                                "--port", str(AGENT_PORT), "--key", KEY], cwd=AGENT_DIR)]
     try:
         wait_http(f"http://127.0.0.1:{AGENT_PORT}/healthz", "the fake agent")
         env = {**os.environ, "AGENT_URL": f"http://127.0.0.1:{AGENT_PORT}/agent", "AGENT_API_KEY": KEY,
                "PORT": str(UI_PORT), "HOSTNAME": "127.0.0.1", "SPE_SESSIONS_DIR": str(data),
-               "NEXT_MANUAL_SIG_HANDLE": "true"}
+               "NEXT_MANUAL_SIG_HANDLE": "true", "SPE_SESSIONS_TEST_SAVE_DELAY_MS": str(args.save_delay_ms)}
         procs.append(subprocess.Popen(["node", "server.js"], cwd=standalone, env=env))
         wait_http(BASE + "/api/sessions", "the chat UI")
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
-            page = browser.new_page(viewport={"width": 1280, "height": 800})
+            page = browser.new_page(viewport={"width": 1280, "height": 800}, color_scheme=args.color_scheme)
             r = Run(page, data, args.shots)
-            ids = check_list(r)
-            check_focus(r, ids)
-            check_menu(r, ids)
-            check_close_tab(r, ids)
+            if args.scenario == "all":
+                ids = check_list(r)
+                check_focus(r, ids)
+                check_menu(r, ids)
+                check_close_tab(r, ids)
+                check_view(r)
+                check_header(r, ids)
+                check_stop(r)
+                check_save_failed(r)
+            else:
+                page.goto(BASE + "/")
+                # New chat is disabled until the page is ready, so the click right after goto is safe
+                check_stop(r)
             browser.close()
         print(f"sessions: {data}")
     finally:

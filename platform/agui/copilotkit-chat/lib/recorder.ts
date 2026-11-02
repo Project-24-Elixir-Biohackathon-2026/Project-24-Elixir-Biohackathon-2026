@@ -32,12 +32,24 @@ function runIdOf(body: unknown): string | undefined {
 
 // A run's status from its terminal event: RUN_FINISHED completed; RUN_ERROR failed, or cancelled
 // when it is the stop button (HttpAgent.abortRun() turns the aborted fetch into RUN_ERROR with
-// code "abort"). A stream that errors or ends without a terminal event is failed; one the client
-// leaves first is cancelled.
+// code "abort" — but only once @ag-ui/client 1.0.2's SSE parser has subscribed, which happens
+// after the agent's response headers arrive; see isAbort() for a stop before that). A stream that
+// errors or ends without a terminal event is failed; one the client leaves first is cancelled.
 function statusOf(event: BaseEvent): RunStatus | null {
   if (event.type === EventType.RUN_FINISHED) return "completed";
   if (event.type === EventType.RUN_ERROR) return (event as { code?: string }).code === "abort" ? "cancelled" : "failed";
   return null;
+}
+
+// True for a stop clicked before the agent's response headers arrive: @ag-ui/client 1.0.2 only
+// turns an aborted fetch into RUN_ERROR{code:"abort"} inside its SSE parser (statusOf(), above),
+// which subscribes after the HEADERS frame. Before that, an abort reaches the stream's own
+// `error:` callback as the fetch's raw AbortError (never as a RUN_ERROR next() event), so it must
+// be told apart from an actual failure (a dropped connection, a timeout) by name: the Fetch/DOM
+// AbortError is the only built-in error with this name, and nothing else in this stream's chain
+// (undici's connection errors, AG-UI's own validation errors) uses it.
+function isAbort(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
 }
 
 export class SessionRecorder extends Middleware {
@@ -168,7 +180,7 @@ export class SessionRecorder extends Middleware {
             });
           },
           error: (error: unknown) => {
-            step(() => end("failed", () => out.error(error)));
+            step(() => end(isAbort(error) ? "cancelled" : "failed", () => out.error(error)));
           },
           complete: () => {
             step(() => end("failed", () => out.complete()));
