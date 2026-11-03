@@ -217,12 +217,28 @@ locals {
 }
 
 # --- agent + app --------------------------------------------------------------
+locals {
+  owner_name = contains(["", "default"], data.coder_workspace_owner.me.full_name) ? data.coder_workspace_owner.me.name : data.coder_workspace_owner.me.full_name
+}
+
 resource "coder_agent" "main" {
   os   = "linux"
   arch = "amd64"
-  # The repository clone on the VM (role repo): what the chat frontend runs from and
-  # where Coder Agents reads AGENTS.md and .agents/skills from.
-  dir = "/home/ubuntu/sperange"
+  # The home: Coder Agents reads AGENTS.md there, which role repo links to
+  # platform/instance/workspace/AGENTS.md (the workspace guide: what applies
+  # where, the hand-over). A pointer from the clone's AGENTS.md was not followed.
+  # Skills come from ~/.agents/skills. The clone is ~/sperange.
+  dir = "/home/ubuntu"
+
+  # Commits made in the clone (by Coder Agents or over the terminal) carry the
+  # workspace owner's identity: the full name from the account settings, else
+  # the username (Coder reports "default" when no full name is set).
+  env = {
+    GIT_AUTHOR_NAME     = local.owner_name
+    GIT_AUTHOR_EMAIL    = data.coder_workspace_owner.me.email
+    GIT_COMMITTER_NAME  = local.owner_name
+    GIT_COMMITTER_EMAIL = data.coder_workspace_owner.me.email
+  }
 
   display_apps {
     vscode          = false

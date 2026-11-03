@@ -1,0 +1,11 @@
+---
+# Join the collections install started by main.yml.
+- name: Ansible collections installed (started by role repo)
+  ansible.builtin.async_status:
+    jid: "{{ repo_galaxy_job.ansible_job_id }}"
+  register: repo_galaxy
+  until: repo_galaxy.finished
+  retries: 360
+  delay: 5
+  changed_when: "'Installing' in repo_galaxy.stdout | default('')"
+  when: repo_galaxy_job.ansible_job_id is defined

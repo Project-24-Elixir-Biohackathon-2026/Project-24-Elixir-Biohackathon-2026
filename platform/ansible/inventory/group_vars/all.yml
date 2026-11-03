@@ -25,6 +25,12 @@ spe_connect_via: private      # private | floating: which address the controller
 # openstack: create the VM (keypair, security group, server, floating IP).
 # existing:  configure a VM that already exists; nothing in OpenStack is touched.
 spe_provision: openstack
+# Local re-apply (spe-apply stack|all on the instance): the roles run on the VM against
+# itself, with the instance's own vars file written at creation. spe_local_apply marks
+# such a run; spe_manifest_provision keeps the manifest's provision mode (destroy.yml
+# compares it) when a local run rewrites the manifest.
+spe_local_apply: false
+spe_manifest_provision: "{{ spe_provision }}"
 spe_existing_host: null       # existing: SSH target (alias from ~/.ssh/config or address), or localhost
 spe_existing_api_ip: null     # existing: the VM's own IP; becomes spe_api_host (certificate IP SAN)
 spe_existing_ssh_key: null    # existing: private key on the controller; null lets the ssh config decide
@@ -124,8 +130,43 @@ spe_frontend_dir: "/home/{{ spe_ssh_user }}/spe-frontend"
 # pushed (uncommitted changes on the controller do not reach the instance); pass
 # -e spe_repo_ref=<branch or commit> to deploy another revision.
 spe_repo_url: https://github.com/kraatz/elixir-biohackathon-2026-test.git
+spe_repo_push_url: "{{ spe_repo_url | regex_replace('^https://github\\.com/', 'git@github.com:') }}"   # pushes over SSH with the user's Coder key
+# GitHub's SSH host keys (https://api.github.com/meta, ssh_keys), for the clone's push URL
+spe_repo_github_host_keys:
+  - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
+  - ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=
 spe_repo_ref: "{{ lookup('ansible.builtin.pipe', 'git -C ' ~ (playbook_dir | quote) ~ ' rev-parse HEAD') }}"
 spe_repo_dir: "/home/{{ spe_ssh_user }}/sperange"
+# Vars persisted on the instance for local re-apply (platform/ansible/instances/local.yml
+# in the clone, 0600): what the controller passed, plus the keys the frontend roles need.
+spe_local_vars:
+  - spe_instance
+  - spe_seed
+  - spe_samples
+  - spe_tiers
+  - spe_workflows
+  - spe_run_smoke_test
+  - spe_frontend
+  - spe_coder_owner
+  - spe_coder_owner_email
+  - spe_coder_workspace
+  - spe_canary_registry_tokens
+  - spe_canary_honeypot_files
+  - spe_canary_vcf_variants
+  - spe_canary_flag_file
+  - spe_canary_drs_metadata
+  - spe_canary_trs_descriptions
+  - spe_canary_workflow_comments
+  - spe_canary_service_info
+  - spe_denbi_api_key
+  - spe_agent_llm_key
+  - spe_agui_ui_dev
+  - spe_agent_model_provider
+  - spe_agent_model
+  - spe_agent_base_url
+  - spe_agent_allowed_models
+  - spe_webui_auth
+spe_local_vars_extra: []     # instance files add their own overrides here
 spe_frontend_webui_image: ghcr.io/open-webui/open-webui:v0.11.3
 spe_frontend_terminal_image: spe-open-terminal:0.12.4
 spe_webui_local_port: 8080          # bound to 127.0.0.1 on the VM; reach it over an SSH tunnel

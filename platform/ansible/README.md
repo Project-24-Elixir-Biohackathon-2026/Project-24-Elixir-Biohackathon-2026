@@ -15,6 +15,13 @@ The list below is for creating VMs in OpenStack.
 - Python 3 with `ansible-core`, `openstacksdk` (the venv `~/.venv-openstack`
   on spe-ga4gh-api-2 has both; `source ~/.venv-openstack/bin/activate`).
 - Collections: `ansible-galaxy collection install -r requirements.yml -p collections`.
+
+Local re-apply: on an instance, role `repo` leaves the clone with the collections
+installed and `instances/local.yml` (the vars the controller passed, the seed and
+the LLM key, 0600, git-ignored), so `spe-apply stack|all|ansible` can run this
+playbook on the VM against itself (`spe_local_apply: true`: no clone update, no
+data copy, no hand-off or verify). `spe_manifest_provision` keeps the manifest's
+provision mode for destroy.yml. See `platform/instance/README.md`.
 - `~/.config/openstack/clouds.yaml` (or `OS_CLIENT_CONFIG_FILE`) with an
   application credential for the project; cloud name `openstack`.
 - The base dataset readable at `spe_source_data_root` (default `/data-share`):

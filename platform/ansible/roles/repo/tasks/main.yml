@@ -5,11 +5,14 @@
 # directory of the Coder agent. Checked out at spe_repo_ref, by default the
 # commit the controller's checkout is at. A clone with local changes is left
 # alone and the run stops, so nobody's work in a workspace is overwritten.
+# A local re-apply (spe_local_apply) runs from the clone as it is: no clone update,
+# no vars file, no collections install; only the links below are (re)made.
 - name: Clone state
   ansible.builtin.command: git -C {{ spe_repo_dir | quote }} status --porcelain
   register: repo_status
   changed_when: false
   failed_when: false
+  when: not spe_local_apply
 
 - name: A clone with local changes is not touched
   ansible.builtin.assert:
@@ -18,6 +21,7 @@
       {{ spe_repo_dir }} has uncommitted changes; commit or stash them (or remove the
       directory) before running the playbook again.
     quiet: true
+  when: not spe_local_apply
 
 - name: Repository at {{ spe_repo_ref }}
   ansible.builtin.git:
@@ -26,6 +30,63 @@
     version: "{{ spe_repo_ref }}"
     update: true
     force: false
+  when: not spe_local_apply
+
+# --- local re-apply: the instance can run these roles against itself ----------
+- name: Instance vars for local re-apply (instances/local.yml in the clone, git-ignored)
+  ansible.builtin.copy:
+    content: |
+      # Managed by spe-ansible (role: repo). What the controller passed at creation, so
+      # `spe-apply stack|all|ansible` can run the roles on this VM. Holds the seed and
+      # the LLM key: never commit or print it (git ignores instances/*.yml).
+      {{ spe_local_values | combine({
+           'spe_local_apply': true,
+           'spe_provision': 'existing',
+           'spe_existing_host': 'localhost',
+           'spe_existing_api_ip': spe_api_host,
+           'spe_api_host': spe_api_host,
+           'spe_floating_ip': spe_floating_ip | default('', true),
+           'spe_manifest_provision': spe_manifest_provision,
+         }) | to_nice_yaml(sort_keys=false) }}
+    dest: "{{ spe_repo_dir }}/platform/ansible/instances/local.yml"
+    owner: "{{ spe_ssh_user }}"
+    group: "{{ spe_ssh_user }}"
+    mode: "0600"
+  vars:
+    spe_local_values: >-
+      {{ dict((spe_local_vars + spe_local_vars_extra)
+              | zip((spe_local_vars + spe_local_vars_extra) | map('extract', vars))) }}
+  no_log: true
+  when: not spe_local_apply
+
+- name: Ansible collections for the clone, installed in the background
+  ansible.builtin.command:
+    argv: [ansible-galaxy, collection, install, -r, requirements.yml, -p, collections]
+    chdir: "{{ spe_repo_dir }}/platform/ansible"
+  async: 1800
+  poll: 0
+  register: repo_galaxy_job
+  changed_when: false   # the join (wait.yml) reports the change
+  when: not spe_local_apply
+
+# Pushes go over SSH with the key Coder gives every user (the agent sets
+# GIT_SSH_COMMAND to `coder gitssh`); fetches stay anonymous over https. The
+# person adds that public key to their GitHub account once; until then a push
+# fails at once with the key to add, instead of waiting for an OAuth login.
+- name: GitHub host keys known (so the first push does not fail on them)
+  ansible.builtin.known_hosts:
+    name: github.com
+    key: "github.com {{ item }}"
+    path: "/home/{{ spe_ssh_user }}/.ssh/known_hosts"
+  loop: "{{ spe_repo_github_host_keys }}"
+  loop_control:
+    label: "{{ item.split(' ')[0] }}"
+
+- name: Push URL of origin over SSH
+  ansible.builtin.command:
+    argv: [git, -C, "{{ spe_repo_dir }}", remote, set-url, --push, origin, "{{ spe_repo_push_url }}"]
+  register: repo_push_url
+  changed_when: false
 
 - name: spe-apply on the PATH (a link into the clone, so edits to it are live)
   ansible.builtin.file:

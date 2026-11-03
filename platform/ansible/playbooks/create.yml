@@ -24,6 +24,10 @@
 # the background; the data copy and the seeding run meanwhile; every consumer
 # joins the job it needs right before it needs it (the *_from: wait tasks).
 # Each tag still selects one stage for a re-run against an existing instance.
+# On the instance itself, `spe-apply stack|all|ansible` runs this playbook with
+# the vars file role repo wrote at creation (spe_local_apply: true): no clone, no
+# data copy, no hand-off; the stack, registrations and frontend roles re-apply the
+# clone's current state.
 - name: Configure the API instance
   hosts: spe_api
   gather_facts: false
@@ -59,7 +63,7 @@
           vars:
             spe_preflight_cfg:
               instance: "{{ spe_instance }}"
-              provision: "{{ spe_provision }}"
+              provision: "{{ spe_manifest_provision }}"
               marker: /etc/spe-instance
               manifest: /etc/spe-instance.json
               paths:
@@ -180,3 +184,10 @@
       ansible.builtin.import_role:
         name: verify
       tags: [verify]
+
+    - name: Local re-apply tooling ready (collections installed in the background)
+      ansible.builtin.import_role:
+        name: repo
+        tasks_from: wait
+      tags: [frontend]
+      when: not spe_local_apply
