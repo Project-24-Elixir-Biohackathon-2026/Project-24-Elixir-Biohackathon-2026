@@ -273,13 +273,15 @@ resource "coder_app" "chat" {
 # Rebuild: applies the clone to the running frontend (spe-apply: build the images
 # that changed, recreate the containers, wait for health) in a web terminal.
 # Edits to the runbook, the prompt and the agent's source are live without it;
-# see platform/instance/workspace/AGENTS.md.
+# see platform/instance/workspace/AGENTS.md. The web terminal reconnects when
+# its process ends and a reconnect runs the command again, so a bare command
+# would rebuild in a loop: the command ends in a shell instead.
 resource "coder_app" "rebuild" {
   agent_id     = coder_agent.main.id
   slug         = "rebuild"
   display_name = "Rebuild"
   icon         = "/icon/docker.svg"
-  command      = "spe-apply"
+  command      = "spe-apply; echo; echo '== Rebuild finished. Close this tab, or use this shell.'; exec bash -l"
 }
 
 # --- the instance (Ansible) ----------------------------------------------------
