@@ -89,9 +89,9 @@ reached from the repository's `AGENTS.md`, which it reads at the start of every 
    next start.
 
 Commits in the clone carry the workspace owner's name and email (set by the
-template). Pushing needs GitHub access in the workspace: see "GitHub access from
-workspaces" under step 7. The VM is destroyed when the workspace stops; only what
-is pushed survives.
+template), and pushes use the owner's Coder git key over SSH: see "GitHub access
+from workspaces" under step 7. The VM is destroyed when the workspace stops; only
+what is pushed survives.
 
 ### Adding a testbed
 
@@ -325,7 +325,8 @@ for stopping workspaces that were created from an older version.
 
 **Branch templates.** The same run keeps one template per branch named
 `template/<name>`: a worktree of the branch under `SPE_BRANCH_DIR` (default
-`sperange-branches` next to the checkout), the template `spe-<name>` (prefix
+`sperange-branches` next to the checkout, with the checkout's `collections/` and
+`output/` linked in), the template `spe-<name>` (prefix
 `SPE_BRANCH_TEMPLATE_PREFIX`) pushed from it with the same two variables, display
 name `template/<name>`. A push to the branch updates the template; deleting the
 branch deletes the template and the worktree, unless workspaces still use it,
@@ -335,27 +336,18 @@ letters, digits and hyphens, 28 characters at most (template names are limited t
 32). This is how a change made in a workspace is tried on a fresh workspace
 before it is merged ("Working in a workspace").
 
-**GitHub access from workspaces (optional).** `git push` from a workspace's clone
-needs credentials. Coder's external authentication provides them per person
-through the agent's git askpass, so nothing is stored on the VMs:
-
-1. Register a GitHub OAuth app (the organisation's or a maintainer's): homepage
-   `https://<zone>`, callback URL `https://<zone>/external-auth/github/callback`.
-2. Add to `coder.env` and restart Coder:
-
-   ```
-   CODER_EXTERNAL_AUTH_0_ID=github
-   CODER_EXTERNAL_AUTH_0_TYPE=github
-   CODER_EXTERNAL_AUTH_0_CLIENT_ID=...
-   CODER_EXTERNAL_AUTH_0_CLIENT_SECRET=...
-   ```
-
-3. Each person links GitHub once under their account settings, External
-   authentication. From then on `git push` over https in their workspaces uses
-   their GitHub account, and so do commits pushed by Coder Agents on their behalf.
-
-Without it, the agent's push fails with an authentication error and the agent
-is instructed to say so and stop.
+**GitHub access from workspaces.** The clone's push URL is the SSH form of
+`spe_repo_url` (role `repo`, which also installs GitHub's host keys); fetches stay
+anonymous over https. Coder keeps one git SSH key per person and the agent sets
+`GIT_SSH_COMMAND` to `coder gitssh`, so a push authenticates as that person once
+they have added their key to GitHub: Account settings > SSH keys in the portal
+shows it, GitHub's Settings > SSH and GPG keys takes it. They also need push
+rights to the repository. Until then a push fails at once with "Permission
+denied (publickey)" and prints the key to add; the Coder agent is instructed to
+relay that and stop. Nothing is set up on the portal for this. (Coder's external
+authentication with a GitHub OAuth app would make https pushes work instead, but
+without a linked account such a push waits for a login in the browser rather than
+failing, which is worse for an agent.)
 
 ### 8. Coder Agents on the de.NBI endpoint (optional)
 

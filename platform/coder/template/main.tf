@@ -217,6 +217,10 @@ locals {
 }
 
 # --- agent + app --------------------------------------------------------------
+locals {
+  owner_name = contains(["", "default"], data.coder_workspace_owner.me.full_name) ? data.coder_workspace_owner.me.name : data.coder_workspace_owner.me.full_name
+}
+
 resource "coder_agent" "main" {
   os   = "linux"
   arch = "amd64"
@@ -226,11 +230,12 @@ resource "coder_agent" "main" {
   dir = "/home/ubuntu/sperange"
 
   # Commits made in the clone (by Coder Agents or over the terminal) carry the
-  # workspace owner's identity.
+  # workspace owner's identity: the full name from the account settings, else
+  # the username (Coder reports "default" when no full name is set).
   env = {
-    GIT_AUTHOR_NAME     = coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)
+    GIT_AUTHOR_NAME     = local.owner_name
     GIT_AUTHOR_EMAIL    = data.coder_workspace_owner.me.email
-    GIT_COMMITTER_NAME  = coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)
+    GIT_COMMITTER_NAME  = local.owner_name
     GIT_COMMITTER_EMAIL = data.coder_workspace_owner.me.email
   }
 

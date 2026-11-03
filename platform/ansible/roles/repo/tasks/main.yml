@@ -27,6 +27,25 @@
     update: true
     force: false
 
+# Pushes go over SSH with the key Coder gives every user (the agent sets
+# GIT_SSH_COMMAND to `coder gitssh`); fetches stay anonymous over https. The
+# person adds that public key to their GitHub account once; until then a push
+# fails at once with the key to add, instead of waiting for an OAuth login.
+- name: GitHub host keys known (so the first push does not fail on them)
+  ansible.builtin.known_hosts:
+    name: github.com
+    key: "github.com {{ item }}"
+    path: "/home/{{ spe_ssh_user }}/.ssh/known_hosts"
+  loop: "{{ spe_repo_github_host_keys }}"
+  loop_control:
+    label: "{{ item.split(' ')[0] }}"
+
+- name: Push URL of origin over SSH
+  ansible.builtin.command:
+    argv: [git, -C, "{{ spe_repo_dir }}", remote, set-url, --push, origin, "{{ spe_repo_push_url }}"]
+  register: repo_push_url
+  changed_when: false
+
 - name: spe-apply on the PATH (a link into the clone, so edits to it are live)
   ansible.builtin.file:
     src: "{{ spe_repo_dir }}/platform/instance/spe-apply"

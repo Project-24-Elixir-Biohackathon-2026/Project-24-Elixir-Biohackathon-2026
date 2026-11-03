@@ -60,7 +60,7 @@ If this workspace was itself built from a branch template, continue on that bran
 
 Then tell the person: the template `spe-<name>` appears in "Create workspace" within five minutes; a workspace from it has the change built in from the start. When the person wants the change in the main template, give them the pull request link, `https://github.com/kraatz/elixir-biohackathon-2026-test/pull/new/template/<name>`; merging updates the main template within minutes, and existing workspaces pick it up on their next start. You cannot open the pull request yourself.
 
-If `git push` is refused for lack of credentials: GitHub access is linked per person in the portal (their account settings, External authentication, GitHub). Say exactly that and stop. Do not try tokens, other remotes, or pushing through the SPE agent.
+Pushes go over SSH with the git key the portal holds for the person (origin's push URL; fetches stay anonymous over https). If the push is refused with "Permission denied (publickey)", the message shows that public key and the link to add it: tell the person to add exactly that key to their GitHub account (Settings, SSH and GPG keys) and to make sure they may push to the repository, then push again when they say so. The key is public, quoting it is fine. Do not try tokens, other remotes, or pushing through the SPE agent.
 
 ## Rules
 

@@ -66,6 +66,10 @@ while read -r sha ref; do
   else
     git worktree add --quiet --detach "$wt" "$sha"
   fi
+  # Not in git: the installed collections, and the run archives (one place for all).
+  for d in collections output; do
+    ln -sfn "$SPE_REPO_DIR/platform/ansible/$d" "$wt/platform/ansible/$d"
+  done
   bstate="$branch_dir/.pushed-$name"
   if [[ -f $bstate && $(cat "$bstate") == "$sha" && ${1:-} != --force ]]; then
     continue
