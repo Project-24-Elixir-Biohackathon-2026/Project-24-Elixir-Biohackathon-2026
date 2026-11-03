@@ -11,40 +11,53 @@ State`). Runs archived in that form keep the files written for them; the new ren
 
 ### Export
 
+`archive.yml` can run at any time while participants work, as often as wanted, as a backup: it copies the
+files while `chat-ui` and the agent keep running, and interrupts nothing. Only the **final archive**, the one
+`destroy.yml` runs before it removes the volumes, stops the services first, since a run finishing after that
+copy would be lost with the volume. `destroy.yml` imports `archive.yml` with `spe_archive_final: true`; run on
+its own, `archive.yml` is live.
+
 `tasks/export.yml`, the block for `spe_frontend == 'agui'`:
 
-1. **Barrier.** Copying files while runs go on gives no consistent bundle: a run finishing after its journal
-   was copied would be missing from the archive and then destroyed with the volume. So first
-   `docker compose -p spe-frontend stop -t 30 chat-ui`, then `… stop -t 30 agent`. On `SIGTERM` the chat UI
-   refuses new runs, stops every run in progress (each ends `cancelled`), waits for the session queue to drain
-   and exits (a handler registered in `instrumentation.ts`, `lib/shutdown.ts`; the image sets
-   `NEXT_MANUAL_SIG_HANDLE=true`, because Next.js's own handler closes the server and exits without waiting
-   for a detached run's last append). The agent, stopped second, has then seen its last request and closed
-   its run log. A missing `chat-ui` container fails here, and so does a stop that did not end cleanly: each
+1. **Barrier, final archive only.** `docker compose -p spe-frontend stop -t 30 chat-ui`, then `… stop -t 30
+   agent`. On `SIGTERM` the chat UI refuses new runs, stops every run in progress (each ends `cancelled`),
+   waits for the session queue to drain and exits (a handler registered in `instrumentation.ts`,
+   `lib/shutdown.ts`; the image sets `NEXT_MANUAL_SIG_HANDLE=true`, because Next.js's own handler closes the
+   server and exits without waiting for a detached run's last append). The agent, stopped second, has then
+   seen its last request and closed its run log. A stop that did not end cleanly fails the export: each
    service running before the barrier must have exited 0 (`docker compose ps -a --format
    '{{.Service}} {{.ExitCode}}'`), since a drain timeout (the chat UI exits 1) or a kill after `-t 30` (137)
    leaves `stop` itself at rc 0. A service already stopped before the barrier keeps an old exit code, so it
-   is not checked. The containers are started again either way.
-2. **Copy** from the stopped containers: `docker compose -p spe-frontend cp chat-ui:/data/sessions
-   <tmp>/agui-journals` (always present: the image creates it, §6) and `… cp
-   agent:/var/lib/spe-agent/runs.jsonl <tmp>/agent-runs.jsonl`. Only an absent run log is tolerated (no run
-   reached the agent yet): the copy's own `Could not find the file` error is accepted, since the stopped
-   agent cannot be asked whether the file exists; any other copy error fails the export.
+   is not checked. The services are not started again: `destroy.yml` removes them next. A live archive skips
+   this step.
+2. **Copy** `docker compose -p spe-frontend cp chat-ui:/data/sessions <tmp>/agui-journals` (always present:
+   the image creates it, §6) and `… cp agent:/var/lib/spe-agent/runs.jsonl <tmp>/agent-runs.jsonl`, from the
+   running containers in a live archive and from the stopped ones in the final one. A missing `chat-ui`
+   container fails the export, checked before this step. Only an absent run log is tolerated (no run reached
+   the agent yet): the copy's own `Could not find the file` error is accepted; any other copy error fails the
+   export.
 3. **Export** the copied journals with the exporter from the `chat-ui` image, in a one-off container, into
-   the bundle below.
-4. **Restart** both (`docker compose -p spe-frontend start agent chat-ui`), so `archive.yml` run on its own
-   leaves a working instance; under `destroy.yml` they are removed right after.
-5. Pack `<tmp>` and fetch it to `{{ spe_output_dir }}/archive-bundle-agui.tar.gz`, remove both copies from
+   the bundle below, with `spe_archive_mode` set to `live` or `final`.
+4. Pack `<tmp>` and fetch it to `{{ spe_output_dir }}/archive-bundle-agui.tar.gz`, remove both copies from
    the VM. The fetched bundle is removed after writing, like `archive-bundle.json`.
 
-Every journal is exported, hidden and deleted included. The containers are still up when `archive.yml` starts
-(`destroy.yml` imports it first; the Coder stop runs `destroy.yml`). If any step fails, `archive.yml` fails
-and `destroy.yml` deletes nothing, as for Open WebUI.
+**Why a live copy is consistent.** Journals and the run log are append-only (§13, decision 10; §5, *Run
+log*), so a copy taken during an append is an earlier state of the file, at most with a torn last line. The
+rebuild already reads such a file: it skips a line that does not parse, and a run without `run_end` is
+`incomplete` with the events it has (§13, *The journal*; decision 8). In a live archive an `incomplete` run
+was most likely still going when the copy was taken; the run goes on, and the next archive has it whole. The
+journals and the run log are copied a moment apart, so a run that started or ended in between can be in one
+and not the other; whoever compares them allows for that at the edge of the copy.
+
+Every journal is exported, hidden and deleted included. If any step fails, `archive.yml` fails and
+`destroy.yml` deletes nothing, as for Open WebUI. Until the record is built, the archive keeps the barrier of
+the chat sessions as built for every run (stop, copy, start again), since their `<uuid>.json` files are
+rewritten in place and a live copy of them could be torn.
 
 ### The Open WebUI chat
 
 The exporter writes the bundle `write_run.py` already reads for Open WebUI (`{chats: [...], tags: [...],
-notes: []}`), one chat per session, using the rebuild of §13:
+notes: []}`, plus our `spe_archive_mode`), one chat per session, using the rebuild of §13:
 
 - `title`, `created_at`, `updated_at`, `archived` (the session is hidden), `meta.tags`, and
   `meta.spe_deleted_at` for a deleted session;
@@ -72,7 +85,8 @@ Fields starting with `spe_` are ours; Open WebUI itself never writes them, so it
 ```
 <run dir>/
   run.yml                     as for every run
-  index.md                    chats table, as for Open WebUI; says that the AG-UI frontend has no run report
+  index.md                    chats table, as for Open WebUI; says that the AG-UI frontend has no run report,
+                              and whether the archive was live (incomplete runs may still have been going) or final
   chats/NN-<slug>.md          the active branch along currentId: user and assistant text, each tool call with
                               fenced arguments and result, plus the three additions below
   chats/NN-<slug>.json        the exported chat

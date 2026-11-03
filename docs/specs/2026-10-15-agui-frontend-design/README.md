@@ -4,10 +4,11 @@
 records what implementation verified and changed). §6's sessions and sidebar: implemented 2026-10-29 to
 2026-11-02, and restated here for the conversation record: where §6 and decisions 19–30 speak of the journal,
 `meta` lines or `agui-journals/`, they wait for the record to be built, and today's code still keeps one
-`<uuid>.json` per session. The conversation record (§13, §14, decisions 1–18): draft for review, the fork's
-PR #19 (`thodkatz/elixir-biohackathon-2026-test`). The history before this directory is that of the single
+`<uuid>.json` per session. The conversation record (§13, §14, decisions 1–18): approved 2026-11-03 (the fork's PR #19,
+`thodkatz/elixir-biohackathon-2026-test`), not built yet; the live archive (§14, decision 30) since
+clarification 2. The history before this directory is that of the single
 file it replaced: `git log -- docs/specs/2026-10-15-agui-frontend-design.md`.
-**Latest clarification:** 1.
+**Latest clarification:** 2.
 §13 and §14 were read against `@ag-ui/client` 1.0.2 and CopilotKit 1.79.0 (`@copilotkit/runtime`,
 `@copilotkit/react-core`) as pinned in `package-lock.json`, and Open WebUI v0.11.3 (the image
 `spe_frontend_webui_image` pins) as the model to follow, read in its source at tag `v0.11.3` (`2a960a5`).
@@ -41,7 +42,7 @@ edits made through the chat; it assumes the participant holds neither the agent 
 
 ## Decisions taken
 
-Decisions 1–18 are the conversation record's, under review; 19–30 are the chat sessions' as built, restated
+Decisions 1–18 are the conversation record's, approved and not built yet; 19–30 are the chat sessions' as built, restated
 for the record (their journal parts are built with it). §§1–5 and
 7–12 predate the table and state their design in their text.
 
@@ -76,7 +77,7 @@ for the record (their journal parts are built with it). §§1–5 and
 | 27 | Journals and the archive never hold what comes from the request headers or the chat UI's configuration (the agent key); message content is stored unchanged, not redacted; the instance's key scan covers the volume as a detector | [§6 *Security and limits*](06-chat-ui.md#security-and-limits) | `npm test`: a run whose request carries `Authorization: Bearer <k1>` and whose runtime is configured with agent key `<k2>`, neither in the messages, leaves neither in the journal; `verify.yml`'s key check (§9, 4) scans `/data/sessions` |
 | 28 | Model text is rendered as text in the sidebar and fenced in the archive with a fence longer than any backtick run inside | [§6 *Security and limits*](06-chat-ui.md#security-and-limits) | `npm test`/Playwright: a title of `<img src=x onerror=…>` shows as literal text; `pytest`: tool results containing a line of three, four and six backticks each render inside a longer fence |
 | 29 | No-cost instance check: the session API answers | [§9](09-checks.md) | `verify.yml` on an `agui` instance: "Session API answers" passes (`GET /api/sessions` → 200, JSON list) |
-| 30 | `archive.yml` stops `chat-ui`, then `agent`, before copying, so no run is in progress or unjournaled; each service running before must have exited 0; an absent run log is allowed, a missing `chat-ui` container fails the export | [§14 *Export*](14-archive.md#export) | On the dev VM: `archive.yml` during a slow run has that run, `cancelled`, in its journal and the run log; on a fresh instance with zero runs it succeeds with an empty `agui-journals/` and no `agent-runs.jsonl`; with `chat-ui` removed, `archive.yml` fails and `destroy.yml` deletes nothing |
+| 30 | `archive.yml` copies the journals and the run log from the running containers and interrupts nothing, so it can run at any time as a backup; only the final archive (`destroy.yml`, `spe_archive_final: true`) first stops `chat-ui`, then `agent`, so no run is in progress or unjournaled, each service running before must have exited 0, and they are not started again; an absent run log is allowed, a missing `chat-ui` container fails the export; the bundle says whether it was `live` or `final` | [§14 *Export*](14-archive.md#export) | `npm test` (exporter): a journal copied mid-append (cut inside a line, after a run's third event) exports with the torn line skipped and that run `incomplete`, and a bundle marked `live` makes `write_run.py`'s `index.md` say incomplete runs may still have been going; on the dev VM: `archive.yml` during a slow run leaves `chat-ui` and `agent` running (their container start times unchanged), the run ends `completed` in the browser, the archive has it `incomplete`, and a second `archive.yml` after it ends has it `completed`; `destroy.yml` during a slow run archives that run `cancelled` in its journal and the run log; on a fresh instance with zero runs `archive.yml` succeeds with an empty `agui-journals/` and no `agent-runs.jsonl`; with `chat-ui` removed, `archive.yml` fails and `destroy.yml` deletes nothing |
 
 ## Early output
 
@@ -127,7 +128,7 @@ model saw). Either sample can change decisions 2, 6 and 16 while they are still 
 | [`11-verify-during-implementation.md`](11-verify-during-implementation.md) | §11 Things to verify during implementation | you check what was open when §§1–10 were built |
 | [`12-implementation-findings.md`](12-implementation-findings.md) | §12 Implementation findings (2026-10-15): versions, §11 settled, behaviour made precise, observed results | you need what implementation verified |
 | [`13-conversation-record.md`](13-conversation-record.md) | §13 The conversation record: approach, run route, journal, concurrency, rebuild, boundary | you change how `chat-ui` keeps a conversation, or analyse what a run was sent |
-| [`14-archive.md`](14-archive.md) | §14 The archive: the barrier, the Open WebUI chat export, the rendered run directory | you change or read an AG-UI run's archive |
+| [`14-archive.md`](14-archive.md) | §14 The archive: the live copy and the final archive's barrier, the Open WebUI chat export, the rendered run directory | you change or read an AG-UI run's archive |
 | [`out-of-scope.md`](out-of-scope.md) | what the chat sessions and the record leave out | you wonder whether something was considered |
 | [`inputs-for-plan.md`](inputs-for-plan.md) | inputs for the conversation record's plan | you write that plan |
 | [`clarifications.md`](clarifications.md) | the decision log (history) | you need why the design changed |

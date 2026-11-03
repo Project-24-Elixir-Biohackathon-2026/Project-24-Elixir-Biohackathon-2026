@@ -2,6 +2,8 @@
 
 For the plan that builds the conversation record (decisions 1–18 and what they change in 19–30).
 
+- The live archive (decision 30, clarification 2) is built with the record's journal, not before: until then
+  today's barrier stays, since the as-built `<uuid>.json` files are rewritten in place.
 - Build decision 5's feasibility check first, in the first slice, before the session API or the archive move.
 - One rebuild module (decision 11) shared by the route, the API and the exporter; the exporter runs in the
   `chat-ui` image, so the archive needs no Node on the controller.

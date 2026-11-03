@@ -13,3 +13,14 @@ in the parts it amends.
    package. Chat sessions stored the client's history, which a participant can forge; the record replaces that
    storage (decisions 1–18) and carries the rest of the sessions' design over (decisions 19–30). *Amends:* §2, §3,
    §5 *History*, §6, §9, §10; adds §13, §14. *Status:* folded.
+
+2. **The archive copies live; only the final archive stops the services** (2026-11-03, the user, after #19
+   merged). `archive.yml` no longer stops `chat-ui` and the agent: it copies the journals and the run log from
+   the running containers, so it can run at any time as a backup without interrupting participants. The stop
+   (the barrier) stays only in the archive `destroy.yml` runs (`spe_archive_final: true`), and the services are
+   not started again there. The bundle records `live` or `final`. *Reason:* the user wants to archive and back
+   up without stopping users; a stop per archive cancels every run in progress. The append-only journal (§13)
+   makes a live copy safe: it is an earlier state of each file with at most a torn last line, which the
+   rebuild already skips, and a run without `run_end` reads as `incomplete`. *Cost if wrong:* a live archive
+   can miss the last second of a run and show runs as `incomplete` that complete later; the final archive
+   still has them whole. *Amends:* §14 *Export* and *Write*, decision 30. *Status:* folded.
