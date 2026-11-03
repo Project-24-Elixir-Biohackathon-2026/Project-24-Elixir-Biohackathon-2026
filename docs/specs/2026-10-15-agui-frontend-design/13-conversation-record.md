@@ -4,7 +4,8 @@
 keeps an append-only **journal** of every run, written before the agent is called and as each event arrives.
 For each run it takes from the client's request only the new user message, and sends the agent the history
 from its journal. Everything else the client sent that differs from the journal is **ignored and recorded**
-in full, with its kind. The agent stays stateless and unchanged (§5, *History*). Decisions 1–11, 14, 17, 18 and 24 of
+in full, with its kind. The agent stays stateless and unchanged (§5, *History*). A `/compact` is a **command run**, which
+differs in steps 2, 4 and 5 below (§15). Decisions 1–11, 14, 17, 18 and 24 of
 the [README](README.md#decisions-taken).
 
 ### Approach
@@ -66,15 +67,20 @@ Per run:
      every activity message from a run's input. Activity messages are left out of the path altogether;
    - a client system message: `system` (the agent replaces it anyway; recorded so it is not mistaken for one
      that reached the model).
+
+   A command run's `/compact` message is none of these: its id is known from that run on, and it is never on
+   the path (decision 32).
 3. Refuse a run with a `runId` the journal already holds, without a journal line (decision 3).
 4. Write `run_start` (decision 4). Then refuse a run with no new user message: `run_end` `refused`, and
    `RUN_STARTED` then `RUN_ERROR` to the client, without calling the agent (decision 3), so what it carried
-   is recorded.
+   is recorded. A command run (§15) has no new message: its `run_start` carries the `command`
+   instead, and it has refusals of its own (decision 34).
 5. Replace `messages` with the path plus the new messages and call `next` (decision 5). The path holds no
    activity message (step 2), as no run's input does once `@ag-ui/client` has prepared it. If anything was
    ignored, emit `MESSAGES_SNAPSHOT` to the client right after the agent's `RUN_STARTED` (decision 6):
    `@ag-ui/client` 1.0.2's event verifier refuses a stream whose first event is not `RUN_STARTED` or
-   `RUN_ERROR`.
+   `RUN_ERROR`. On every run, any `spe_command` the client put in `forwardedProps` is removed; a command run is
+   sent the path, `spe_command` and always the snapshot (decisions 31, 33).
 6. Append each event; write `run_end` from the terminal event, before that event is passed on, with its
    status:
 
@@ -104,7 +110,7 @@ do not count as edits; the no-false-alarm check in decision 2 pins this against 
 | `type` | Fields |
 |---|---|
 | `created` | `version: 1`, `id`; first line, written with the first `run_start` |
-| `run_start` | `run_id`, `anchor` (message id or null), `messages` (the new messages), `ignored` (list of `{kind, message}`; for `deleted`, the id), `request` (`tools`, `context`, `state`, `forwardedProps` as sent), `source: "chat"` |
+| `run_start` | `run_id`, `anchor` (message id or null), `messages` (the new messages), `ignored` (list of `{kind, message}`; for `deleted`, the id), `request` (`tools`, `context`, `state`, `forwardedProps` as sent), `source: "chat"`; a command run (§15) also `command` (`{name, focus, message_id}`) |
 | `event` | `run_id`, `event` (the AG-UI event as received) |
 | `run_end` | `run_id`, `status`, `error` (message or null) |
 | `meta` | any of `title`, `tags`, `pinned`, `hidden`, `deleted_at`, as the session API sets them |
@@ -144,7 +150,8 @@ with `@ag-ui/client`'s event application, as the browser does. A run's first `ru
 be anchored at, never changes. The messages the run added are, in order of first
 appearance, chained by `parentId`: the first new message's parent is the anchor, every later message's parent
 is the one before it. A `MESSAGES_SNAPSHOT` the agent itself sends is applied like any event; the one
-`chat-ui` sends to the browser (decision 6) is not journaled, since it is derived. The rebuild lives in one module
+`chat-ui` sends to the browser (decision 6) is not journaled, since it is derived. A compaction marker whose
+`TEXT_MESSAGE_END` is not journaled is dropped (§15 *A marker cut short*, decision 37). The rebuild lives in one module
 used by the run route, the session API and the exporter (§14), so the chat and the archive cannot disagree.
 
 The session list's index (§6, *Session API*) holds, per journal, its `created`, its latest `meta` values, its

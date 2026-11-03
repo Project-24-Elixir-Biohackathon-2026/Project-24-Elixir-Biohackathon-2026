@@ -3,7 +3,8 @@
 ### Endpoints
 
 - `POST /agent` — AG-UI, through `AGUIAdapter.dispatch_request`. Bearer
-  key required (401 otherwise).
+  key required (401 otherwise). A run whose `forwardedProps.spe_command` names a command is answered
+  without the model loop (§15, `/compact`).
 - `GET /healthz` — no auth, no LLM call; 200 when config is loaded and the
   sandbox's OpenAPI was fetched.
 

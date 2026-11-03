@@ -132,3 +132,23 @@ in the parts it amends.
     their runs for the copy (a run in progress ends `cancelled`), as it did before the record. *Amends:* the
     README's status line and the note above the decisions table, §14 (the paragraph on the archive as built, the
     last paragraph of *Why a live copy is consistent*). *Status:* folded.
+
+12. **`/compact` is a command run: `chat-ui` journals it as a command, the agent compacts** (2026-11-03; the
+    user, the fork's PR #26). §15 adds compaction on request: a run whose only new message is `/compact
+    [focus]` is journaled with a `command`, never as a message; `chat-ui` sends the agent the path and
+    `forwardedProps.spe_command`; the agent makes one summary request and returns the marker; a marker cut short
+    is no cut point; the archive says the participant asked for it. Considered: a separate agent endpoint with
+    `chat-ui` writing the marker as a new journal line (a second kind of marker for the rebuild, the exporter
+    and the archive), and the agent recognising a `/compact` user message (the command stays in the history as
+    the participant's words, and compaction decision 4 would keep it as the latest request). *Reason:* the
+    user's request (2026-11-03, PR #21) that the command never be stored as a user message, and what other
+    tools do: Claude Code, Codex CLI, OpenCode, Gemini CLI and Open WebUI all treat a manual compaction as a
+    command, Open WebUI's offered only while its compaction is on. Decision 3 still refuses a client request
+    with no new user message: a command run has one, the `/compact`, which `chat-ui` turns into a command.
+    Decision 39's model-backed check runs on de.NBI's `qwen3.8-27b`, the platform participants use, at the
+    user's request, not on the development VM's model. *Cost if wrong:* a participant who wants the literal text
+    `/compact …` sent to the model cannot send it; the `/compact` bubble disappears when the run starts, which
+    could read as a lost message (the early output shows it). *Amends:* §5 *Endpoints*, §13 (intro, *The run
+    route* steps 2, 4 and 5, *The journal*'s `run_start` row, *Rebuilding the conversation*), decisions 2–6,
+    the compaction design (decision 11, §8 *Run log*; its clarification 9), the README (status, decisions 31–39, early output,
+    glossary, parts), `out-of-scope.md`, `inputs-for-plan.md`; adds §15. *Status:* folded.
