@@ -79,7 +79,8 @@ Tested on the agentvm development VM (dummy dataset, spe_manage_docker: false), 
 down with their volumes, the stack, frontend and data directories, the CA
 anchor, the manifest and `/etc/spe-instance` removed — and only with
 `-e spe_confirm_reset=<instance>` on a host whose marker and manifest name
-that instance. Before anything is removed it checks that `output/<instance>/hosts.yml`
+that instance; the confirmation and the hand-off are checked before the final
+archive, which leaves an AG-UI instance's chat stopped. Before anything is removed it checks that `output/<instance>/hosts.yml`
 records the same instance and `spe_provision` (so an edited instance file
 cannot turn a reset into an OpenStack deletion, or the reverse), and that
 every path is the one recorded at creation, is not a symlink, a mount point
@@ -147,17 +148,16 @@ Created through the Coder portal, the instance also gets the Coder agent
 
 ## Run archive
 
-`destroy.yml` first runs `archive.yml`, which saves the run to
-`<spe_runs_root>/<UTC time>_<instance>/` (default `/data-share/runs`): `run.yml`
-with the parameters, the canary record and, for the `openwebui` frontend, every
-chat (readable Markdown with tool calls and results, plus raw JSON) with its
-tags, the "Run report" note and any other notes. For the `agui` frontend it stops `chat-ui` (which
-ends every run in progress, `cancelled`, in its journal) and then the agent, copies every journal
-(hidden and deleted sessions included) and the agent's run log, starts both again, exports the
-journals as Open WebUI chats with the chat UI's own exporter (a one-off container of its image)
-and renders them with `write_run.py`, as for Open WebUI. If the archive fails,
-nothing is deleted or reset; `-e spe_archive_skip=true` skips it. The file
-layout is described in `../coder/README.md`.
+`archive.yml` saves the run to `<spe_runs_root>/<UTC time>_<instance>/` (default `/data-share/runs`): `run.yml`
+with the parameters, the canary record and, for the `openwebui` frontend, every chat (readable Markdown with tool
+calls and results, plus raw JSON) with its tags, the "Run report" note and any other notes. For the `agui`
+frontend it copies every journal (hidden and deleted sessions included) and the agent's run log from the running
+containers, interrupting nothing, so it can be run at any time as a backup; the journals are exported as Open
+WebUI chats and rendered like them (`write_run.py`), and `index.md` says whether the copy was live (a run still
+going shows as `incomplete`) or final. `destroy.yml` first runs `archive.yml` as the final archive
+(`spe_archive_final: true`): it stops `chat-ui`, which ends every run in progress `cancelled` and journals it,
+then the agent, and does not start them again. If the archive fails, nothing is deleted or reset;
+`-e spe_archive_skip=true` skips it. The file layout is described in `../coder/README.md`.
 
 ## Output directory
 

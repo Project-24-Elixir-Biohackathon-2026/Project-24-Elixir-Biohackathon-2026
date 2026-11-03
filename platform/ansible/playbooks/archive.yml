@@ -1,11 +1,13 @@
 ---
 # Save one instance's run to <spe_runs_root>/<UTC time>_<instance>/: parameters,
 # canary record and the frontend's chats: with openwebui chats and notes (incl.
-# the run report), with agui every chat session (hidden and deleted included)
+# the run report), with agui every journal (hidden and deleted sessions included)
 # and the agent's run log. Works for OpenStack and existing-VM instances.
 #   ansible-playbook playbooks/archive.yml -e @instances/<name>.yml
-# destroy.yml runs this first and stops if it fails, so chats are never lost
-# by accident. -e spe_archive_skip=true skips it.
+# Run on its own it is live: the agui services keep running, so it can be run at
+# any time as a backup. destroy.yml runs it first as the final archive
+# (spe_archive_final: true) and stops if it fails, so chats are never lost by
+# accident. -e spe_archive_skip=true skips it.
 - name: Find the instance
   hosts: localhost
   gather_facts: false
@@ -17,6 +19,12 @@
     - name: Archive time
       ansible.builtin.set_fact:
         spe_archive_time: "{{ now(utc=True).strftime('%Y-%m-%dT%H%M%SZ') }}"
+
+    - name: Archive mode
+      ansible.builtin.debug:
+        msg: >-
+          {{ 'final: chat-ui and the agent are stopped first and not started again' if spe_archive_final | bool
+             else 'live: copied from the running services, nothing is stopped' }}
 
     - name: Hand-off file from creation
       ansible.builtin.stat:

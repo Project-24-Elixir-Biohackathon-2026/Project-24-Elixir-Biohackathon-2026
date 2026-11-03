@@ -189,16 +189,9 @@ is open (`docs/guides/contributing-upstream.md`, step 6).
 
 - **Canary evaluation ladder** (biohackathon 0013): spec (#1) and plan (#2) merged. **Next: slice 1/9**
   `impl/canary-eval-ladder-1-scoring`. Handoff: `ls docs/superpowers/plans/2026-10-22-canary-eval-ladder/handoffs | tail -1`.
-- **AG-UI conversation record** (Full mode): `chat-ui` owns the history as an append-only journal, the agent
-  stays stateless. Spec merged (#19): §13–14 of the living AG-UI spec `docs/specs/2026-10-15-agui-frontend-design/`.
-  Plan merged (#20): `docs/superpowers/plans/2026-11-03-agui-conversation-record/`, 4 slices, none waiting on
-  another track. Slices 1/4 (#22, journal, rebuild, anchor; feasibility verdict positive), 2/4 (#23,
-  exporter in the image, `write_run.py` renders AG-UI chats) and 3/4 (#24, store, run route, API and archive
-  on journals) merged. **Next: slice 4/4** `impl/agui-conversation-record-4-live-archive`. Handoff:
-  `ls docs/superpowers/plans/2026-11-03-agui-conversation-record/handoffs | tail -1`.
 - **AG-UI `/compact`** (Full mode): a `/compact [focus]` chat command, journaled as a command, compacted by the
   agent; §15 of the living AG-UI spec. Spec merged (#26). **Next: the plan** `plan/agui-compact-command` (two
-  slices; slice 2 waits on the conversation record's slice 4, #25). Handoff: `ls docs/handoffs | tail -1`.
+  slices). Handoff: `ls docs/handoffs | tail -1`.
 - **Upstream PR kraatz #9** (`contrib/agui-token-cap-optional`): the AG-UI agent's token cap optional, off by
   default (fork #4); waits on upstream's review (`docs/guides/contributing-upstream.md`, step 6).
 - **Not scheduled**: `BACKLOG.md` holds every deferred item without a slice; its *Next*, the ones due soon or
@@ -280,6 +273,8 @@ All 13 tasks are done, including the model-backed checks on the development VM
 on 2026-10-19 together with the Coder portal, which offers it as the `agui`
 frontend. Chat sessions (sidebar, archive) were added by the *AG-UI chat
 sessions* plan (`docs/superpowers/plans/2026-10-29-agui-chat-sessions/`, done).
+The conversation record (journals, the live archive, TM-007) was built by the
+*AG-UI conversation record* plan (`docs/superpowers/plans/2026-11-03-agui-conversation-record/`, done).
 Not done yet: a run-report equivalent in the CopilotKit chat.
 
 ## Development workflow

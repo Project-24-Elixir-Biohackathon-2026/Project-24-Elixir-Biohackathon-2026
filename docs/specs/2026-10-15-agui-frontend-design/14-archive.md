@@ -5,10 +5,11 @@ fetch, write on the controller (`roles/run_archive`). Each journal is exported a
 the existing Open WebUI renderer turns into the same run layout, so both frontends are saved and exported one
 way. Decisions 15, 16 and 30 of the [README](README.md#decisions-taken).
 
-As built (clarification 11), every archive still runs step 1's barrier, live and final alike, starts the services
-again after the copy, and writes `spe_archive_mode: final`; the live copy below is not built yet. Runs archived
-before the record keep the files written for them (`agui-sessions/<uuid>.json`, rendered by the renderer of that
-time); they are not re-rendered.
+As built (clarifications 11 and 14), every archive copies live (decision 30): only the final archive
+`destroy.yml` runs keeps step 1's barrier, stopping `chat-ui` then the agent; run on its own, `archive.yml`
+interrupts nothing, and the bundle says `spe_archive_mode: live`. Runs archived before the record keep the
+files written for them (`agui-sessions/<uuid>.json`, rendered by the renderer of that time); they are not
+re-rendered.
 
 ### Export
 
@@ -16,7 +17,9 @@ time); they are not re-rendered.
 files while `chat-ui` and the agent keep running, and interrupts nothing. Only the **final archive**, the one
 `destroy.yml` runs before it removes the volumes, stops the services first, since a run finishing after that
 copy would be lost with the volume. `destroy.yml` imports `archive.yml` with `spe_archive_final: true`; run on
-its own, `archive.yml` is live.
+its own, `archive.yml` is live. `destroy.yml` checks its own preconditions (the instance file against the
+hand-off, and on an existing VM `spe_confirm_reset`) before that archive, so a destroy it would refuse never
+leaves the services stopped.
 
 `tasks/export.yml`, the block for `spe_frontend == 'agui'`:
 

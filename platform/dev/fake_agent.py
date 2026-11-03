@@ -5,7 +5,8 @@ For exercising the chat UI and AG-UI clients without an LLM or a sandbox:
   cd platform/agui/pydantic-ai-agent && uv run --group dev python ../../dev/fake_agent.py --port 18100 --key <test key>
 The model runs one `run_command` per turn and then answers; a message containing
 "fail" makes the model raise, so the run ends in RUN_ERROR; a message containing
-"slow" streams its answer in SLOW_STEPS chunks, SLOW_STEP_SECONDS apart (about 10 s),
+"slow" streams its answer in SLOW_STEPS chunks, SLOW_STEP_SECONDS apart (1 s, or
+$SPE_FAKE_SLOW_STEP_SECONDS; about 10 s by default),
 for stopping, closing or archiving a run in progress; a message containing "compact"
 runs a command with a long output, so the history passes the scripted window
 (COMPACT_WINDOW tokens) and the agent compacts it with a scripted summary (once per
@@ -42,7 +43,8 @@ from spe_agent.sandbox import SandboxClient
 FIXTURE = Path(__file__).resolve().parents[1] / "agui" / "pydantic-ai-agent" / "tests" / "fixtures" / "open-terminal-0.12.4-openapi.json"
 
 SLOW_STEPS = 10
-SLOW_STEP_SECONDS = 1.0
+# The dev VM's live archive check sets SPE_FAKE_SLOW_STEP_SECONDS (fake-agent.compose.yml) for a longer run.
+SLOW_STEP_SECONDS = float(os.environ.get("SPE_FAKE_SLOW_STEP_SECONDS", "1.0"))
 
 # Not the brief's ≈8,500: FunctionModel's own usage estimate (pydantic_ai.models.function._estimate_usage)
 # counts only message content, never tool schemas, so the brief's ≈3,000-token tool overhead never enters

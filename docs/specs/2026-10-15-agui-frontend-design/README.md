@@ -2,14 +2,12 @@
 
 **Status:** living spec. §§1–5 and 7–12: implemented 2026-10-15 (branch `agent-agui-frontend-impl`; §12
 records what implementation verified and changed). §6's sessions and sidebar: implemented 2026-10-29 to
-2026-11-02, restated here for the conversation record and built on the journal with the record (clarification
-11). The conversation record (§13, §14, decisions 1–18): approved 2026-11-03 (the fork's PR #19,
-`thodkatz/elixir-biohackathon-2026-test`), built (clarification 11) except the live archive (§14, decision 30,
-since clarification 2), the Playwright checks of decisions 6, 13, 24–26, the key check (17) and the threat entry
-(18). `/compact` (§15, decisions 31–39): proposed 2026-11-03 (the fork's PR #26), not built. The history
-before this directory is that of the single
-file it replaced: `git log -- docs/specs/2026-10-15-agui-frontend-design.md`.
-**Latest clarification:** 12.
+2026-11-02, and moved onto the conversation record. The conversation record (§13, §14, decisions 1–18) and the
+live archive (decision 30, since clarification 2): approved 2026-11-03 (the fork's PR #19,
+`thodkatz/elixir-biohackathon-2026-test`), built in the fork's PRs #22, #23, #24 and #25 (clarification 14).
+`/compact` (§15, decisions 31–39): proposed 2026-11-03 (the fork's PR #26), not built. The history before this
+directory is that of the single file it replaced: `git log -- docs/specs/2026-10-15-agui-frontend-design.md`.
+**Latest clarification:** 14.
 §13 and §14 were read against `@ag-ui/client` 1.0.2 and CopilotKit 1.79.0 (`@copilotkit/runtime`,
 `@copilotkit/react-core`) as pinned in `package-lock.json`, and Open WebUI v0.11.3 (the image
 `spe_frontend_webui_image` pins) as the model to follow, read in its source at tag `v0.11.3` (`2a960a5`).
@@ -43,9 +41,9 @@ edits made through the chat; it assumes the participant holds neither the agent 
 
 ## Decisions taken
 
-Decisions 1–18 are the conversation record's, built except where the status above says; 19–30 are the chat sessions'
-as built, restated for the record and built on its journal (clarification 11). 31–39 are `/compact`'s (§15), not built. §§1–5 and
-7–12 predate the table and state their design in their text.
+Decisions 1–18 are the conversation record's; 19–30 are the chat sessions', restated for the record. All thirty
+are built (clarification 14). 31–39 are `/compact`'s (§15), not built. §§1–5 and 7–12 predate the table and state
+their design in their text.
 
 | # | Decision | Section | Acceptance check |
 |---|---|---|---|
@@ -57,7 +55,7 @@ as built, restated for the record and built on its journal (clarification 11). 3
 | 6 | When a run has ignored content, `chat-ui` sends the browser a `MESSAGES_SNAPSHOT`, right after `RUN_STARTED`, of the history the agent is sent, so the browser shows what the model sees; without ignored content, nothing is added to the stream; a command run always gets one (decision 33) | [§13 *The run route*](13-conversation-record.md#the-run-route) | `npm test`: the stream to the client has, right after `RUN_STARTED`, a snapshot equal to the agent's input messages when content was ignored, and has none otherwise; Playwright against `fake_agent.py`: after a devtools edit of an earlier reply and a new message, the page shows the original reply |
 | 7 | Every AG-UI event the agent sends is appended as it arrives; the journal is fsynced at `run_start`, at `run_end`, and at most one second apart in between; `run_end` holds the status (`completed`, `failed`, `cancelled`, `aborted`, `refused`) and the error message | [§13 *The journal*](13-conversation-record.md#the-journal) | `npm test`: a completed, a failed, a stopped (both abort shapes the recorder handles today) and a refused run each end with the matching `run_end`; a terminal event followed by unsubscription, and every termination of §13's table, leaves exactly one `run_end` for the run; with `fsync` counted and a fake clock, a run of 1000 events arriving within one second fsyncs at most three times (`run_start`, one interval, `run_end`) |
 | 8 | An append that fails mid-run aborts the agent request and ends the run with `RUN_ERROR` "this session could not be saved" (`run_end` `aborted` if it can still be written); the `spe.session_save_failed` warning goes; a run with no `run_end` (a crash) is read as `incomplete`, its events kept | [§13 *The journal*](13-conversation-record.md#the-journal) | `npm test`: an append made to fail after five events aborts the test agent's request and gives that error; a journal cut after a run's third event rebuilds with that run `incomplete` and the text received so far; `grep -r session_save_failed platform/agui/copilotkit-chat` finds nothing |
-| 9 | Runs on one session may overlap; one queue per session serialises appends; two runs from one anchor become sibling branches; the session's **tip** is the last message of the run whose `run_end` (or, if incomplete, last event) came last, among the runs that added a message; a session with only refused runs is not listed; the "already running" refusal goes | [§13 *Concurrency and branches*](13-conversation-record.md#concurrency-and-branches) | `npm test`: two runs started from the same anchor, the first ending last, both complete; the rebuild has two branches under the anchor and the tip is the first run's last message; their lines interleave and each line names its run; a refused run ending last leaves the tip unchanged; a fresh id whose only run is refused is absent from the list and `GET` gives 404 |
+| 9 | Runs on one session may overlap; one queue per session serialises appends; two runs from one anchor become sibling branches; the session's **tip** is the last message of the run whose `run_end` (or, if incomplete, last event) came last, among the runs that added a message; a session with only refused runs is not listed; the recorder's "already running" refusal goes, but the chat route still admits one run per session at a time (clarification 13) | [§13 *Concurrency and branches*](13-conversation-record.md#concurrency-and-branches) | `npm test`: two runs started from the same anchor, the first ending last, both complete; the rebuild has two branches under the anchor and the tip is the first run's last message; their lines interleave and each line names its run; a refused run ending last leaves the tip unchanged; a fresh id whose only run is refused is absent from the list and `GET` gives 404 |
 | 10 | The journal is `/data/sessions/<uuid>.jsonl` on the `chat-sessions` volume, one JSON object per line (`created`, `run_start`, `event`, `run_end`, `meta`), append-only: no route ever rewrites or truncates it; session ids stay canonical UUIDs | [§13 *The journal*](13-conversation-record.md#the-journal) | `npm test`: after a session's runs, a rename, a tag, a hide and a delete, every earlier line is byte-identical and each operation added lines only; a journal ending in a torn line gets `\n` before the next append and the rebuild skips the torn line; ids like `../x`, `a/b`, upper-case or non-v4 strings get 400 from every route and a refused run (`RUN_ERROR`, agent not called), and no file is created |
 | 11 | Messages are rebuilt from the journal by applying each run's events to its anchor's path with `@ag-ui/client`'s own event handling (the code the browser runs); every message gets a `parentId`, derived from the run structure, not stored | [§13 *Rebuilding the conversation*](13-conversation-record.md#rebuilding-the-conversation) | `npm test` and the built-server check: for runs with text, tool calls and results, a compaction marker and an error, the rebuilt branch equals the messages the browser held at the run's end |
 | 12 | The session list is served from an index in memory, built at startup with one pass over the journals and updated on every append; the index and the append queue live on `globalThis`, shared by every route bundle; no index file | [§6 *Session API*](06-chat-ui.md#session-api) | `npm test`: the list after a restart equals the list before it; a rename shows in the list without rereading the file (the read is counted); against the built standalone server, a run through `/api/copilotkit` shows in `/api/sessions` and `PATCH`es overlapping its end all land |

@@ -142,6 +142,11 @@ none of whose runs added a message (only refused runs) is journaled and archived
 answers `404` for it, as for a missing one. The chat reopens on the tip; navigating between branches in the chat is
 out of scope (the archive keeps them all).
 
+This overlap is the recorder's own: through `chat-ui`, two runs on one session are refused serially today, because
+`app/api/copilotkit/[[...slug]]/route.ts` builds its `CopilotRuntime` with no `runner` override, so its default
+`InMemoryAgentRunner` admits one run per thread id at a time and refuses a second in-flight run with "Thread
+already running" before the recorder is ever called (clarification 13; a known gap, not fixed yet).
+
 ### Rebuilding the conversation
 
 For each run in journal order: take the path to its anchor, append its new messages, and apply its `event` lines

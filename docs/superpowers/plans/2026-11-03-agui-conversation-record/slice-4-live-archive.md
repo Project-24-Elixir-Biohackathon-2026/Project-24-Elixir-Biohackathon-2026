@@ -790,8 +790,13 @@ def check_devtools_edit(r: Run) -> None:
 
 
 def check_restore_tip(r: Run) -> None:
-    """Decisions 13 and 9: two tabs continue one session from the same reply, so the runs are sibling
-    branches; a reopened session shows the branch of the run that ended last, whichever tab ran it."""
+    """Decisions 13 and 9: two tabs continue one session from the same reply, each unaware of the other's
+    run until it reloads, so their runs are sibling branches; a reopened session shows the branch of the
+    run that ended last, whichever tab ran it. Not literally concurrent: the route's CopilotKit runtime
+    admits one run per thread at a time and refuses a second with "Thread already running" before the
+    recorder is ever called (clarification 13, BACKLOG.md), so tab B sends only once tab A's run has
+    ended; neither tab refetches, so both still anchor at the one reply they last knew, which is enough
+    for a sibling branch."""
     page = r.page
     page.get_by_role("button", name="New chat").click()
     expect(page.locator(".spe-header-title")).to_have_text("New chat")
@@ -800,44 +805,47 @@ def check_restore_tip(r: Run) -> None:
     expect(r.row(title)).to_have_count(1, timeout=5_000)
     sid = r.url_session()
     wait_ended(r, sid, 1)
-    # A fresh context per extra tab (docs/knowledge/playwright-new-page.md).
+    # A fresh context per extra tab (docs/knowledge/playwright-new-page.md); neither refetches once
+    # loaded, so each stays anchored at this one reply until it sends its own message.
     other = page.context.browser.new_context().new_page()
     other.goto(f"{BASE}/?session={sid}")
     expect(other.get_by_text("Turn 1: the command ran.")).to_be_visible(timeout=10_000)
     box = page.get_by_test_id("copilot-chat-textarea")
-    box.fill("slow branch A")
+    box.fill("branch A")
     box.press("Enter")
-    expect(page.get_by_text("Slow step 1 of 10.")).to_be_visible(timeout=20_000)
+    expect(page.get_by_text("Turn 2: the command ran.")).to_be_visible(timeout=20_000)
+    runs = wait_ended(r, sid, 2)
+    run_a = runs[1]
+    assert run_a["status"] == "completed" and run_a["ignored"] == [], runs
     obox = other.get_by_test_id("copilot-chat-textarea")
-    obox.fill("quick branch B")
+    obox.fill("branch B")
     obox.press("Enter")
     expect(other.get_by_text("Turn 2: the command ran.")).to_be_visible(timeout=20_000)
-    expect(page.get_by_text("Turn 2: the command ran.")).to_be_visible(timeout=30_000)
     runs = wait_ended(r, sid, 3)
-    assert [x["status"] for x in runs] == ["completed"] * 3, runs
-    assert runs[1]["anchor"] is not None and runs[1]["anchor"] == runs[2]["anchor"], runs
-    assert runs[1]["ignored"] == [] and runs[2]["ignored"] == [], runs
+    run_b = runs[2]
+    assert run_b["status"] == "completed" and run_b["ignored"] == [], runs
+    assert run_a["anchor"] is not None and run_a["anchor"] == run_b["anchor"], runs
     third = page.context.browser.new_context().new_page()
     third.goto(f"{BASE}/?session={sid}")
-    expect(third.get_by_text("Slow step 10 of 10.")).to_be_visible(timeout=10_000)
-    expect(third.get_by_text("slow branch A")).to_be_visible()
-    expect(third.get_by_text("quick branch B")).to_have_count(0)
-    # Tab B goes on from its own branch; that run ends last, so the session now reopens on B's branch.
-    obox.fill("after branch B")
-    obox.press("Enter")
-    expect(other.get_by_text("Turn 3: the command ran.")).to_be_visible(timeout=20_000)
+    expect(third.get_by_text("branch B")).to_be_visible(timeout=10_000)
+    expect(third.get_by_text("branch A")).to_have_count(0)
+    # Tab A, caught up with its own branch (its run's own SSE stream fed it back), goes on from it;
+    # that run ends last, so the session now reopens on A's branch, though B's tab ran more recently.
+    box.fill("A continues")
+    box.press("Enter")
+    expect(page.get_by_text("Turn 3: the command ran.")).to_be_visible(timeout=20_000)
     runs = wait_ended(r, sid, 4)
     assert runs[3]["ignored"] == [], runs[3]
     third.reload()
-    expect(third.get_by_text("after branch B")).to_be_visible(timeout=10_000)
-    expect(third.get_by_text("quick branch B")).to_be_visible()
-    expect(third.get_by_text("slow branch A")).to_have_count(0)
+    expect(third.get_by_text("A continues")).to_be_visible(timeout=10_000)
+    expect(third.get_by_text("branch A")).to_be_visible()
+    expect(third.get_by_text("branch B")).to_have_count(0)
     r.shot("restore-tip")
     for tab in (other, third):
         tab.context.close()
     expect(page.get_by_role("button", name="New chat")).to_be_enabled()
     r.ok("two tabs from one reply make sibling branches with nothing ignored; reopening shows the branch of the "
-         "run that ended last, A's and then B's")
+         "run that ended last, B's and then (after A's own next message) A's again")
 ```
 
 - [ ] **Step 3: rewrite `check_close_tab` (decision 24) and the end of `check_stop` (decision 26) on the journal.**
@@ -937,11 +945,12 @@ python3 platform/dev/e2e/sessions.py --shots /var/tmp/spe-s4-shots
   Expected: `ok - devtools edit of a reply: …`, `ok - two tabs from one reply …`, `ok - stopped run: …`, and the
   whole `all` run passes, `ok - closing the tab mid-run: …` among its lines. Open
   `/var/tmp/spe-s4-shots/*devtools-edit-forged.png`, `*devtools-edit-undone.png` and `*restore-tip.png` with the
-  Read tool: the first shows the forged reply, the second the original, the third tab B's branch.
+  Read tool: the first shows the forged reply, the second the original, the third tab A's branch (the one whose
+  own follow-up run ended last).
   To see the checks bite, break each once and expect it to fail, then restore it:
   - in `check_devtools_edit`, replace `FORGED` in the `ignored` assertion with `"x"`: the assertion fails with the
     recorded edit in its message;
-  - in `check_restore_tip`, swap `"slow branch A"` and `"quick branch B"` in the first `third` checks: the
+  - in `check_restore_tip`, swap `"branch A"` and `"branch B"` in the first `third` checks: the
     `to_have_count(0)` fails.
   If the page still shows `FORGED` after the second run starts (the snapshot did not replace the browser's
   messages), that is a decision 6 bug in slice 3's route: find it with `superpowers:systematic-debugging`, fix it

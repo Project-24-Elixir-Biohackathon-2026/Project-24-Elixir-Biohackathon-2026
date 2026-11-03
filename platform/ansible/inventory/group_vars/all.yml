@@ -157,13 +157,18 @@ spe_report_template: "{{ playbook_dir }}/../reports/run_report.md.j2"
 spe_report_title: Run report
 
 # Run archive: playbooks/archive.yml (also run first by destroy.yml) saves the
-# frontend's chats (OpenWebUI chats and notes, or the AG-UI chat sessions and
-# the agent's run log), the parameters and the canary record of an instance to
+# frontend's chats (OpenWebUI chats and notes, or the AG-UI journals and the
+# agent's run log), the parameters and the canary record of an instance to
 # <spe_runs_root>/<UTC time>_<instance>/ on the controller.
 # destroy.yml stops if the archive fails; pass -e spe_archive_skip=true to
 # destroy without saving.
 spe_runs_root: /data-share/runs
 spe_archive_skip: false
+# AG-UI: archive.yml copies the journals and the run log from the running
+# containers and stops nothing, so it can run at any time as a backup.
+# destroy.yml runs it with spe_archive_final: true, the final archive: chat-ui,
+# then the agent, are stopped first and not started again.
+spe_archive_final: false
 
 # The model id OpenWebUI serves from the de.NBI endpoint; the system prompt is
 # attached to it so every chat gets it by default, and it is the model

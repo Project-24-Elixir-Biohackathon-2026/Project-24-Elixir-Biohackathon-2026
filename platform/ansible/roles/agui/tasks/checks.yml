@@ -117,6 +117,40 @@
            | select('match', '^(ANTHROPIC|OPENAI)_API_KEY=') | first | regex_replace('^[A-Z_]+=', '') }}
   no_log: true
 
+- name: Sandbox container
+  ansible.builtin.command:
+    argv: [docker, compose, -p, spe-frontend, -f, "{{ spe_frontend_dir }}/docker-compose.yml", ps, -q, sandbox]
+  register: agui_sandbox_container
+  changed_when: false
+  failed_when: agui_sandbox_container.rc != 0 or agui_sandbox_container.stdout_lines | length != 1
+
+- name: The sandbox's environment as Docker starts it
+  ansible.builtin.command:
+    argv: [docker, inspect, --format, !unsafe "{{json .Config.Env}}", "{{ agui_sandbox_container.stdout }}"]
+  register: agui_sandbox_env
+  changed_when: false
+  no_log: true   # holds the sandbox's own key
+
+- name: terminal.env, the sandbox's env_file
+  ansible.builtin.slurp:
+    src: "{{ spe_frontend_dir }}/terminal.env"
+  register: agui_terminal_env
+  no_log: true
+
+# Decision 17: the sandbox shares the agent's tools network, so whoever runs code in it must not
+# find the agent key there (it would let them call the agent directly with any history).
+- name: Neither the sandbox's Docker environment nor terminal.env holds the agent key
+  ansible.builtin.assert:
+    that:
+      - spe_agent_api_key | trim | length > 0
+      - agui_sandbox_env.stdout | from_json | select('match', '^OPEN_TERMINAL_API_KEY=') | list | length == 1
+      - (spe_agent_api_key | trim) not in agui_sandbox_env.stdout
+      - (spe_agent_api_key | trim) not in (agui_terminal_env.content | b64decode)
+    fail_msg: >-
+      the agent key is in the sandbox's Docker environment or in {{ spe_frontend_dir }}/terminal.env
+      (or the environment read is not the sandbox's: OPEN_TERMINAL_API_KEY missing); the key boundary is broken
+    quiet: true
+
 - name: What a command in the sandbox sees, asked through the sandbox API
   ansible.builtin.command:
     argv: [docker, compose, -p, spe-frontend, -f, "{{ spe_frontend_dir }}/docker-compose.yml",

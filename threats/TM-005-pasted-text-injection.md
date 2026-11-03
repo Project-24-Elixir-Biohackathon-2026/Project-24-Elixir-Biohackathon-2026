@@ -14,6 +14,7 @@ agent-capabilities:
 related:
   - TM-003
   - TM-004
+  - TM-007
 references:
   - "OWASP LLM01: Prompt Injection"
 last_reviewed: 2026-07-15

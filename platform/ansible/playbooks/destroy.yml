@@ -6,12 +6,13 @@
 #              -e spe_confirm_reset=<instance>; see roles/existing_host/files/spe_preflight.py
 #              (reset mode) for what is checked before anything is removed.
 #   ansible-playbook playbooks/destroy.yml -e @instances/<name>.yml
-# The run (chats, report, parameters) is archived first; if that fails nothing
-# is deleted or reset. -e spe_archive_skip=true destroys without archiving.
-- name: Archive the run
-  ansible.builtin.import_playbook: archive.yml
-
-- name: Destroy SPE instance
+# The run (chats, report, parameters) is archived first, as the final archive
+# (spe_archive_final: an agui instance's chat-ui and agent are stopped first and
+# not started again); if that fails nothing is deleted or reset.
+# -e spe_archive_skip=true destroys without archiving.
+# Every precondition is checked before the final archive: it leaves chat-ui and the
+# agent stopped, so a destroy refused afterwards would leave the participant's chat down.
+- name: Destroy SPE instance (preconditions)
   hosts: localhost
   gather_facts: false
   tasks:
@@ -44,6 +45,30 @@
           asks for '{{ spe_instance }}' with '{{ spe_provision }}'. Nothing destroyed.
       when: handoff_file.stat.exists
 
+    - name: Existing host can be reset
+      when: spe_provision == 'existing'
+      block:
+        - name: Confirmation given
+          ansible.builtin.assert:
+            that: (spe_confirm_reset | default('')) == spe_instance
+            fail_msg: >-
+              Resetting removes this instance's stacks, volumes and data from the host.
+              Re-run with -e spe_confirm_reset={{ spe_instance }}
+        - name: Hand-off file present
+          ansible.builtin.assert:
+            that: handoff_file.stat.exists and handoff.ssh_target | default('') | length > 0
+            fail_msg: "{{ spe_output_dir }}/hosts.yml with ssh_target is needed to find the host; nothing reset"
+
+- name: Archive the run (final)
+  ansible.builtin.import_playbook: archive.yml
+  vars:
+    spe_archive_final: true
+
+- name: Destroy SPE instance
+  hosts: localhost
+  gather_facts: false
+  # handoff and handoff_file: set by the preconditions play.
+  tasks:
     - name: OpenStack teardown
       when: spe_provision == 'openstack'
       block:
@@ -70,16 +95,6 @@
     - name: Existing host to reset
       when: spe_provision == 'existing'
       block:
-        - name: Confirmation given
-          ansible.builtin.assert:
-            that: (spe_confirm_reset | default('')) == spe_instance
-            fail_msg: >-
-              Resetting removes this instance's stacks, volumes and data from the host.
-              Re-run with -e spe_confirm_reset={{ spe_instance }}
-        - name: Hand-off file present
-          ansible.builtin.assert:
-            that: handoff_file.stat.exists and handoff.ssh_target | default('') | length > 0
-            fail_msg: "{{ spe_output_dir }}/hosts.yml with ssh_target is needed to find the host; nothing reset"
         - name: Register host
           ansible.builtin.add_host:
             name: "{{ spe_instance }}-api"

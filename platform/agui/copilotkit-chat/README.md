@@ -78,8 +78,8 @@ unknown or deleted `?session=` starts a new session and drops the parameter.
 **Shutdown.** `instrumentation.ts` installs `lib/shutdown.ts` on `SIGTERM`: new runs are refused, every run in
 progress is cancelled (its `run_end` says `cancelled`), the session queue drains (at most 25 s) and the process exits. The
 image sets `NEXT_MANUAL_SIG_HANDLE=true` so that Next.js's own handler does not exit first; `node
-scripts/check-shutdown.mjs [--image <tag>]` checks it. `archive.yml` relies on it: it stops `chat-ui`, then `agent`,
-before copying the journals.
+scripts/check-shutdown.mjs [--image <tag>]` checks it. The final archive (`destroy.yml`, `spe_archive_final: true`)
+relies on it: it stops `chat-ui`, then `agent`, before copying the journals; a plain `archive.yml` stops nothing.
 
 ```bash
 npm ci && npm run build                       # type-checks too
