@@ -104,7 +104,7 @@ import { CopilotRuntime, createCopilotRuntimeHandler } from "@copilotkit/runtime
 import type { Observable } from "rxjs";
 import { startTestAgent } from "./test-agent.ts";
 
-// Stands in for slice 3's recorder: keeps what the client sent, forwards `history` plus the client's last
+// Stands in for the run route's recorder: keeps what the client sent, forwards `history` plus the client's last
 // message (the new user message) instead.
 class Replace extends Middleware {
   seen: Message[][] = [];
@@ -800,9 +800,13 @@ Nothing uses it until the route moves to journals (slice 3)."
   - `created_at` is the `created` line's `at`, else the first parsed line's (Review Focus 3); `meta` folds the
     `meta` lines in order (a key present on a line sets it); `first_user_text` is the first added user message
     with string content; `last_line_at` the last line's `at`;
-  - `isBoundary`: a user message, or the last id of some run's `added` unless that message holds a tool call
-    (nothing after it in its run answers the call: a run cancelled, failed or cut mid tool call), so the agent is
-    never sent a dangling tool call (§13); log lines name ids, never content.
+  - `isBoundary`: a user message, or the last id of some run's `added`, but only when every tool call id any
+    message that run added holds is answered by a `tool` message the same run added (a call the last message
+    itself holds, with nothing later in the run to answer it, is the special case this excludes: a run
+    cancelled, failed or cut mid tool call), and only once that run has a `run_end` (a run still streaming or
+    cut is none: a concurrent run must not anchor at a partial reply that later gains a tool call; #22's
+    review, clarification 7); earlier runs need no check; so the agent is never sent a dangling tool call
+    (§13); log lines name ids, never content.
 
 - [ ] **Step 1: write the failing test.** Create `CHAT/lib/rebuild.test.ts`:
 
@@ -905,6 +909,41 @@ test("tool calls, a compaction marker and a failed run rebuild as the browser ho
   assert.equal(isBoundary(conv, "unknown"), false);
   assert.deepEqual(pathTo(conv, "t1").map((m) => m.id), ["u1", "a1", "t1"]);
   assert.deepEqual(pathTo(conv, null), []);
+});
+
+test("a run that leaves one of two tool calls unanswered is no boundary even at its last message", async () => {
+  const conv = await rebuild(ID, [
+    created(), start("r1", null, [user("u1", "list and count")]),
+    ev("r1", { type: EventType.RUN_STARTED, threadId: ID, runId: "r1" }),
+    ev("r1", { type: EventType.TOOL_CALL_START, toolCallId: "c1", toolCallName: "execute", parentMessageId: "a1" }),
+    ev("r1", { type: EventType.TOOL_CALL_ARGS, toolCallId: "c1", delta: '{"cmd":"ls"}' }),
+    ev("r1", { type: EventType.TOOL_CALL_END, toolCallId: "c1" }),
+    ev("r1", { type: EventType.TOOL_CALL_START, toolCallId: "c2", toolCallName: "execute", parentMessageId: "a1" }),
+    ev("r1", { type: EventType.TOOL_CALL_ARGS, toolCallId: "c2", delta: '{"cmd":"wc"}' }),
+    ev("r1", { type: EventType.TOOL_CALL_END, toolCallId: "c2" }),
+    ev("r1", { type: EventType.TOOL_CALL_RESULT, messageId: "t1", toolCallId: "c1", content: "a.txt", role: "tool" }),
+    end("r1", "cancelled"),
+  ]);
+  assert.deepEqual(conv.runs[0].added, ["u1", "a1", "t1"]);
+  assert.equal(isBoundary(conv, "t1"), false);
+});
+
+test("a run that answers every tool call it made is a boundary at its last message", async () => {
+  const conv = await rebuild(ID, [
+    created(), start("r1", null, [user("u1", "list and count")]),
+    ev("r1", { type: EventType.RUN_STARTED, threadId: ID, runId: "r1" }),
+    ev("r1", { type: EventType.TOOL_CALL_START, toolCallId: "c1", toolCallName: "execute", parentMessageId: "a1" }),
+    ev("r1", { type: EventType.TOOL_CALL_ARGS, toolCallId: "c1", delta: '{"cmd":"ls"}' }),
+    ev("r1", { type: EventType.TOOL_CALL_END, toolCallId: "c1" }),
+    ev("r1", { type: EventType.TOOL_CALL_START, toolCallId: "c2", toolCallName: "execute", parentMessageId: "a1" }),
+    ev("r1", { type: EventType.TOOL_CALL_ARGS, toolCallId: "c2", delta: '{"cmd":"wc"}' }),
+    ev("r1", { type: EventType.TOOL_CALL_END, toolCallId: "c2" }),
+    ev("r1", { type: EventType.TOOL_CALL_RESULT, messageId: "t1", toolCallId: "c1", content: "a.txt", role: "tool" }),
+    ev("r1", { type: EventType.TOOL_CALL_RESULT, messageId: "t2", toolCallId: "c2", content: "3", role: "tool" }),
+    end("r1"),
+  ]);
+  assert.deepEqual(conv.runs[0].added, ["u1", "a1", "t1", "t2"]);
+  assert.equal(isBoundary(conv, "t2"), true);
 });
 
 test("two runs from one anchor are siblings; the tip is the run that ended last", async () => {
@@ -1085,17 +1124,25 @@ export function pathTo(conv: Conversation, id: string | null): Message[] {
   return path.reverse();
 }
 
-// A point the agent may continue from: a user message, or the last message a run added, unless that message
-// holds a tool call with no tool result later in its run (a run cancelled, failed or cut mid tool call), which
-// would send the agent a dangling tool call (§13).
+// A point the agent may continue from: a user message, or the last message a run added, but only if every
+// tool call any message that run added holds is answered by a `tool` message the same run added (a call the
+// last message itself holds, with nothing later in the run to answer it, is the special case this excludes:
+// a run cancelled, failed or cut mid tool call), so the agent is never sent a dangling tool call (§13).
 export function isBoundary(conv: Conversation, id: string): boolean {
   const node = conv.nodes.get(id);
   if (!node) return false;
   if (node.message.role === "user") return true;
-  if (!conv.runs.some((run) => run.added.at(-1) === id)) return false;
-  // The run's last message: nothing follows it in its run, so a tool call it holds has no result.
-  const calls = (node.message as { toolCalls?: unknown[] }).toolCalls ?? [];
-  return calls.length === 0;
+  const run = conv.runs.find((r) => r.added.at(-1) === id);
+  if (!run) return false;
+  const calls = new Set<string>();
+  const answered = new Set<string>();
+  for (const addedId of run.added) {
+    const message = conv.nodes.get(addedId)!.message;
+    for (const call of (message as { toolCalls?: { id: string }[] }).toolCalls ?? []) calls.add(call.id);
+    const toolCallId = (message as { toolCallId?: string }).toolCallId;
+    if (message.role === "tool" && toolCallId !== undefined) answered.add(toolCallId);
+  }
+  return [...calls].every((callId) => answered.has(callId));
 }
 
 export function branchOfTip(conv: Conversation): Message[] {
@@ -1221,7 +1268,7 @@ export async function rebuildText(id: string, text: string): Promise<Conversatio
 }
 ```
 
-- [ ] **Step 4: run it green.** The command of step 2: 10 tests pass (the warnings printed are the skipped lines
+- [ ] **Step 4: run it green.** The command of step 2: 12 tests pass (the warnings printed are the skipped lines
   and the missing anchor the tests provoke). Then `(cd CHAT && npm test && npm run build)`: all pass. If the tool
   call test's `branchOfTip` differs from the literal (for example `content: ""` on `a1`), read
   `defaultApplyEvents` in `node_modules/@ag-ui/client/dist/index.mjs.map` (`src/apply/default.ts`) before
@@ -1639,13 +1686,14 @@ Reordered histories and known ids resent from another branch flag nothing."
    and compare the client's history with the journal's path to the anchor. The anchor is, of the client's
    messages whose id the journal holds, the one the journal added last, whatever the client's order. An anchor
    inside a run (a message that is neither a user message nor a run's last message, such as an assistant tool
-   call whose result follows, or a run's last message that holds a tool call, as a run cancelled, failed or cut
-   mid tool call leaves it) moves back to the last run boundary before it, and the journal's messages after that
-   boundary are `deleted`, even those the client sent, so the agent is never sent a dangling tool call. The
-   new messages are the user messages after the anchor whose ids the journal does not hold, each id counted
-   once. A client message the journal holds with the same role, content, tool calls and tool call id is not
-   recorded, wherever it stands: the journal already holds it, and `run_start.anchor` shows which branch the
-   run continued. `ignored` lists the client's messages in the client's order, then `deleted` in path order:
+   call whose result follows, or a run's last message while a tool call that run made has no result in it, as
+   a run cancelled, failed or cut mid tool call leaves it) moves back to the last run boundary before it, and
+   the journal's messages after that boundary are `deleted`, even those the client sent, so the agent is never
+   sent a dangling tool call. The new messages are the user messages after the anchor whose ids the journal
+   does not hold, each id counted once. A client message the journal holds with the same role, content, tool
+   calls and tool call id is not recorded, wherever it stands: the journal already holds it, and
+   `run_start.anchor` shows which branch the run continued. `ignored` lists the client's messages in the
+   client's order, then `deleted` in path order:
 ```
 
   and in step 2's first bullet, replace ", and every forged marker" with ", every forged marker and every message
@@ -1657,15 +1705,16 @@ Reordered histories and known ids resent from another branch flag nothing."
 N. **Classification reads decision 2 literally where §13 left it open: a known, unchanged message off the
    anchor's path is not recorded** (YYYY-MM-DD; conversation record, slice 1/4). §13 *The run route*, step 2 now
    states: the anchor is the client message the journal added last, not the last in the client's order; a run's
-   last message that holds a tool call is not a run boundary; the messages cut when the anchor moves back are
-   `deleted` even if the client sent them; a message without a string id is `fabricated`, and a repeated new id
-   counts once; `ignored` lists the client's messages first, then `deleted` in path order; a known message whose
-   compared fields equal the journal's is not recorded, even off the anchor's path (a message resent from another
-   branch). *Reason:* the record keeps what reached the agent and what the client sent that differs; an
-   unchanged known message differs in nothing, the journal already holds it verbatim, and `run_start.anchor`
-   shows which branch the run continued; a reordered history must not raise false alarms. *Cost if wrong:* an
-   analyst cannot see in the journal that a client resent an unchanged message from another branch; recording it
-   later is one more `ignored` kind and its rendering in `write_run.py`, absent from journals written before.
+   last message is not a run boundary while a tool call that run made has no result in that run; the messages
+   cut when the anchor moves back are `deleted` even if the client sent them; a message without a string id is
+   `fabricated`, and a repeated new id counts once; `ignored` lists the client's messages first, then `deleted`
+   in path order; a known message whose compared fields equal the journal's is not recorded, even off the
+   anchor's path (a message resent from another branch). *Reason:* the record keeps what reached the agent
+   and what the client sent that differs; an unchanged known message differs in nothing, the journal already
+   holds it verbatim, and `run_start.anchor` shows which branch the run continued; a reordered history must
+   not raise false alarms. *Cost if wrong:* an analyst cannot see in the journal that a client resent an
+   unchanged message from another branch; recording it later is one more `ignored` kind and its rendering in
+   `write_run.py`, absent from journals written before.
    *Amends:* §13 *The run route*, step 2; decision 2. *Status:* folded.
 ```
 

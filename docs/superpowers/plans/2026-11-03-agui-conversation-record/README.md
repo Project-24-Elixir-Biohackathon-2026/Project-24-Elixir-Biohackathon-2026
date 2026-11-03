@@ -71,8 +71,10 @@ the task text it changes.
    resent from another branch): the journal already holds it verbatim, and `run_start.anchor` shows which branch
    the run continued; (c) messages cut when the anchor moves back to a boundary are `deleted` even if the client
    sent them; (d) a message without a string id is `fabricated`, and a repeated new id counts once; (e) `ignored`
-   lists client-order entries first, then `deleted` in path order. A run's last message holding a tool call is no
-   boundary (`isBoundary`). Slice 1 folds them into §13 step 2 with a clarification. *Cost if wrong:* an analyst
+   lists client-order entries first, then `deleted` in path order. A run's last message is no boundary while a
+   tool call the run made has no result in that run, nor while the run has no `run_end` (`isBoundary`; the
+   second rule from #22's review, clarification 7). Slice 1 folds them into §13 step 2 with a
+   clarification. *Cost if wrong:* an analyst
    cannot see that a client resent an unchanged message from another branch; recording it later is one more
    `ignored` kind and its rendering in `write_run.py`, absent from journals written before.
 
@@ -158,7 +160,7 @@ checks in `AGENTS.md`, *Overrides*, pass; the status column then reads `merged #
 
 | n/N | Branch | Tasks | Delivers | Est. LOC | Reviewer checks | File | Status |
 |---|---|---|---|---|---|---|---|
-| 1/4 | `impl/agui-conversation-record-1-history` | 4 | **feasibility check** (decision 5) first; journal format and writer, rebuild, anchor, all unwired | ~1,100 | `npm test`; `npm run build` | [slice-1-history.md](slice-1-history.md) | planned |
+| 1/4 | `impl/agui-conversation-record-1-history` | 4 | **feasibility check** (decision 5) first; journal format and writer, rebuild, anchor, all unwired | ~1,100 | `npm test`; `npm run build` | [slice-1-history.md](slice-1-history.md) | merged #22 |
 | 2/4 | `impl/agui-conversation-record-2-export` | 3 | exporter in the image; `write_run.py` renders AG-UI chats (status, ignored, compaction, columns) | ~800 | `npm test`; `docker build` + exporter run in the image; `pytest platform/dev/tests` | [slice-2-export.md](slice-2-export.md) | planned |
 | 3/4 | `impl/agui-conversation-record-3-route` | 5 | the store, the run route and the API on journals; archive exports journals (barrier kept); built-server check; **early output** samples 1 and 2 | ~1,500 | `npm test`; `npm run build`; `check-built-server.mjs`; `check-shutdown.mjs`; `docker build` + exporter run in the image (slice 2's check again: `sessions.ts` rewritten); pytest; `--syntax-check`; e2e `sessions.py` | [slice-3-route.md](slice-3-route.md) | planned |
 | 4/4 | `impl/agui-conversation-record-4-live-archive` | 5 | live archive and final barrier (decision 30); Playwright for decisions 6, 13, 24–26; key check (17); TM-007 (18); dev VM acceptance; spec marked built | ~700 | e2e `sessions.py`; `verify.yml` and `archive.yml` on the dev VM; `validate.py` | [slice-4-live-archive.md](slice-4-live-archive.md) | planned |

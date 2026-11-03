@@ -52,3 +52,32 @@ in the parts it amends.
    `-e spe_agui_source_dir=<checkout>/platform/agui`. *Reason:* the platform moved under `platform/`, and the
    `agui` role stages `pydantic-ai-agent` and `copilotkit-chat` relative to this directory, so the repository
    root made `create.yml` fail. *Amends:* §7, the `agui` role's variables. *Status:* folded.
+
+6. **Classification reads decision 2 literally where §13 left it open: a known, unchanged message off the
+   anchor's path is not recorded** (2026-11-03; conversation record, slice 1/4). §13 *The run route*, step 2 now
+   states: the anchor is the client message the journal added last, not the last in the client's order; a run's
+   last message is not a run boundary while a tool call that run made has no result in that run; the messages
+   cut when the anchor moves back are `deleted` even if the client sent them; a message without a string id is
+   `fabricated`, and a repeated new id counts once; `ignored` lists the client's messages first, then `deleted`
+   in path order; a known message whose compared fields equal the journal's is not recorded, even off the
+   anchor's path (a message resent from another branch). *Reason:* the record keeps what reached the agent and
+   what the client sent that differs; an unchanged known message differs in nothing, the journal already holds
+   it verbatim, and `run_start.anchor` shows which branch the run continued; a reordered history must not raise
+   false alarms. *Cost if wrong:* an analyst cannot see in the journal that a client resent an unchanged message
+   from another branch; recording it later is one more `ignored` kind and its rendering in `write_run.py`,
+   absent from journals written before. *Amends:* §13 *The run route*, step 2; decision 2. *Status:* folded.
+
+7. **A run without `run_end` is no boundary at its last message, nothing after a run's first `run_end` is applied,
+   and new messages count from the anchor's position as the client sent it** (2026-11-03; conversation record,
+   slice 1/4's review round, the fork's PR #22). §13 *The run route*, step 2 states the first and third,
+   *Rebuilding the conversation* the second. *Reason:* while a run streams, its newest message holds no tool call
+   yet, so a second run (§13, *Concurrency and branches*) could anchor at that partial reply; the first run then
+   attaches a tool call to it with the result on its own branch, and a later run on the second branch sends the
+   agent a dangling call. Lines after a run's first `run_end`, which only a damaged or hand-edited journal holds,
+   could do the same to an ended run another run is anchored at. The cutoff for new messages was left open by
+   clarification 6; the code counts from the anchor's place in the client's history before it moves back, the
+   stricter reading (fewer messages count as new, the rest `fabricated`). *Cost if wrong:* a run that anchors at a
+   still-streaming or crashed run's reply moves back to that run's user message and records the reply `deleted`, an
+   alarm an analyst must read past; a damaged journal's late lines are left out of the rebuild, though the
+   archive's raw journal keeps them. *Amends:* §13 *The run route*, step 2, and *Rebuilding the conversation*;
+   decision 2. *Status:* folded.

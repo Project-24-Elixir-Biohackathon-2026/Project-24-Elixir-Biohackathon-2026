@@ -194,7 +194,8 @@ is open (`docs/guides/contributing-upstream.md`, step 6).
 - **AG-UI conversation record** (Full mode): `chat-ui` owns the history as an append-only journal, the agent
   stays stateless. Spec merged (#19): §13–14 of the living AG-UI spec `docs/specs/2026-10-15-agui-frontend-design/`.
   Plan merged (#20): `docs/superpowers/plans/2026-11-03-agui-conversation-record/`, 4 slices, none waiting on
-  another track. **Next: slice 1/4** `impl/agui-conversation-record-1-history`. Handoff:
+  another track. Slice 1/4 (#22, journal, rebuild, anchor; feasibility verdict positive) merged. **Next: slice
+  2/4** `impl/agui-conversation-record-2-export`. Handoff:
   `ls docs/superpowers/plans/2026-11-03-agui-conversation-record/handoffs | tail -1`.
 - **Upstream PR kraatz #9** (`contrib/agui-token-cap-optional`): the AG-UI agent's token cap optional, off by
   default (fork #4); waits on upstream's review (`docs/guides/contributing-upstream.md`, step 6).

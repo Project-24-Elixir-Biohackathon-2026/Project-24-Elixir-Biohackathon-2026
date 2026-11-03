@@ -44,12 +44,21 @@ Per run:
    deleted, or that arrives while `chat-ui` is closing (§14, *Barrier*): emit `RUN_STARTED` then `RUN_ERROR`
    ("invalid session" / "this session was deleted" / …) and do not call the agent.
 2. Load the session from the index or journal. Compute the **anchor** and the **new messages** (decision 2),
-   and compare the client's history with the journal's path to the anchor. An anchor inside a run (a
-   message that is neither a user message nor a run's last message, such as an assistant tool call whose
-   result follows) moves back to the last run boundary before it, and the journal's messages after that
-   boundary are `deleted`, so the agent is never sent a dangling tool call:
+   and compare the client's history with the journal's path to the anchor. The anchor is, of the client's
+   messages whose id the journal holds, the one the journal added last, whatever the client's order. An anchor
+   inside a run (a message that is neither a user message nor a run's last message, such as an assistant tool
+   call whose result follows, a run's last message while a tool call that run made has no result in it, as
+   a run cancelled, failed or cut mid tool call leaves it, or a run's last message while that run has no
+   `run_end`, as a run still streaming or cut leaves it) moves back to the last run boundary before it, and
+   the journal's messages after that boundary are `deleted`, even those the client sent, so the agent is never
+   sent a dangling tool call. The new messages are the user messages after the anchor, in the client's order and at
+   the anchor's position before any move back, whose ids the journal does not hold, each id counted once. A client message the journal holds with the same role, content, tool
+   calls and tool call id is not recorded, wherever it stands: the journal already holds it, and
+   `run_start.anchor` shows which branch the run continued. `ignored` lists the client's messages in the
+   client's order, then `deleted` in path order:
    - a client message with an id the journal does not hold, other than a new message: `fabricated`; this
-     includes every message after the anchor that is not a user message, and every forged marker;
+     includes every message after the anchor that is not a user message, every forged marker and every
+     message without a string id;
    - a client message with a known id whose role, content, tool calls or tool call id differ: `edited`;
      other fields CopilotKit may add are not compared;
    - a message on the journal's path missing from the client: `deleted`;
@@ -127,7 +136,9 @@ out of scope (the archive keeps them all).
 ### Rebuilding the conversation
 
 For each run in journal order: take the path to its anchor, append its new messages, and apply its `event` lines
-with `@ag-ui/client`'s event application, as the browser does. The messages the run added are, in order of first
+with `@ag-ui/client`'s event application, as the browser does. A run's first `run_end` ends it: a later
+`run_end` or `event` line of that run is skipped and logged by run id, so an ended run, which another run may
+be anchored at, never changes. The messages the run added are, in order of first
 appearance, chained by `parentId`: the first new message's parent is the anchor, every later message's parent
 is the one before it. A `MESSAGES_SNAPSHOT` the agent itself sends is applied like any event; the one
 `chat-ui` sends to the browser (decision 6) is not journaled, since it is derived. The rebuild lives in one module

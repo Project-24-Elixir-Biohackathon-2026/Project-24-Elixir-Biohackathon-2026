@@ -472,7 +472,11 @@ test("SPE_SESSIONS_TEST_SAVE_DELAY_MS holds a run_end append, nothing else", asy
   that stays exactly as it is in today's file (l. 38–103: `TAG` through `autoTitle`; l. 110–133:
   `shared()` and `withSession()`, whose constant `KEY` is renamed `QUEUE`): move it there unchanged and drop the
   `// KEEP:` line. Everything else in today's file (`RunStatus`, `RunEntry`, `SessionRecord`, `isDeleted`,
-  `checkRecord`, `SessionStore`, `defaultStore`, the directory-sync code) goes.
+  `checkRecord`, `SessionStore`, `defaultStore`, the directory-sync code) goes. Two leftovers of slice 1 close
+  here: `RunStatus` is then exported by `journal.ts` alone (import it from there), and `parseJournal` checks a
+  `meta` line's keys for presence, not their values' types, so the index folds a `meta` value only when its type
+  is the one `parsePatch` accepts for that key and skips the rest, with a test of a hand-edited
+  `{"type":"meta","pinned":"yes"}` line (slice 1's review round, #22).
 
 ```ts
 // Chat sessions on disk: one append-only journal per session, /data/sessions/<uuid>.jsonl (lib/journal.ts

@@ -6,6 +6,7 @@
 //   contains "crash": RUN_STARTED and one text chunk, then the connection is destroyed
 //   contains "compact": also sends a compaction marker (an assistant message, id `spe-compaction-<runId>`)
 //   contains "activity": also sends an ACTIVITY_SNAPSHOT (the form the spec first chose; pinned as dropped)
+//   contains "echo-input": the reply's text is the JSON of [{role, id}] for every message the agent received
 //   a body that is not JSON: HTTP 400, not kept in `requests`
 //   anything else: a text message echoing it, then RUN_FINISHED (after `delayMs`, default 0)
 // Each request is kept in `requests`; `closed` turns true when its connection closes.
@@ -68,7 +69,10 @@ export async function startTestAgent(delayMs = 0, headerDelayMs = 0): Promise<Te
         return;
       }
       send({ type: "TEXT_MESSAGE_START", messageId, role: "assistant" });
-      send({ type: "TEXT_MESSAGE_CONTENT", messageId, delta: `echo: ${text}` });
+      const reply = text.includes("echo-input")
+        ? JSON.stringify((body.messages ?? []).map((m: any) => ({ role: m.role, id: m.id })))
+        : `echo: ${text}`;
+      send({ type: "TEXT_MESSAGE_CONTENT", messageId, delta: reply });
       if (text.includes("hang")) return; // the client's abort or close ends it
       if (text.includes("crash")) {
         setTimeout(() => res.socket?.destroy(), 20);
