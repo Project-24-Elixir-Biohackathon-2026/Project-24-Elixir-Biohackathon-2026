@@ -21,7 +21,7 @@ The frontend is either Open WebUI (`spe-frontend` containers `open-webui`, `open
 
 ## The procedure
 
-1. You change files in `~/sperange` and apply the change as the table below says.
+1. You change files in `~/sperange` and apply the change yourself, as the table below says: run the `spe-apply` step the row names before you report, and report the command and its result. Testing a script by hand is not applying it; the person tests through the chat frontend, which only sees what is applied.
 2. The person tests the change in this workspace's chat. You verify what you can on this VM yourself (see "Verify on the VM").
 3. When it works, the person asks you to make a template of it, or to put it into the main template. Follow "Hand over".
 
