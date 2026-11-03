@@ -21,6 +21,11 @@ Granted on 2026-10-22; PR writes through `gh api` work since. `gh pr edit` still
 (`.methodology/shared/guides/tooling-gotchas.md`).
 
 **Upstream PRs are opened by hand.** The token covers our fork only, so
-`gh pr create --repo kraatz/elixir-biohackathon-2026-test` fails with the same error (seen 2026-10-29). Push the
-branch to `origin` and open the compare page with the base set to upstream explicitly:
-`https://github.com/kraatz/elixir-biohackathon-2026-test/compare/main...thodkatz:elixir-biohackathon-2026-test:<branch>?expand=1`.
+`gh pr create --repo kraatz/elixir-biohackathon-2026-test` fails with the same error (seen 2026-10-29; re-probed
+2026-11-03 with `gh api -X POST …/pulls -f head=thodkatz:__probe__ …`, HTTP 403). Push the branch to `origin` and
+open the compare page with the base set to upstream explicitly:
+`https://github.com/kraatz/elixir-biohackathon-2026-test/compare/main...thodkatz:elixir-biohackathon-2026-test:<branch>?expand=1`
+— and this is now the standard end of an upstream unit: a session prepares one `contrib/<slug>` branch on the fork
+(BACKLOG's *Upstream PR for the AG-UI package* item) and leaves the PR creation to the user. An old upstream PR
+needs no write on kraatz either way: `gh pr merge --repo kraatz/…` is out of reach (403), so a merged upstream PR
+is merged by the user, or by reauth as the kraatz owner..
