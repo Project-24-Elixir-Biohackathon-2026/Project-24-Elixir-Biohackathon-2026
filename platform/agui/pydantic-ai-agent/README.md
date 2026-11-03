@@ -3,7 +3,7 @@
 A Pydantic AI pentest agent for one SPE instance, served over AG-UI. It holds the
 LLM key and calls the open-terminal sandbox, where model-chosen commands run; it
 runs no commands itself. Deployed by the `agui` Ansible role next to the sandbox and
-the chat UI (`docs/specs/2026-10-15-agui-frontend-design.md`).
+the chat UI (`docs/specs/2026-10-15-agui-frontend-design/`).
 
 ```bash
 uv run --group dev pytest -q                   # offline tests: no LLM, no network

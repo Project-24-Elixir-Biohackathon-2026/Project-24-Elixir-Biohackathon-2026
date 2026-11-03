@@ -506,7 +506,7 @@ git commit -s -m "Archive: render a compaction as '## Compacted' and count them 
 **Files:**
 - Modify: `platform/dev/e2e/sessions.py` (`check_compaction`; `LOCAL`; `main`)
 - Create: `docs/superpowers/plans/2026-11-03-agui-compaction/evidence/slice-2/` (screenshots)
-- Modify: `docs/superpowers/specs/2026-10-29-agui-chat-sessions-design.md` (clarification for §4)
+- Modify: `docs/specs/2026-10-15-agui-frontend-design/clarifications.md` (clarification for §14), `docs/specs/2026-10-15-agui-frontend-design/14-archive.md` (*Write*)
 
 **Interfaces:**
 - Consumes: task 1's classes and texts; task 2's `compact` keyword and answer text.
@@ -611,9 +611,9 @@ python3 platform/dev/e2e/sessions.py
   both schemes, the summary is collapsed, then shows the `<img …>` line as text. Keep only those four files under
   `evidence/slice-2/{light,dark}/`.
 
-- [ ] **Step 4: the chat sessions spec clarification.** In
-  `docs/superpowers/specs/2026-10-29-agui-chat-sessions-design.md`, *Clarifications*, add the next number, in
-  the existing form:
+- [ ] **Step 4: the living AG-UI spec's clarification.** In
+  `docs/specs/2026-10-15-agui-frontend-design/clarifications.md`, add the next number, in the
+  existing form (the chat sessions spec was folded into the living spec by #19):
 
 ```markdown
 N. **The archive renders the agent's compaction marker as a section, and `index.md` counts them** (2026-11-03;
@@ -622,20 +622,22 @@ N. **The archive renders the agent's compaction marker as a section, and `index.
    summary in a fence; `index.md`'s columns become `# | Session | Tags | Created | Runs | Compactions | State`.
    *Reason:* the agent compacts a conversation that no longer fits the model's context and marks the point in
    the session's messages (`docs/superpowers/specs/2026-11-03-agui-compaction-design.md`, §7, clarification 1).
-   *Amends:* §4 (archive layout, `index.md` columns). *Status:* folded.
+   *Amends:* §14, the as-built archive paragraph (`index.md` columns). *Status:* folded.
 ```
 
-  and in §4 itself, where `index.md`'s columns are listed (l. 258 on), add `Compactions` before the state and one
-  sentence: "A compaction marker is rendered as a `## Compacted` section (clarification N)."
+  and in §14 (`14-archive.md`), in the paragraph on the archive as built (*Until the record is built, …*), add
+  `Compactions` before `State` in the `index.md` columns and one sentence: "A compaction marker is rendered as a
+  `## Compacted` section (clarification N)." §14 *Write* (the record's renderer) already renders a "Compacted"
+  section (decision 16), and the record's plan carries the column over (`inputs-for-plan.md`), so leave it.
 
 - [ ] **Step 5: commit.**
 
 ```bash
 git add platform/dev/e2e/sessions.py docs/superpowers/plans/2026-11-03-agui-compaction/evidence/slice-2 \
-  docs/superpowers/specs/2026-10-29-agui-chat-sessions-design.md
+  docs/specs/2026-10-15-agui-frontend-design/clarifications.md docs/specs/2026-10-15-agui-frontend-design/14-archive.md
 git commit -s -m "e2e: check the compaction divider live and after a reload, light and dark
 
-Also the chat sessions spec's clarification for the archive's Compacted section."
+Also the living AG-UI spec's clarification for the archive's Compacted section."
 ```
 
 ---

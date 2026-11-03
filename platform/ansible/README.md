@@ -236,7 +236,7 @@ ssh -i output/INSTANCE/ssh_key -L 8080:127.0.0.1:8080 ubuntu@FLOATING_IP
 ## Agent frontend (AG-UI)
 
 `spe_frontend: agui` runs a Pydantic AI agent we own instead of Open WebUI's
-agent loop (`platform/agui/pydantic-ai-agent/`, `platform/agui/copilotkit-chat/`, spec `docs/specs/2026-10-15-agui-frontend-design.md`).
+agent loop (`platform/agui/pydantic-ai-agent/`, `platform/agui/copilotkit-chat/`, spec `docs/specs/2026-10-15-agui-frontend-design/`).
 Three containers in compose project `spe-frontend`, so switching `spe_frontend`
 replaces one frontend with the other (its volumes, `open-webui-data` included, stay):
 

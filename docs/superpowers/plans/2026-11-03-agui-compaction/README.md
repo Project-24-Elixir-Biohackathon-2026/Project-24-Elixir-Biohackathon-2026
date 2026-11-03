@@ -184,7 +184,7 @@ marker as `## Compacted`; `index.md`'s columns become `| # | Session | Tags | Cr
 | `platform/dev/fake_agent.py` | 2 | `compact` keyword, summary `function=`, small window |
 | `ansible/roles/run_archive/files/write_agui_run.py`, `platform/dev/tests/test_write_agui_run.py` | 2 | `## Compacted`, the `Compactions` column |
 | `platform/dev/e2e/sessions.py` | 2 | `check_compaction` |
-| `docs/superpowers/specs/2026-10-29-agui-chat-sessions-design.md` | 2 | clarification for §4 |
+| `docs/specs/2026-10-15-agui-frontend-design/clarifications.md`, `docs/specs/2026-10-15-agui-frontend-design/14-archive.md` | 2 | clarification for §14, *Write* |
 | `docs/superpowers/plans/2026-11-03-agui-compaction/evidence/slice-2/` | 2 | screenshots |
 | `ansible/inventory/group_vars/all.yml` (de.NBI window), `ansible/README.md`, `docs/getting-started.md` | 3 | the window value, docs |
 | `docs/superpowers/specs/2026-11-03-agui-compaction-design.md` (clarification 5), `…/evidence/slice-3/` | 3 | decision 13's check and its evidence |

@@ -294,10 +294,10 @@ this work (`docs/guides/contributing-upstream.md`). No upstream PR is part of th
   follow-ups below, and decision 13's model-backed check.
 - **Texts this work makes stale**, each updated by the slice that changes the behaviour:
   - `platform/agui/pydantic-ai-agent/README.md`, *Runs* ("builds its history from the request alone");
-  - `docs/specs/2026-10-15-agui-frontend-design.md`, *History* (l. 243): upstream's spec, so it changes only
+  - `docs/specs/2026-10-15-agui-frontend-design/05-agent-service.md`, *History*: upstream's spec, so it changes only
     when this work is ported upstream; until then the fork's slice notes it in its PR;
-  - the chat sessions spec (`docs/superpowers/specs/2026-10-29-agui-chat-sessions-design.md`): a
-    clarification for §4's archive layout and `index.md` columns;
+  - the living AG-UI spec (`docs/specs/2026-10-15-agui-frontend-design/`, which the chat sessions spec was
+    folded into by #19): a clarification for §14's archive layout and `index.md` columns;
   - `BACKLOG.md`: the canary-ladder item (runs may be compacted, so scoring reads the run log's
     `compactions`) is added with this spec; the slice that ships the run log's field checks it still holds.
 - Paid runs: decision 13, the early output and slice 1's summary sample use Haiku on the dev VM, approved by
