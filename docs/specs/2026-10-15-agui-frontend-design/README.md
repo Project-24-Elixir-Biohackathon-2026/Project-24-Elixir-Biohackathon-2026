@@ -8,7 +8,7 @@ records what implementation verified and changed). §6's sessions and sidebar: i
 `thodkatz/elixir-biohackathon-2026-test`), not built yet; the live archive (§14, decision 30) since
 clarification 2. The history before this directory is that of the single
 file it replaced: `git log -- docs/specs/2026-10-15-agui-frontend-design.md`.
-**Latest clarification:** 3.
+**Latest clarification:** 5.
 §13 and §14 were read against `@ag-ui/client` 1.0.2 and CopilotKit 1.79.0 (`@copilotkit/runtime`,
 `@copilotkit/react-core`) as pinned in `package-lock.json`, and Open WebUI v0.11.3 (the image
 `spe_frontend_webui_image` pins) as the model to follow, read in its source at tag `v0.11.3` (`2a960a5`).
@@ -81,12 +81,14 @@ for the record (their journal parts are built with it). §§1–5 and
 
 ## Early output
 
-Two samples for the conversation record, the first one before anything else is built. **First, the
-feasibility check** (decision 5): the built server with `fake_agent.py`, a `curl` request to `chat-ui` carrying
-a fabricated assistant turn and a forged `spe-compaction-` marker, the agent's echo of what it received, and
-the session's journal lines, shown to the user in the first slice. If CopilotKit's runtime will not let
-`chat-ui` replace the history it forwards, the user decides again whether the agent should own the history
-instead. **Second, the rendered archive chat** of that session (`chats/01-*.md`) and of one normal session
+Two samples for the conversation record. **First, the feasibility check** (decision 5): the built server with
+`fake_agent.py`, a `curl` request to `chat-ui` carrying a fabricated assistant turn and a forged
+`spe-compaction-` marker, the agent's echo of what it received, and the session's journal lines, shown to the
+user as soon as the journal is wired into the run route (clarification 4). Before anything else is built, the
+first slice shows the feasibility verdict at the runtime level: through CopilotKit's runtime handler and an
+`HttpAgent` built as the route builds it, a middleware that replaces the history decides what the agent
+receives. If CopilotKit's runtime will not let `chat-ui` replace the history it forwards, the user decides again
+whether the agent should own the history instead. **Second, the rendered archive chat** of that session (`chats/01-*.md`) and of one normal session
 with tool calls: `fake_agent.py` is enough for both, since what the user judges is the record and its rendering, not the
 model's replies; the user reads whether the ignored content and the run statuses are clear to someone
 analysing a run, and whether the browser should also show the ignored content (decision 6 only shows what the

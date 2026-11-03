@@ -33,3 +33,22 @@ in the parts it amends.
    marks the point in the session's messages (`docs/superpowers/specs/2026-11-03-agui-compaction-design.md`, §7,
    clarification 1). It was written as the chat sessions spec's clarification 8 on that branch, which #19's fold
    took first. *Amends:* §14, the archive as built (`index.md` columns). *Status:* folded.
+
+4. **The feasibility sample comes from the built server once the journal is wired; the first slice shows the
+   verdict at the runtime level** (2026-11-03; the fork's PR #20, the conversation record's plan). *Early output*'s
+   first sample (the built server, a `curl` with a fabricated turn and a forged marker, `fake_agent.py`'s echo, the
+   journal lines) is shown when the journal is wired into the run route, not in the first slice; the first slice
+   shows the verdict through CopilotKit's runtime handler and a real `HttpAgent`, a middleware that replaces the
+   history deciding what the agent receives, and stops the work for the user's decision if it does not. *Reason:*
+   the journal lines and `fake_agent.py`'s echo of what it received exist only once the journal and the run route
+   are built; the runtime-level test answers the same question (can `chat-ui` replace the history?) before any of
+   that is built, which is what the early sample is for. *Cost if wrong:* the user sees the sample with journal
+   lines one slice later than the spec said; a negative verdict still stops the work in the first slice.
+   *Amends:* README, *Early output*. *Status:* folded.
+
+5. **`spe_agui_source_dir` is `platform/agui`, not the repository root** (2026-11-03; the fork's PR #18 rewrote
+   §7, PR #20 records it). §7's default is `{{ playbook_dir }}/../../agui`, the directory holding
+   `pydantic-ai-agent/` and `copilotkit-chat/`; a deploy from another checkout passes
+   `-e spe_agui_source_dir=<checkout>/platform/agui`. *Reason:* the platform moved under `platform/`, and the
+   `agui` role stages `pydantic-ai-agent` and `copilotkit-chat` relative to this directory, so the repository
+   root made `create.yml` fail. *Amends:* §7, the `agui` role's variables. *Status:* folded.

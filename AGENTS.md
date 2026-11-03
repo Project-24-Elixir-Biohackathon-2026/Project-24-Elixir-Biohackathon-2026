@@ -193,7 +193,9 @@ is open (`docs/guides/contributing-upstream.md`, step 6).
   archive) merged. **Next: slice 3/3** `impl/agui-compaction-3-denbi-docs`. Handoff: `ls docs/superpowers/plans/2026-11-03-agui-compaction/handoffs | tail -1`.
 - **AG-UI conversation record** (Full mode): `chat-ui` owns the history as an append-only journal, the agent
   stays stateless. Spec merged (#19): §13–14 of the living AG-UI spec `docs/specs/2026-10-15-agui-frontend-design/`.
-  **Next: plan** `plan/agui-conversation-record`. Handoff: `docs/handoffs/2026-11-03T1035Z-agui-conversation-record-plan.md`.
+  Plan merged (#20): `docs/superpowers/plans/2026-11-03-agui-conversation-record/`, 4 slices, none waiting on
+  another track. **Next: slice 1/4** `impl/agui-conversation-record-1-history`. Handoff:
+  `ls docs/superpowers/plans/2026-11-03-agui-conversation-record/handoffs | tail -1`.
 - **Upstream PR kraatz #9** (`contrib/agui-token-cap-optional`): the AG-UI agent's token cap optional, off by
   default (fork #4); waits on upstream's review (`docs/guides/contributing-upstream.md`, step 6).
 - **Not scheduled**: `BACKLOG.md` holds every deferred item without a slice; its *Next*, the ones due soon or
