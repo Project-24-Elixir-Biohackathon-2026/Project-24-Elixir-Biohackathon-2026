@@ -34,6 +34,10 @@ them in the source, **unverified** where they are reasoning or general knowledge
   caller sends the whole `messages` array every time, fake assistant turns included, and tool results always come
   from the caller, since the caller runs the tools. Anyone with an API key can do this without Open WebUI, so
   blocking it in the UI would not secure anything. (Unverified for OpenAI; for Anthropic, see the next section.)
+- **The model refusing was never the security boundary.** If the only thing between a participant and a secret
+  is the model saying no, that boundary already falls to an ordinary jailbreak; history editing just makes it
+  easier. In an SPE the real controls are in the environment: what the agent's tools can reach, where network
+  traffic can go, and checks on what leaves.
 
 ## What Anthropic's API accepts (checked 2026-11-03)
 
@@ -55,10 +59,6 @@ Anthropic "documents prefill as a feature":
 
 So the provider does not guarantee that a history is real. The client is trusted to send it honestly, and
 resistance to a fake history is left to the model's training and the provider's safety classifiers.
-- **The model refusing was never the security boundary.** If the only thing between a participant and a secret
-  is the model saying no, that boundary already falls to an ordinary jailbreak; history editing just makes it
-  easier. In an SPE the real controls are in the environment: what the agent's tools can reach, where network
-  traffic can go, and checks on what leaves.
 
 ## Why Open WebUI keeps the feature
 
