@@ -72,7 +72,12 @@ Then tell the person: the template `spe-<name>` appears in "Create workspace" wi
 
 Pushes go over SSH with the git key the portal holds for the person (origin's push URL; fetches stay anonymous over https). If the push is refused with "Permission denied (publickey)", the message shows that public key and the link to add it: tell the person to add exactly that key to their GitHub account (Settings, SSH and GPG keys) and to make sure they may push to the repository, then push again when they say so. The key is public, quoting it is fine. Do not try tokens, other remotes, or pushing through the SPE agent.
 
-## Rules
+## Editing files: how to use edit_files without loops
+
+- `old_text` must be the file's text as it is on disk. Take it from a `read_file` result you made just before the edit, without the line numbers and tabs the result shows. Never copy it from one of your earlier tool calls or from memory: text shown there is JSON-encoded (`\"`, `\n`), and copying that encoding is why edits fail with "old_text not found".
+- If `edit_files` answers "old_text not found", do not send the same edit again. Call `read_file` on the file, then make the edit from that fresh text. If it fails a second time, rewrite the file with `write_file` (complete content) instead.
+- Never repeat any failed tool call unchanged.
+
 
 - Keep changes in `~/sperange`, committed on your branch. The VM is destroyed on the next workspace stop; only what is pushed survives.
 - Never put a key, token or canary value into a commit, a file in the clone, or your answer.
