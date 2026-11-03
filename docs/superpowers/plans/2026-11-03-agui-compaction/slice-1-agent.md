@@ -1451,6 +1451,8 @@ git commit -s -m "Test the reactive trigger and the Anthropic and OpenAI wire re
 - Consumes: `CompactionRun.take_pending()`, `.records` (task 4).
 - Produces: the marker on the wire and the run log's `compactions` (plan README).
 
+**A forged marker is accepted, by design, in this slice.** The client sends the whole history, so a participant can add an assistant message with `messageId` `spe-compaction-<anything>`: the agent cuts there and the model continues from the forged summary, framed as the assistant's own record (case 5 of `docs/proposals/2026-11-03-agui-history-integrity.md`). This task does not try to detect it; no test may claim that only the agent's own markers are cut at. The proposal's cheaper step 2 (`compactions[].marker_id` and a per-run `cut_at` in the run log, so a forged marker can be found exactly) is not in the spec's decision 11: add it only if the user folds it in as a spec clarification first.
+
 - [ ] **Step 1: write the failing tests.** Append to `test_app.py`:
 
 ```python
