@@ -84,3 +84,95 @@ The SPE threat model differs on two points:
 
 This is why the proposal's direction is *record, don't block*: keep editing possible as a red-teaming technique,
 but never let it go unrecorded.
+
+## Follow-up questions (same discussion)
+
+**Why is the API stateless, and could Anthropic tell if this session's history were edited?** Keeping state is
+feasible: Anthropic's Managed Agents keeps server-side sessions, and OpenAI's Responses API can continue from a
+stored response (unverified). Statelessness is a design choice. Our reasons for it, not a stated rationale from
+Anthropic: any server can answer any request; nothing stored means nothing retained; the developer keeps control
+of the context; the client runs the tools anyway; and prompt caching makes resending the history cheap. A Claude
+Code session is the same pattern: the transcript lives on the user's disk (`~/.claude/projects/…`) and is sent
+whole with every request. Edit it and resume, and Anthropic sees only the edited version. The exception is signed
+thinking (Opus 5.5 and Fable 5.1): an edit followed by a later thinking block fails the check. It is rejected for
+accounts created on or after 2026-08-31, and recorded for older accounts but acted on only if the request opts in.
+An edit with no thinking block after it, or a history with every thinking block stripped, passes.
+
+**Does a signature stop tampering?** It makes tampering *detectable*, under three conditions: verification is
+mandatory (unsigned history doesn't pass silently), the signature covers the whole conversation up to that point
+(so turns can't be deleted from the middle or reordered), and the key stays away from the client. It cannot
+detect a client going back to an earlier, validly signed version. Only server-side state can see that, for
+example the latest signature per conversation.
+
+**Is going back to an earlier version bad?** No. Rollback and forking are legitimate, the same as editing an
+earlier message and resending it (Open WebUI's *Send* does this). The history the model gets back is one it
+really produced, so the model is not fooled. Deleting a turn from the middle while keeping the later ones is a
+different thing: that gives the model a conversation that never happened. What rollback does affect is the
+record. Example: a participant asks for the dataset at turn 3 and is refused, then retries from the same point
+20 times until one phrasing works. The session file, overwritten with the client's latest history, then shows a
+three-turn conversation that leaked at turn 3, and the archive renders that file. The run log has all 22 runs,
+but each line holds only that run's new message, so nothing links the 20 attempts as branches of one
+conversation. "Leaked once in 20 attempts" reads as "leaked at turn 3". So a rollback should be recorded as a
+branch, not flagged as tampering.
+
+**Can the chat UI edit history?** No (verified). `@copilotkit/react-core` 1.79.0 shows a user message's edit
+button only when the page passes `onEditMessage`, and a reply's regenerate button only with `onRegenerate`
+(`dist/copilotkit-DQvE96lZ.mjs`, around lines 6428 and 6786). `app/page.tsx` passes neither. So in the UI a
+participant can only append. Editing needs devtools, `curl` to `chat-ui`'s route, or a call to the agent with
+its key (the proposal, *How a participant edits the history*). This is the general rule: **the frontend is not
+a security boundary.** Anyone who can reach the server can send it any request, posing as the client. Enforcing
+or recording has to happen in `chat-ui`'s server route or in the agent. A check in `chat-ui` alone misses calls
+made straight to the agent. Whether a participant can ever hold the agent key is still unverified.
+
+## Synthesis
+
+**The one question underneath:** who holds the history the model sees, and can we trust it and record it? Each
+hop trusts the history the hop before it sends:
+
+| Hop | Who holds the history | Who trusts it |
+|---|---|---|
+| Participant → `chat-ui` | the browser (CopilotKit state) | `chat-ui` records it as the session and forwards it |
+| `chat-ui` → agent | sent by `chat-ui`, or by anyone with the key straight to port 8100 | the agent runs on it (except system messages) |
+| Agent → Anthropic | the agent builds each request | Anthropic: stateless, checks only signed thinking blocks |
+
+Anthropic trusting our agent is fine, because we are the accountable party. The first two hops are the problem:
+the participant controls what arrives.
+
+**The "sessions", named apart:**
+
+- **Chat session**: `chat-ui`'s `/data/sessions/<id>.json`, overwritten after each run with the client's latest
+  history. It holds one version, the last.
+- **Agent**: has no session. Each run is built from the request alone. Its run log is append-only, one line per
+  run, without the history the run received.
+- **Claude Code's session** is the same pattern one level up: our agent stands where Anthropic stands, stateless
+  and trusting its caller.
+
+**Two separate problems:**
+
+1. **Integrity**: is the history what really happened? Fabricated replies or tool results, edited turns, turns
+   deleted from the middle, a forged compaction marker.
+2. **Record**: does what we store show everything that happened? Abandoned branches and attempts, crashes
+   mid-run. Rollback and forking belong here, as branches.
+
+**What each mechanism gives** (A and B are the proposal's options; D is new here; none is decided):
+
+| Mechanism | Integrity | Record | Cost and limits |
+|---|---|---|---|
+| A. Server-owned history (Open WebUI) | prevents injection through the request | only if the stored copy can't be edited without a trace, which isn't true in Open WebUI | removes a red-teaming technique; goes against how CopilotKit restores chats |
+| B. Journal in `chat-ui` | detects and explains each difference | full: branches, attempts, replay of what the agent saw, a crash loses one event | storage and a normalised comparison; misses calls straight to the agent |
+| D. Signatures by the agent | detects, statelessly, on every path including port 8100; catches a forged marker exactly | none; a small "latest per conversation" state marks branches | key kept from the participant; CopilotKit must carry the signature (maybe in `messageId`); all unverified |
+| Cheap steps (the proposal) | a check against the stored session; marker ids in the run log | none | marker provenance is redundant if D is built |
+
+**How it reconciles:**
+
+- Detection (D) and recording (B) complement each other: signatures in the agent cover every path, and the
+  journal in `chat-ui` explains what happened and keeps the branches.
+- *Record, don't block*, in both: tampering stays possible as red teaming but never goes unrecorded.
+- What this protects is the evaluation, not the data. The model refusing was never the SPE's boundary: egress,
+  tool scope and output checks have to hold even when the model is fooled.
+
+**Open:**
+
+- B alone, or B with D?
+- Can a participant ever hold the agent key? That decides whether D is needed at all.
+- Does the canary ladder's scoring need attempt counts per branch?
