@@ -129,7 +129,7 @@ of the whole run.
 
 | Option | What | Trade-off |
 |---|---|---|
-| A. Server-owned history | `chat-ui` ignores the client's history and sends the stored one plus the new message | no fabrication possible, but it removes a red-teaming technique, and goes against how CopilotKit works (the restore path, gotcha 1) |
+| A. Server-owned history | `chat-ui` ignores the client's history and sends the stored one plus the new message; Open WebUI 0.11.3 does this (above), so it is a working precedent | no fabrication possible, but it removes a red-teaming technique, and goes against how CopilotKit works (the restore path, gotcha 1) |
 | **B. Journal and flag** (recommended) | as above | the protocol is unchanged and fabrication stays possible but recorded; costs a journal and a comparison with normalisation |
 | C. Switchable | B, with A as a setting | most flexible; two behaviours to test |
 
