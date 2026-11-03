@@ -36,6 +36,13 @@ samples 1 and 2, is in [`evidence/slice-3/`](../evidence/slice-3/) and in the PR
 - **Final review:** 0 Critical, 0 Important, 9 Minor, all fixed in one wave (`5aedf7f`, `0f78043`): a fork-only
   PR reference removed from `lib/sessions.ts`, stale comments and wording, a test that could pass trivially, and
   two new `BACKLOG.md` lines (tool-call ids reused across runs; `JournalWriter`s open for the process life).
+- **PR round (local review, correctness):** 6 Minor. Fixed: a failed `run_start` append writes a best-effort
+  `run_end` `aborted`; an append that wrote nothing because of an earlier failure (`EarlierFailure`) retries once
+  with a fresh writer; the archive copies only `*.jsonl` into `agui-journals/`; `get()` drops an unfinished last
+  line silently (reads under the queue still log it). *Cost if wrong:* none known. **Deferred to `BACKLOG.md`:**
+  the index skipping an unreadable journal until a restart (*why:* needs a retry design, transient only; *cost:* a
+  session missing from the sidebar until restart), and an unreadable journal refused as "could not be saved"
+  (*why:* the spec fixes six refusal messages; *cost:* a misleading refusal text on a read error).
 
 ## The question to the user
 
