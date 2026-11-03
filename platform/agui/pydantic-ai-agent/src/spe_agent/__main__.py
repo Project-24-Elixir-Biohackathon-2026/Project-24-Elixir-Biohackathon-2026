@@ -22,9 +22,26 @@ def main() -> int:
     except ConfigError as e:
         print(f"spe-agent: {e}", file=sys.stderr)
         return 2
-    uvicorn.run(app, host=os.environ.get("SPE_AGENT_HOST", "0.0.0.0"), port=int(os.environ.get("SPE_AGENT_PORT", "8100")),
-                server_header=False, proxy_headers=False, access_log=True)
+    host, port = os.environ.get("SPE_AGENT_HOST", "0.0.0.0"), int(os.environ.get("SPE_AGENT_PORT", "8100"))
+    if os.environ.get("SPE_AGENT_RELOAD") == "1":
+        # Development: the source is a bind mount; a saved .py file restarts the server. uvicorn
+        # needs an import string for that, so the app is rebuilt by the new process (see app_factory).
+        src = str(Path(__file__).resolve().parent.parent)
+        uvicorn.run("spe_agent.__main__:app_factory", factory=True, reload=True, reload_dirs=[src],
+                    host=host, port=port, server_header=False, proxy_headers=False, access_log=True)
+        return 0
+    uvicorn.run(app, host=host, port=port, server_header=False, proxy_headers=False, access_log=True)
     return 0
+
+
+def app_factory():
+    """The app for uvicorn's reloader: configuration and keys as in main(), errors are fatal."""
+    path = Path(os.environ.get("SPE_AGENT_CONFIG", "/etc/spe-agent/agent.yaml"))
+    try:
+        config = load_config(path)
+        return create_app(config, load_secrets(config, os.environ))
+    except ConfigError as e:
+        sys.exit(f"spe-agent: {e}")
 
 
 if __name__ == "__main__":

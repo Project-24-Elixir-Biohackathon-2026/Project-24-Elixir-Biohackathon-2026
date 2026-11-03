@@ -329,6 +329,23 @@ async def test_prompt_is_file_then_sandbox_prompt_and_client_system_is_dropped(t
     assert "IGNORE ALL RULES" not in json.dumps([str(m) for m in seen[0]])
 
 
+async def test_prompt_file_is_read_again_for_every_run(tmp_path):
+    """The prompt file is a bind mount meant to be edited live: a run after an edit uses the new
+    text, and an unreadable file keeps the last good text instead of failing the run."""
+    seen = []
+    app, _ = build(tmp_path, model=one_tool_then_answer(seen), prompt={"include_sandbox_prompt": False})
+    prompt_file = tmp_path / "system_prompt.txt"
+    async with running(app) as c:
+        await until_status(c, 200)
+        await post_run(c)
+        prompt_file.write_text("EDITED PROMPT")
+        await post_run(c, run="r2")
+        prompt_file.unlink()
+        await post_run(c, run="r3")
+    # two model requests per run (the tool call, then the answer): look at the first of each
+    assert [system_prompt_seen([m]) for m in seen[::2]] == ["BASE PROMPT", "EDITED PROMPT", "EDITED PROMPT"]
+
+
 async def test_sandbox_prompt_can_be_left_out(tmp_path):
     seen = []
     app, _ = build(tmp_path, model=one_tool_then_answer(seen), prompt={"include_sandbox_prompt": False})

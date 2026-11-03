@@ -1,5 +1,5 @@
 ---
-# Joins the image build started by main.yml and reports whether the image changed.
+# Joins the image build started by main.yml.
 - name: Sandbox image built
   ansible.builtin.async_status:
     jid: "{{ sandbox_build_job.ansible_job_id }}"
@@ -7,7 +7,3 @@
   until: sandbox_build.finished
   retries: 720
   delay: 5
-
-- name: Sandbox image changed
-  ansible.builtin.set_fact:
-    sandbox_image_changed: "{{ sandbox_build.changed }}"

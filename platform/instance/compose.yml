@@ -1,0 +1,171 @@
+# The chat frontend of an SPE instance: compose project spe-frontend.
+# Lives in the repository clone on the VM and is linked into the frontend
+# directory (spe_frontend_dir/docker-compose.yml), whose .env selects the
+# frontend through COMPOSE_PROFILES and sets every ${VAR} below:
+#   openwebui       Open WebUI + its open-terminal sandbox
+#   agui,ui         our agent + sandbox + the built chat UI
+#   agui,ui-dev     our agent + sandbox + the chat UI as a dev server (hot reload)
+# Everything the agent and the sandbox read at run time is mounted from the
+# clone, so an edit there is live without a rebuild: the runbook and helper
+# scripts (/opt/agent), the agent's prompt and its Python source. Secrets come
+# from the env files next to the .env, written by Ansible.
+name: spe-frontend
+services:
+  # --- Open WebUI frontend --------------------------------------------------
+  open-webui:
+    profiles: [openwebui]
+    image: ${SPE_WEBUI_IMAGE}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${SPE_WEBUI_PORT}:8080"
+    env_file: webui.env
+    environment:
+      ENABLE_OLLAMA_API: "false"
+      # Preselected model for new chats (the one carrying the system prompt,
+      # see roles/openwebui) and first in the model picker.
+      DEFAULT_MODELS: ${SPE_WEBUI_MODEL_ID}
+      MODEL_ORDER_LIST: '["${SPE_WEBUI_MODEL_ID}"]'
+      WEBUI_AUTH: ${SPE_WEBUI_AUTH}
+      ENABLE_SIGNUP: ${SPE_WEBUI_AUTH}
+      DEFAULT_USER_ROLE: pending
+      ENABLE_CODE_INTERPRETER: "false"
+      # Tags are set by hand as outcome labels (see reports/run_report.md.j2);
+      # LLM-generated tags would mix with them.
+      ENABLE_TAGS_GENERATION: "false"
+      ENABLE_CODE_EXECUTION: "false"
+      AIOHTTP_CLIENT_STREAM_IDLE_TIMEOUT: "120"
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - open-terminal
+    volumes:
+      - open-webui-data:/app/backend/data
+  open-terminal:
+    profiles: [openwebui]
+    image: ${SPE_TERMINAL_IMAGE}
+    restart: unless-stopped
+    env_file: terminal.env
+    environment:
+      OPEN_TERMINAL_FILE_BROWSER_ROOT: /home/user
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETGID
+    cpus: 2.0
+    mem_limit: 2g
+    pids_limit: 256
+    volumes:
+      - open-terminal-data:/home/user
+      - ${SPE_REPO_DIR}/platform/ansible/roles/sandbox/files/agent:/opt/agent:ro
+
+  # --- AG-UI frontend --------------------------------------------------------
+  chat-ui:
+    profiles: [ui]
+    image: ${SPE_CHAT_UI_IMAGE}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${SPE_AGUI_UI_PORT}:3000"
+    env_file: chat-ui.env
+    networks: [ui]
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/.next/cache:uid=1000,gid=1000,mode=0700
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    pids_limit: 256
+  chat-ui-dev:
+    # The chat UI from its source in the clone, served by `next dev`: a saved file
+    # reloads in the browser. node_modules and .next live in volumes so the clone
+    # stays clean; both are owned by uid 1000 (node in the image, the VM user outside).
+    profiles: [ui-dev]
+    image: node:24-slim
+    restart: unless-stopped
+    working_dir: /app
+    command:
+      - sh
+      - -c
+      - >-
+        chown node:node /app/node_modules /app/.next &&
+        exec su -s /bin/sh node -c
+        'npm install --no-audit --no-fund && exec npm run dev -- --hostname 0.0.0.0 --port 3000'
+    ports:
+      - "127.0.0.1:${SPE_AGUI_UI_PORT}:3000"
+    env_file: chat-ui.env
+    environment:
+      NEXT_TELEMETRY_DISABLED: "1"
+      COPILOTKIT_TELEMETRY_DISABLED: "true"
+      DO_NOT_TRACK: "1"
+      npm_config_cache: /tmp/npm-cache
+    networks: [ui]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 2g
+    pids_limit: 512
+    volumes:
+      - ${SPE_REPO_DIR}/platform/agui/copilotkit-chat:/app
+      - chat-ui-node-modules:/app/node_modules
+      - chat-ui-next:/app/.next
+  agent:
+    profiles: [agui]
+    image: ${SPE_AGENT_IMAGE}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${SPE_AGUI_AGENT_PORT}:8100"
+    env_file: agent.env
+    environment:
+      # 1: a saved .py file under /app/src restarts the server (uvicorn reload).
+      SPE_AGENT_RELOAD: ${SPE_AGENT_RELOAD:-0}
+    labels:
+      # agent.yaml is a bind mount: a change to it alone would not recreate the
+      # container, so its hash is part of the configuration (spe-apply sets it).
+      spe.agent-config: ${SPE_AGENT_CONFIG_HASH:-}
+    volumes:
+      - ./agent.yaml:/etc/spe-agent/agent.yaml:ro
+      # The prompt: the directory, not the file, so an editor that replaces the file is seen.
+      - ${SPE_REPO_DIR}/platform/ansible/roles/sandbox/files:/etc/spe-agent/sandbox:ro
+      - ${SPE_REPO_DIR}/platform/agui/pydantic-ai-agent/src:/app/src:ro
+      - agent-runs:/var/lib/spe-agent
+    networks: [ui, tools]
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    pids_limit: 256
+  sandbox:
+    profiles: [agui]
+    image: ${SPE_TERMINAL_IMAGE}
+    restart: unless-stopped
+    env_file: terminal.env
+    environment:
+      OPEN_TERMINAL_FILE_BROWSER_ROOT: /home/user
+    networks: [tools]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETGID
+    cpus: 2.0
+    mem_limit: 2g
+    pids_limit: 256
+    volumes:
+      - open-terminal-data:/home/user
+      # The runbook and helper scripts the agent runs, live from the clone.
+      - ${SPE_REPO_DIR}/platform/ansible/roles/sandbox/files/agent:/opt/agent:ro
+networks:
+  ui: {}
+  tools: {}
+volumes:
+  open-webui-data: {}
+  open-terminal-data: {}
+  agent-runs: {}
+  chat-ui-node-modules: {}
+  chat-ui-next: {}

@@ -52,6 +52,30 @@ Ansible playbooks in `../ansible`; the Coder template only wraps them.
 | `platform/ansible/reports/run_report.md.j2` | **Run report template**, becomes the pinned "Run report" note in OpenWebUI | anyone (via PR) |
 | `platform/ansible/roles/run_archive/` | Exports OpenWebUI and writes the run directory | maintainers |
 
+### Working in a workspace
+
+A workspace is for changing the setup and trying the change in its chat right
+away, with Coder Agents (the portal's chat agent, Admin settings > AI) or by hand
+over the web terminal. The VM holds a clone of this repository at
+`~/sperange`, checked out at the commit the workspace was built from, and the chat
+frontend runs from it:
+
+| Change | What it needs |
+|---|---|
+| the SPE agent's runbook or a helper script (`platform/ansible/roles/sandbox/files/agent/`, mounted at `/opt/agent` in the sandbox) | nothing: live on the next message |
+| the SPE agent's system prompt (`platform/ansible/roles/sandbox/files/system_prompt.txt`, AG-UI frontend) | nothing: read on every run |
+| the agent's Python source (`platform/agui/pydantic-ai-agent/src/`) | nothing: the agent restarts itself on a saved file |
+| the chat UI's source, with `spe_agui_ui_dev: true` (compose profile `ui-dev`) | nothing: hot reload. The first start installs the packages from the npm registry, about two minutes |
+| the compose file (`platform/instance/compose.yml`) or `~/spe-frontend/agent.yaml` | `spe-apply up` |
+| the agent's dependencies, the chat UI (built mode), `Dockerfile.terminal`, the GA4GH images | `spe-apply` (build, then up): the **Rebuild** button on the workspace page |
+| the Ansible roles, the Coder template | merge, then restart the workspace |
+
+Coder Agents finds `AGENTS.md` and the `spe-apply` skill in the workspace
+(`platform/instance/workspace/`, linked into the home directory), so it knows this
+table. The VM is destroyed when the workspace stops: a change worth keeping is
+committed on a branch and pushed from the clone (pushing needs a GitHub token in
+the workspace, not set up yet), or ported into a pull request from the controller.
+
 ### Adding a testbed
 
 There are two presets, one per frontend, both with all samples, all tiers and
@@ -282,7 +306,37 @@ static site (`platform/site/build.py`, every run) and pushes the template when
 Workspace builds always run the Ansible code currently checked out, including
 for stopping workspaces that were created from an older version.
 
-### 8. Template settings (optional)
+### 8. Coder Agents on the de.NBI endpoint (optional)
+
+Coder Agents is Coder's built-in chat agent (Admin settings > AI). It runs in
+the control plane and can read templates, create workspaces and run commands
+in them on the user's behalf, so the portal VM, not the SPE VMs, needs to reach
+the LLM. `coder-agents-setup.sh` configures it against our OpenAI-compatible
+endpoint without touching the dashboard:
+
+```bash
+platform/coder/deploy/coder-agents-setup.sh      # on the portal VM, as ubuntu
+```
+
+It creates (or updates) the provider `denbi` with the base URL and the key from
+`coder.env`, and the model `gemma-4-31b` as the organization's default; it is
+safe to rerun. Not every model on the endpoint works: Coder Agents sends a
+system message in the middle of the conversation, which the chat templates of
+`qwen3.8-27b` and `mistral-medium-3.5` reject ("System message must be at the
+beginning"); `gpt-oss-120b`, `gemma-4-31b` and `glm-5.3` accept it. Everything is a variable (`SPE_LLM_BASE_URL`, `SPE_LLM_MODELS`
+as `model:context_limit:display name` separated by commas, …), see the header
+of the script. The API details it relies on, found in Coder 2.38's dashboard
+client since the docs only show the UI: `POST /api/v2/ai/providers` with type
+`openai-compat` and `api_keys: ["<key>"]`, `PATCH .../providers/<id>` with
+`api_keys: [{"api_key": "<key>"}]`, and
+`POST /api/v2/organizations/<org>/chats/models`.
+
+Once a model exists, every portal user can open a chat with the agent, and the
+agent can build workspaces. To keep it away from the testbed template, block
+the template for the agent in the dashboard, or create the model with
+`"enabled": false` (edit the script) until it has been tried.
+
+### 9. Template settings (optional)
 
 ```bash
 coder templates edit spe-testbed --default-ttl 12h     # auto-stop after 12 h idle

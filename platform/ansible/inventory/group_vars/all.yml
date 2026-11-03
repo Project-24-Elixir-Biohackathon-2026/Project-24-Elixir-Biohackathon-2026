@@ -117,6 +117,15 @@ spe_run_smoke_test: true
 # Both use compose project spe-frontend, so switching replaces one with the other.
 spe_frontend: openwebui
 spe_frontend_dir: "/home/{{ spe_ssh_user }}/spe-frontend"
+# The repository clone on the instance (role repo): the compose file, the sandbox's
+# runbook and helper scripts, the agent's prompt and Python source run from it
+# (bind mounts), so an edit there is live; `spe-apply` rebuilds what is not. By
+# default the clone is at the commit the controller's checkout is at, which must be
+# pushed (uncommitted changes on the controller do not reach the instance); pass
+# -e spe_repo_ref=<branch or commit> to deploy another revision.
+spe_repo_url: https://github.com/kraatz/elixir-biohackathon-2026-test.git
+spe_repo_ref: "{{ lookup('ansible.builtin.pipe', 'git -C ' ~ (playbook_dir | quote) ~ ' rev-parse HEAD') }}"
+spe_repo_dir: "/home/{{ spe_ssh_user }}/sperange"
 spe_frontend_webui_image: ghcr.io/open-webui/open-webui:v0.11.3
 spe_frontend_terminal_image: spe-open-terminal:0.12.4
 spe_webui_local_port: 8080          # bound to 127.0.0.1 on the VM; reach it over an SSH tunnel
@@ -176,8 +185,10 @@ spe_webui_model_id: qwen3.8-27b
 spe_agui_ui_port: 3000
 spe_agui_agent_port: 8100
 spe_agui_smoke: false                # true: one LLM-backed AG-UI run in the checks (a paid call)
-spe_agui_source_dir: "{{ playbook_dir }}/../../agui"   # platform/agui on the controller: pydantic-ai-agent/ and copilotkit-chat/
-spe_agui_build_dir: "{{ spe_frontend_dir }}/build"
+spe_agui_agent_image: spe-agent:local     # built on the instance from the clone (Docker's cache makes a rebuild cheap)
+spe_agui_ui_image: spe-chat-ui:local
+spe_agui_ui_dev: false               # true: the chat UI runs from its source with hot reload (compose profile ui-dev)
+spe_agent_reload: true               # the agent restarts itself when a file of its source (a bind mount) is saved
 spe_agent_model_provider: openai_compatible       # openai_compatible (any OpenAI-compatible API) | anthropic
 spe_agent_model: "{{ spe_webui_model_id }}"
 spe_agent_base_url: "{{ spe_llm_base_url }}"      # openai_compatible only

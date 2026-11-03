@@ -109,8 +109,14 @@ the job it needs right before it needs it (the `wait` task files).
    `openwebui` frontend, the OpenWebUI image in the background.
 5. **tls**: self-signed certificate with the instance IPs as SANs in
    `spe_cert_dir`, installed as a trust anchor.
-6. **sandbox** (a frontend is set): starts the build of the `open-terminal`
-   image carrying this instance's own CA and the WES/DRS/TRS runbook.
+6. **repo**: clones this repository to `spe_repo_dir` (`/home/ubuntu/sperange`) at
+   `spe_repo_ref`, the controller checkout's commit unless set (it must be pushed).
+   The chat frontend runs from it: `platform/instance/compose.yml` is the compose
+   file, the sandbox mounts `roles/sandbox/files/agent` as `/opt/agent`, the agent
+   mounts its prompt and Python source. `spe-apply` (linked on the PATH) rebuilds
+   the images from it; the frontend roles end with `spe-apply up`.
+   **sandbox** (a frontend is set): starts the build of the `open-terminal`
+   image carrying this instance's own CA, from the clone's `Dockerfile.terminal`.
 7. **workflow_stack** (`build.yml`): clones the four repositories at the
    configured revisions and starts the image builds (`weskit-api:<commit>`,
    drs-filer, trs-filer).

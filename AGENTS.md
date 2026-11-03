@@ -11,6 +11,7 @@ guide for humans and coding agents working in this repository.
 | `platform/coder/` | The self-service portal (Coder) that runs those playbooks for participants (`platform/coder/README.md`) |
 | `platform/site/` | The landing page and the threat catalog page served next to the portal, built from `threats/` (`platform/site/README.md`) |
 | `platform/agui/` | The AG-UI frontend (`spe_frontend: agui`): `pydantic-ai-agent/` (Pydantic AI agent served over AG-UI) and `copilotkit-chat/` (Next.js + CopilotKit chat) |
+| `platform/instance/` | What runs on an instance from the repository clone there: the frontend's compose file, `spe-apply`, the workspace instructions for Coder Agents (`platform/instance/README.md`) |
 | `platform/promptfoo-evals/` | promptfoo provider, assertions and starter suite against an instance's agent |
 | `platform/dev/` | Development helpers: dummy dataset generator, scripted agent, tests for host-side scripts |
 | `docs/getting-started.md` | Deploying and using an instance by hand, and its private configuration |
@@ -42,8 +43,12 @@ The portal VM follows `main` (`platform/coder/deploy/sync-template.sh`): a merge
 to `main` changes what participants get within minutes.
 
 Private instance files and `platform/ansible/output/` exist only in the main checkout,
-not in a worktree. To deploy a worktree's agent or chat UI before it is merged,
-run Ansible from the main checkout with `-e spe_agui_source_dir=<worktree>`.
+not in a worktree. An instance runs the chat frontend from a clone of this repository
+on its VM, checked out at the commit the controller's checkout is at, so that commit
+must be pushed. To deploy a topic branch before it is merged, push it and run Ansible
+from the main checkout with `-e spe_repo_ref=<branch>`. Inside a workspace, edits to
+the clone are live or applied with `spe-apply` (`platform/coder/README.md`, "Working
+in a workspace").
 
 When this repository is a submodule (of `biohackathon`), the parent records the
 pinned commit; move the pin there after the push.

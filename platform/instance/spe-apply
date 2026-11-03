@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+# Apply the repository clone to this SPE instance's chat frontend.
+#
+#   spe-apply              build what the active frontend needs, then up
+#   spe-apply build [c..]  build images: agent, chat-ui, sandbox (default: what the
+#                          active frontend needs; chat-ui is skipped in ui-dev mode)
+#   spe-apply up           (re)create the containers from the compose file and wait
+#                          until they answer
+#   spe-apply status       containers and health
+#   spe-apply logs [svc]   follow the logs
+#
+# What needs which step: the runbook and helper scripts (roles/sandbox/files/agent),
+# the agent's prompt (roles/sandbox/files/system_prompt.txt) and the agent's Python
+# source are bind mounts: an edit is live, no step needed (the agent restarts itself
+# when SPE_AGENT_RELOAD=1). The compose file and agent.yaml need `up`. The agent's
+# dependencies, the chat UI (unless ui-dev), the sandbox Dockerfile or the CA need
+# `build` then `up`, which is what a bare `spe-apply` does. Docker's layer cache
+# makes a build with unchanged inputs take seconds.
+#
+# Configuration: SPE_FRONTEND_DIR (default /home/ubuntu/spe-frontend) holds the
+# .env written by Ansible (SPE_REPO_DIR, COMPOSE_PROFILES, image names, ports),
+# the secret env files and agent.yaml, and docker-compose.yml, a link to
+# platform/instance/compose.yml in the clone. Secrets never appear in the output.
+set -euo pipefail
+
+dir=${SPE_FRONTEND_DIR:-/home/ubuntu/spe-frontend}
+[[ -f $dir/.env ]] || { echo "spe-apply: $dir/.env not found (is this an SPE instance?)" >&2; exit 2; }
+set -a; . "$dir/.env"; set +a
+: "${SPE_REPO_DIR:?.env lacks SPE_REPO_DIR}" "${COMPOSE_PROFILES:?.env lacks COMPOSE_PROFILES}"
+agui_dir=$SPE_REPO_DIR/platform/agui
+sandbox_dir=$SPE_REPO_DIR/platform/ansible/roles/sandbox/files
+compose=(docker compose --project-directory "$dir" -f "$dir/docker-compose.yml")
+# Without provenance attestations a fully cached build reproduces the same image id, so
+# compose recreates a container only when its image really changed.
+build_cmd=(docker build --provenance=false)
+
+has_profile() { [[ ",$COMPOSE_PROFILES," == *",$1,"* ]]; }
+
+default_components() {
+  local c=(sandbox)
+  if has_profile agui; then
+    c+=(agent)
+    has_profile ui && c+=(chat-ui)
+  fi
+  printf '%s\n' "${c[@]}"
+}
+
+build() {
+  local comps=("$@")
+  [[ ${#comps[@]} -gt 0 ]] || mapfile -t comps < <(default_components)
+  for c in "${comps[@]}"; do
+    case $c in
+      agent)
+        echo "== build agent ($SPE_AGENT_IMAGE) from platform/agui/pydantic-ai-agent"
+        "${build_cmd[@]}" -t "$SPE_AGENT_IMAGE" "$agui_dir/pydantic-ai-agent" ;;
+      chat-ui)
+        echo "== build chat-ui ($SPE_CHAT_UI_IMAGE) from platform/agui/copilotkit-chat"
+        "${build_cmd[@]}" -t "$SPE_CHAT_UI_IMAGE" "$agui_dir/copilotkit-chat" ;;
+      sandbox)
+        echo "== build sandbox ($SPE_TERMINAL_IMAGE) from roles/sandbox/files/Dockerfile.terminal + the instance CA"
+        install -m 0644 "$sandbox_dir/Dockerfile.terminal" "$dir/Dockerfile.terminal"
+        "${build_cmd[@]}" -t "$SPE_TERMINAL_IMAGE" -f "$dir/Dockerfile.terminal" "$dir" ;;
+      *) echo "spe-apply: unknown component '$c' (agent, chat-ui, sandbox)" >&2; exit 2 ;;
+    esac
+  done
+}
+
+wait_http() {  # url, tries
+  local url=$1 tries=${2:-60} i
+  for ((i = 1; i <= tries; i++)); do
+    if curl -fsS -o /dev/null --max-time 5 "$url" 2>/dev/null; then return 0; fi
+    sleep 3
+  done
+  echo "spe-apply: $url did not answer in time" >&2
+  return 1
+}
+
+up() {
+  echo "== up (profiles: $COMPOSE_PROFILES)"
+  # Containers of services outside the active profiles (the other frontend, or the
+  # other chat UI mode) are not orphans to compose and would keep their ports: remove them.
+  local active inactive
+  active=$("${compose[@]}" config --services)
+  inactive=$(COMPOSE_PROFILES='*' "${compose[@]}" config --services | grep -vxF -f <(echo "$active") || true)
+  if [[ -n $inactive ]]; then
+    # shellcheck disable=SC2086
+    COMPOSE_PROFILES='*' "${compose[@]}" rm -sf $inactive >/dev/null 2>&1 || true
+  fi
+  # agent.yaml is a bind mount: its hash is a container label, so a change recreates the agent.
+  SPE_AGENT_CONFIG_HASH=$(sha256sum "$dir/agent.yaml" 2>/dev/null | cut -c1-16 || true)
+  export SPE_AGENT_CONFIG_HASH
+  "${compose[@]}" up -d --remove-orphans
+  echo "== waiting for the frontend"
+  if has_profile openwebui; then
+    wait_http "http://127.0.0.1:${SPE_WEBUI_PORT}/health"
+  fi
+  if has_profile agui; then
+    wait_http "http://127.0.0.1:${SPE_AGUI_AGENT_PORT}/healthz" 60
+    wait_http "http://127.0.0.1:${SPE_AGUI_UI_PORT}/" "$(has_profile ui-dev && echo 100 || echo 40)"
+  fi
+  status
+}
+
+status() {
+  "${compose[@]}" ps --format 'table {{.Service}}\t{{.Status}}'
+  if has_profile agui; then
+    printf 'agent /healthz: '; curl -s --max-time 5 "http://127.0.0.1:${SPE_AGUI_AGENT_PORT}/healthz" || echo "(no answer)"; echo
+  fi
+}
+
+cmd=${1:-}; shift || true
+case $cmd in
+  "")      build; up ;;
+  build)   build "$@" ;;
+  up)      up ;;
+  status)  status ;;
+  logs)    "${compose[@]}" logs -f --tail=100 "$@" ;;
+  -h|--help|help) sed -n '2,25p' "$0" ;;
+  *) echo "spe-apply: unknown command '$cmd' (build, up, status, logs)" >&2; exit 2 ;;
+esac
