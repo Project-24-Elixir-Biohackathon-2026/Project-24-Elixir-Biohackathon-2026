@@ -68,13 +68,16 @@ workspace was built from, and the chat frontend runs from it:
 | the chat UI's source, with `spe_agui_ui_dev: true` (compose profile `ui-dev`) | nothing: hot reload. The first start installs the packages from the npm registry, about two minutes |
 | the compose file (`platform/instance/compose.yml`) or `~/spe-frontend/agent.yaml` | `spe-apply up` |
 | the agent's dependencies, the chat UI (built mode), `Dockerfile.terminal` | `spe-apply` (build, then up): the **Rebuild** button on the workspace page runs it once and leaves a shell open |
-| the other Ansible roles (workflow stack, data, catalog installers, `~/spe-frontend`), the Coder template, the GA4GH images | a fresh workspace from a branch template (below) |
+| the GA4GH stack: roles `workflow_stack`, `tls`, `drs_register`, `trs_install`, the installers in `roles/*/files`, the catalog, service configs, image versions | `spe-apply stack`: runs those roles on the VM against itself, from the clone, with `instances/local.yml` written at creation (minutes). `spe-apply all` adds the frontend roles, `spe-apply ansible --tags <tag>` one stage |
+| the dataset seeding, hand-off and verify, the Coder template | a fresh workspace from a branch template (below) |
 
 The loop, as the Coder agent is instructed to follow it (`platform/instance/workspace/AGENTS.md`,
 reached from the repository's `AGENTS.md`, which it reads at the start of every chat):
 
 1. The agent edits the clone and applies the change as the table says, or says
-   that the change only applies at creation.
+   that the change only applies at creation. The VM carries `ansible-core`, the
+   collections in the clone and the instance's vars file for that (role `repo`;
+   the vars file holds the seed and the LLM key, 0600, git-ignored).
 2. The person tests the change in the workspace's chat; the agent verifies what
    it can on the VM (container logs, the GA4GH APIs, the SPE agent's run log).
 3. On "make a template of it": the agent commits on a branch `template/<name>`

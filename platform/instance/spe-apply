@@ -8,6 +8,11 @@
 #                          until they answer
 #   spe-apply status       containers and health
 #   spe-apply logs [svc]   follow the logs
+#   spe-apply stack        run the Ansible roles of the GA4GH stack on this VM
+#                          (tags stack,drs,trs: services, configs, images, catalog
+#                          installers, registrations); a few minutes
+#   spe-apply all          stack plus the frontend roles (tags ...,frontend)
+#   spe-apply ansible ARGS the playbook with your own arguments, e.g. --tags trs
 #
 # What needs which step: the runbook and helper scripts (roles/sandbox/files/agent),
 # the agent's prompt (roles/sandbox/files/system_prompt.txt) and the agent's Python
@@ -15,7 +20,13 @@
 # when SPE_AGENT_RELOAD=1). The compose file and agent.yaml need `up`. The agent's
 # dependencies, the chat UI (unless ui-dev), the sandbox Dockerfile or the CA need
 # `build` then `up`, which is what a bare `spe-apply` does. Docker's layer cache
-# makes a build with unchanged inputs take seconds.
+# makes a build with unchanged inputs take seconds. Everything else under
+# platform/ansible (the workflow stack, the installers in roles/*/files, the
+# catalog) is applied by the Ansible roles themselves: `stack` runs them on this
+# VM against itself, with the instance's vars file written at creation
+# (platform/ansible/instances/local.yml in the clone). Not re-applied locally: the
+# dataset seeding, the hand-off and verify stages (controller-side), the Coder
+# template.
 #
 # Configuration: SPE_FRONTEND_DIR (default /home/ubuntu/spe-frontend) holds the
 # .env written by Ansible (SPE_REPO_DIR, COMPOSE_PROFILES, image names, ports),
@@ -101,6 +112,21 @@ up() {
   status
 }
 
+run_ansible() {  # playbook arguments
+  local adir=$SPE_REPO_DIR/platform/ansible
+  if [[ ! -f $adir/instances/local.yml ]]; then
+    echo "spe-apply: $adir/instances/local.yml not found: this instance was built before local re-apply existed; start a new workspace" >&2
+    exit 2
+  fi
+  if [[ ! -d $adir/collections/ansible_collections/community/docker ]]; then
+    echo "spe-apply: the collections are not installed yet (ansible-galaxy runs in the background at creation). To install now:" >&2
+    echo "  (cd $adir && ansible-galaxy collection install -r requirements.yml -p collections)" >&2
+    exit 2
+  fi
+  echo "== ansible-playbook create.yml $*  (on this VM, from the clone)"
+  (cd "$adir" && ANSIBLE_FORCE_COLOR=0 ansible-playbook playbooks/create.yml -e @instances/local.yml "$@" </dev/null)
+}
+
 status() {
   "${compose[@]}" ps --format 'table {{.Service}}\t{{.Status}}'
   if has_profile agui; then
@@ -115,6 +141,9 @@ case $cmd in
   up)      up ;;
   status)  status ;;
   logs)    "${compose[@]}" logs -f --tail=100 "$@" ;;
-  -h|--help|help) sed -n '2,25p' "$0" ;;
-  *) echo "spe-apply: unknown command '$cmd' (build, up, status, logs)" >&2; exit 2 ;;
+  stack)   run_ansible --tags stack,drs,trs ;;
+  all)     run_ansible --tags stack,drs,trs,frontend ;;
+  ansible) run_ansible "$@" ;;
+  -h|--help|help) sed -n '2,38p' "$0" ;;
+  *) echo "spe-apply: unknown command '$cmd' (build, up, status, logs, stack, all, ansible)" >&2; exit 2 ;;
 esac
