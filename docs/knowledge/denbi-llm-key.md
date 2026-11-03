@@ -1,0 +1,29 @@
+# The de.NBI LLM key and the model's window
+
+**Symptom.** `curl -H "Authorization: Bearer $KEY" https://denbi-llm-api-internal.bihealth.org/v1/models`
+returns 401, `"Authentication Error, Key is blocked. Update via /key/unblock if you're an admin."` (LiteLLM).
+Seen 2026-11-03 with the key on agent-service-1 (`denbi-agui-01`): every copy there is the same blocked key
+(agent container, `~/agent-stack/webui.env`, `~/spe-frontend/agent.env`, the Coder spike's
+`~/.config/coder-spike/server.env`). The endpoint does not resolve from the dev VM, so run curl on a de.NBI VM.
+
+**Where a working key is.** The portal (`sperange.bihealth.org`) hands its own key
+(`/etc/sperange/coder.env`, `DENBI_LLM_API_KEY`) to every workspace's Open WebUI. The portal VM itself is not
+reachable by SSH from here (its SSH is open to admin networks only; `10.0.2.50` has no route from
+agent-service-1), but a workspace is, through the Coder CLI:
+
+```bash
+# once: the CLI from the portal (same version), then the user logs in in their browser
+curl -fsSL https://sperange.bihealth.org/bin/coder-linux-amd64 -o ~/.local/bin/coder && chmod +x ~/.local/bin/coder
+coder login https://sperange.bihealth.org          # the user, interactively (`! coder login …`)
+coder list --all                                     # use your own workspace, not another user's
+coder ssh theo/theo-workspace 'docker exec spe-frontend-open-webui-1 printenv OPENAI_API_KEY | sha256sum | cut -c1-8'
+```
+
+Compare hashes, never print the key. For a deployment, read it into the environment for that run only
+(`export DENBI_LLM_API_KEY=$(coder ssh … printenv OPENAI_API_KEY)`), never into a file.
+
+**The window.** LiteLLM's `/v1/models` has no `max_model_len`; `/v1/model/info` (free, no completion) gives
+`qwen3.8-27b` `max_input_tokens: 262144` (2026-11-03). That is LiteLLM's model info, not read from vLLM itself,
+and LiteLLM enforces it itself: a request past it gets 400 `litellm.ContextWindowExceededError` ("Context
+Window exceeded for given call … Max Input Tokens=262144, Got=…") before vLLM sees it (compaction plan, slice 3,
+task 4, 2026-11-03). Whether vLLM's own `max_model_len` is the same figure is still unread.

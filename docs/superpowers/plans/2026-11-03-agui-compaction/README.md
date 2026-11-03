@@ -73,8 +73,9 @@ Every task's requirements include these.
 - **Every `RUN_ERROR` goes through `Service.sanitize`**; every run-log field through `redact` and the 16384-byte cut.
 - **Summaries are rendered as text**, never HTML: React text in the chat, a fence in the archive.
 - **No model calls without the user's OK.** The user approved Haiku (`claude-haiku-5-5`) on the dev VM for this
-  work (2026-11-02): slice 1's summary sample, slice 2's early output, slice 3's decision 13 check. Nothing else
-  calls a model, except slice 3, task 3: a de.NBI session on qwen that compacts (the user's request, 2026-11-03).
+  work (2026-11-02): slice 1's summary sample, slice 2's early output. Nothing else calls a model, except
+  slice 3's two runs on de.NBI's qwen (the user's requests, 2026-11-03): task 3, a session that compacts, and
+  task 4, decision 13's check (moved from Haiku, to spare its tokens).
 - **The dev VM's instance** is redeployed in place with `create.yml` from the main checkout and
   `-e spe_agui_source_dir=<worktree>/platform/agui` (`AGENTS.md`, *Worktrees and deploying*). No cloud instance
   is created or destroyed.
@@ -198,7 +199,7 @@ the checks in `AGENTS.md`, *Overrides*, pass.
 |---|---|---|---|---|---|---|---|
 | 1/3 | `impl/agui-compaction-1-agent` | 7 | the agent compacts (both triggers, limits, usage), marker events, input cut, run log, configuration and Ansible; the Haiku summary sample in the handoff | ~1,000 | agent pytest; `npm test` (round trip); `--syntax-check` | [slice-1-agent.md](slice-1-agent.md) | merged #17 |
 | 2/3 | `impl/agui-compaction-2-chat-archive` | 5 | **early output**: divider in the chat, fake agent `compact`, archive `## Compacted` + column, Playwright with screenshots, dev VM session on Haiku at window 20000 | ~600 | `npm test`; `npm run build`; pytest `-k agui_run`; Playwright run with screenshots | [slice-2-chat-archive.md](slice-2-chat-archive.md) | merged #18 |
-| 3/3 | `impl/agui-compaction-3-denbi-docs` | 4 | de.NBI window, docs, a de.NBI session on qwen that compacts, decision 13's check | ~150 | `--syntax-check`; `verify.yml` on the dev VM and on de.NBI; the qwen session's `Compactions` ≥ 1; decision 13's run log lines | [slice-3-denbi-docs.md](slice-3-denbi-docs.md) | planned |
+| 3/3 | `impl/agui-compaction-3-denbi-docs` | 4 | de.NBI window, docs, a de.NBI session on qwen that compacts, decision 13's check | ~150 | `--syntax-check`; `verify.yml` on the dev VM and on de.NBI; the qwen session's `Compactions` ≥ 1; decision 13's run log lines (qwen) | [slice-3-denbi-docs.md](slice-3-denbi-docs.md) | merged #21 |
 
 Slice 1 is about 1,000 lines with tests and 7 tasks, past the guide's ~5, and stays one unit: the agent half is
 one module and its wiring, and split, the first half (no events) could not be deployed with any visible effect.
@@ -252,13 +253,16 @@ Each is added by the slice that verifies it, with status `folded`, and the spec 
    the participant's request before the tool output it started. `transcript` never leaves out the previous
    summary, the latest user entry or the last entry. §4's paragraph is rewritten. Slice 1, task 6 (task 3's
    `test_transcript_keeps_the_latest_request` pins it).
-5. **Decision 13 is checked against the model's own window**: at `context_window_tokens: 20000` the proactive
-   trigger compacts long before Haiku's window, so compaction disabled does not fail there. The check overflows
-   Haiku's own window with one large tool result (compaction off: Anthropic's `prompt is too long`), then
-   recovers the same session through the reactive trigger (compaction on, no window); the proactive half is
-   slice 2's early output. Decision 13's acceptance check is rewritten: **an approved acceptance check changes, so
-   the user is pointed at this clarification** in this plan's PR and in slice 3's PR, and slice 3 reads the
-   user's answer on this plan's PR before its paid run (task 4, step 0). Slice 3, task 4.
+5. **Decision 13 is checked against the model's own window, on qwen**: at `context_window_tokens: 20000` the
+   proactive trigger compacts long before the model's own window, so compaction disabled does not fail there.
+   The check overflows qwen's own window (262144, de.NBI's LiteLLM gateway's `max_input_tokens`) with one large tool result
+   (compaction off: the provider's context-window error, in the run de.NBI's LiteLLM gateway's
+   "Context Window exceeded", refused before vLLM), then recovers the same session through the reactive
+   trigger (compaction on, no window); the proactive half is slice 2's early output. It was planned on Haiku and
+   moved to qwen at the user's request (2026-11-03, slice 3), to spare Haiku's tokens. Decision 13's acceptance
+   check is rewritten: **an approved acceptance check changes, so the user is pointed at this clarification** in
+   this plan's PR and in slice 3's PR, and slice 3 reads the user's answer on this plan's PR before its run
+   (task 4, step 0). Slice 3, task 4.
 6. **The reactive retry goes through the streamed request**, inside a wrapper model that `wrap_model_request`
    sets: in 2.56.0 a streamed request's error surfaces in the task that reads the stream, never in the hook.
    Rewrites decision 3's row, §1 and §2. Slice 1, task 5.

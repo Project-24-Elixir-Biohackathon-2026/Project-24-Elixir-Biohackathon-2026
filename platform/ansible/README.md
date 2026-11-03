@@ -248,7 +248,16 @@ replaces one frontend with the other (its volumes, `open-webui-data` included, s
   Tools are generated from the sandbox's OpenAPI as Open WebUI does. Per-run
   limits: 50 model requests, 100 tool calls; a token cap only when
   `spe_agent_total_tokens_limit` is set (default null, no cap). Run log in volume
-  `agent-runs` (player input and canaries: private).
+  `agent-runs` (player input and canaries: private). When a conversation nears the
+  model's context window the agent compacts it (summarises the older part with the
+  same model; the chat shows a divider, the archive a `## Compacted` section, the run
+  log a `compactions` entry): `spe_agent_compaction_enabled` (true),
+  `spe_agent_context_window_tokens`, `spe_agent_compaction_trigger_ratio` (0.8) and
+  `spe_agent_compaction_summary_max_tokens` (4096), rendered as `agent.yaml`'s
+  `compaction` block, which `verify.yml` shows. The window defaults to the de.NBI
+  model's (`spe_webui_model_context_tokens`, the gateway's `max_input_tokens`) while
+  `spe_agent_model` is `spe_webui_model_id`, and to null otherwise: set it for another
+  model, or only a provider's "too long" error triggers a compaction.
 - **sandbox** — the open-terminal image from role `sandbox`; publishes nothing.
 
 The role copies only the files git tracks under `platform/agui/pydantic-ai-agent/` and `platform/agui/copilotkit-chat/` to

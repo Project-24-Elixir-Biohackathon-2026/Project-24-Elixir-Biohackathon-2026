@@ -47,6 +47,28 @@ in `load_secrets` (`config.py`), build its model in `build_model` (`agent.py`), 
 extra to `pydantic-ai-slim[...]` in `pyproject.toml`, and allow it in the role's check and
 in `platform/ansible/roles/agui/templates/agent.env.j2`.
 
+**Compaction.** The `compaction` block (all keys optional):
+
+    compaction:
+      enabled: true                 # false: neither trigger acts, as before compaction existed
+      context_window_tokens: null   # the model's context window; null: only the reactive trigger
+      trigger_ratio: 0.8            # compact at this share of the window, in (0, 1)
+      summary_max_tokens: 4096      # the summary request's output cap
+
+Before each model request the agent estimates what it would send (the latest
+response's usage plus three characters a token for what came after it); at
+`trigger_ratio` × `context_window_tokens` or more it compacts first. Whatever the
+window, a request the provider rejects as too long (Anthropic's, OpenAI's, vLLM's or a
+LiteLLM proxy's wording) is compacted and sent once more. Compacting asks the same model, without
+tools, for a summary of the history (`compaction_prompt.md`; tool results cut to their
+first and last 1000 characters), then sends the system prompt, the summary framed as a
+record rather than the participant's words, the latest user request and what follows.
+The summary request counts towards the run's usage and limits. At most one compaction
+per model request and three per run; past that the run fails with "The conversation is
+still too long after compacting it. Start a new chat." Set `context_window_tokens` to
+the window the server enforces: too high and only the reactive trigger acts, too low
+and it compacts early.
+
 **Prompt.** `prompt.file`, then a newline, then the sandbox's `/system` prompt (when
 `prompt.include_sandbox_prompt` and `/api/config` lists `features.system`). That is
 Open WebUI v0.11.3's order (commit `2a960a5`): `utils/middleware.py` appends the

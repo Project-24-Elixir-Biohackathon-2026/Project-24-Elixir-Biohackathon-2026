@@ -1,0 +1,35 @@
+[
+  {
+    "run_id": "d67975a6-806d-4088-b64c-a0c9d12c6175",
+    "thread_id": "98d90408-5c1c-4a26-b549-95deb4898a05",
+    "status": "failed",
+    "usage": null,
+    "compactions": [],
+    "error": "status_code: 400, model_name: qwen3.8-27b, body: {'message': \"litellm.ContextWindowExceededError: litellm.BadRequestError: litellm._pre_call_checks: Context Window exceeded for given call. No models have context window large enough for this call.\\nModel=qwen3.8-27b, Max Input Tokens=262144, Got=316927\\nmodel=qwen3.8-27b. context_window_fallbacks=None. fallbacks=None.\\n\\nSet 'context_window_fallbac"
+  },
+  {
+    "run_id": "7b5cf4c4-5d46-4490-8abe-323a620c0398",
+    "thread_id": "98d90408-5c1c-4a26-b549-95deb4898a05",
+    "status": "completed",
+    "usage": {
+      "requests": 2,
+      "tool_calls": 0,
+      "input_tokens": 5155,
+      "output_tokens": 451
+    },
+    "compactions": [
+      {
+        "trigger": "overflow",
+        "estimated_tokens": 237599,
+        "messages_cut": 3,
+        "summary": "The last line printed by `seq 1 87382` was:\n\n**87382**\n\nThe command completed with exit code 0. The tool output was truncated in display (699,014 of 779,703 bytes shown), but `seq 1 87382` prints every integer from 1 through 87382 on its own line, so the final line is `87382`.",
+        "usage": {
+          "input_tokens": 1843,
+          "output_tokens": 317
+        },
+        "next_input_tokens": 3312
+      }
+    ],
+    "error": null
+  }
+]

@@ -169,6 +169,9 @@ spe_archive_skip: false
 # attached to it so every chat gets it by default, and it is the model
 # preselected for new chats (DEFAULT_MODELS, listed first in the picker).
 spe_webui_model_id: qwen3.8-27b
+# Its context window in tokens: max_input_tokens from the de.NBI gateway's (LiteLLM)
+# GET /v1/model/info, read on 2026-11-03. Change the two together.
+spe_webui_model_context_tokens: 262144
 
 # --- AG-UI agent frontend (spe_frontend: agui) ------------------------------
 # Three containers in compose project spe-frontend: chat-ui (Next.js + CopilotKit),
@@ -203,7 +206,8 @@ spe_agent_total_tokens_limit: null   # a number caps a run's summed tokens; null
 # older part, for the model only, with a summary the same model writes. The window is the
 # model's, in tokens; null leaves only the reactive trigger (a provider's "too long" error).
 spe_agent_compaction_enabled: true
-spe_agent_context_window_tokens: null
+# Set for the de.NBI model; another model needs its own value in the instance file.
+spe_agent_context_window_tokens: "{{ spe_webui_model_context_tokens if spe_agent_model == spe_webui_model_id else none }}"
 spe_agent_compaction_trigger_ratio: 0.8      # compact at this share of the window, in (0, 1)
 spe_agent_compaction_summary_max_tokens: 4096
 spe_agent_api_key: "{{ (spe_seed | string ~ ':agent-api') | hash('sha256') }}"

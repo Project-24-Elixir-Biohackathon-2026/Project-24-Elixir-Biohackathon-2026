@@ -48,10 +48,11 @@ RESULT_KEEP = 1000
 CHARS_PER_TOKEN = 3  # over-estimates English and JSON for the tokenizers in use: errs towards compacting early
 SUMMARY_PROMPT = files("spe_agent").joinpath("compaction_prompt.md").read_text()
 
-# Provider wording for "the request does not fit the context" (Anthropic, OpenAI, vLLM and others).
+# Provider wording for "the request does not fit the context" (Anthropic, OpenAI, vLLM, a LiteLLM proxy and
+# others).
 _OVERFLOW_STATUS = (400, 413)
 _OVERFLOW_TEXT = ("prompt is too long", "context_length_exceeded", "maximum context length", "input is too long",
-                  "too many tokens")
+                  "too many tokens", "context window exceeded")
 
 
 class CompactionError(Exception):

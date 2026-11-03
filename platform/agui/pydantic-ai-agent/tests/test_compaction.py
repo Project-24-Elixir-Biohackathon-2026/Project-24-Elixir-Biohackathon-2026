@@ -68,6 +68,11 @@ def test_estimate_ignores_responses_without_usage():
                                          "requested 40000 tokens", "type": "BadRequestError", "code": 400}),
     (413, "Input is too long for requested model."),
     (400, {"message": "Too many tokens in the request"}),
+    # LiteLLM's proxy (de.NBI's gateway) refuses before the model sees it; real body, 2026-11-03, cut.
+    (400, {"message": "litellm.ContextWindowExceededError: litellm.BadRequestError: litellm._pre_call_checks: "
+                      "Context Window exceeded for given call. No models have context window large enough for "
+                      "this call.\nModel=qwen3.8-27b, Max Input Tokens=262144, Got=316927",
+           "type": None, "param": None, "code": "400"}),
 ])
 def test_overflow_errors_are_recognised(status, body):
     assert c.is_overflow(ModelHTTPError(status, "m", body=body))
