@@ -197,8 +197,8 @@ is open (`docs/guides/contributing-upstream.md`, step 6).
   on journals) merged. **Next: slice 4/4** `impl/agui-conversation-record-4-live-archive`. Handoff:
   `ls docs/superpowers/plans/2026-11-03-agui-conversation-record/handoffs | tail -1`.
 - **AG-UI `/compact`** (Full mode): a `/compact [focus]` chat command, journaled as a command, compacted by the
-  agent; §15 of the living AG-UI spec. **Spec PR #26** (`spec/agui-compact-command`): local review round done
-  and addressed; waits on the user's `approved`, then the merge and the plan. Handoff: `ls docs/handoffs | tail -1`.
+  agent; §15 of the living AG-UI spec. Spec merged (#26). **Next: the plan** `plan/agui-compact-command` (two
+  slices; slice 2 waits on the conversation record's slice 4, #25). Handoff: `ls docs/handoffs | tail -1`.
 - **Upstream PR kraatz #9** (`contrib/agui-token-cap-optional`): the AG-UI agent's token cap optional, off by
   default (fork #4); waits on upstream's review (`docs/guides/contributing-upstream.md`, step 6).
 - **Not scheduled**: `BACKLOG.md` holds every deferred item without a slice; its *Next*, the ones due soon or
