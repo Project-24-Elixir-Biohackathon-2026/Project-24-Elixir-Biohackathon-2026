@@ -9,6 +9,12 @@ this script: write_run.py <run dir>/openwebui-export.json <run dir> "Run report"
 Writes report.md (the participant's "Run report" note), chats/NN-<title>.md
 and .json (active branch of each chat, with tags), notes/ for any other
 notes, index.md (overview) and openwebui-export.json (the raw bundle).
+
+A bundle with spe_archive_mode is the AG-UI chat UI's export (one assistant
+message per run, with spe_run and spe_ignored): write_agui() renders it
+instead, escaping or fencing every text, with each run's status, its ignored
+content and compaction markers; it links agui-journals/ and agent-runs.jsonl
+when they are in the run directory. There is no report.
 Stdlib only. write_agui_run.py imports slug() and fence() from here.
 """
 import datetime
@@ -91,6 +97,264 @@ def write(path, text):
         f.write(text)
 
 
+# AG-UI bundles: the chat UI's exporter writes this same shape plus `spe_archive_mode` (live or final), one
+# assistant message per run carrying `spe_run` (its status) and `spe_ignored` (what the client sent that was not
+# used). Everything in them came from a participant or a model, so it is rendered fenced or escaped.
+
+MARKER_PREFIX = "spe-compaction-"
+IGNORED_HEADING = "## sent by the client, not used"
+STATUS_NOTES = {
+    "failed": "the agent's stream ended in an error, or without a final event",
+    "cancelled": "stopped by the participant before it ended",
+    "aborted": "the chat UI could not save the run, so it ended it",
+    "refused": "the agent was not called (the request carried no new user message)",
+    "incomplete": "no end was recorded; in a live archive the run may still have been going",
+}
+ARCHIVE_MODES = {
+    "live": "live, copied while the chat UI and the agent kept running (a run marked incomplete may still "
+            "have been going)",
+    "final": "final, copied after the chat UI and the agent had stopped",
+}
+AGUI_HEADER = ["| # | Session | Tags | Created | Runs | Compactions | State |", "|---|---|---|---|---|---|---|"]
+
+
+def one_line(s):
+    return " ".join(str(s or "").split())
+
+
+def md_inline(s):
+    """Untrusted text as one line of Markdown text: every character that could start markup is escaped."""
+    return re.sub(r"([\\`*_\[\]<>|#&])", r"\\\1", one_line(s))
+
+
+def code_span(s):
+    """Untrusted text as one inline code span, its backtick run longer than any inside."""
+    s = one_line(s)
+    ticks = "`" * (max((len(r) for r in re.findall(r"`+", s)), default=0) + 1)
+    pad = " " if s.startswith("`") or s.endswith("`") else ""
+    return f"{ticks}{pad}{s}{pad}{ticks}"
+
+
+def when_iso(iso):
+    """'2026-11-03T11:00:00.000Z' -> '2026-11-03 11:00 UTC'; anything unparsable escaped as given."""
+    if not iso:
+        return ""
+    try:
+        t = datetime.datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+    except ValueError:
+        return md_inline(iso)
+    if t.tzinfo is None:
+        t = t.replace(tzinfo=datetime.timezone.utc)
+    return t.astimezone(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+
+def pretty_args(raw):
+    try:
+        return json.dumps(json.loads(raw), indent=2, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return str(raw or "")
+
+
+def count_lines(path):
+    with open(path, encoding="utf-8", errors="replace") as f:
+        return sum(1 for line in f if line.strip())
+
+
+def is_compaction(item_or_message):
+    """The agent's compaction marker: an assistant message, or a message output item, whose id has the prefix."""
+    d = item_or_message
+    return (isinstance(d, dict) and d.get("type", "message") == "message" and d.get("role") == "assistant"
+            and str(d.get("id") or "").startswith(MARKER_PREFIX))
+
+
+def render_status(run):
+    """One line for a run that did not complete; "" for a completed one and for a message that is no run's."""
+    status = run.get("status") if isinstance(run, dict) else None
+    if not status or status == "completed":
+        return ""
+    line = f"**Run {md_inline(status)}**: {STATUS_NOTES.get(status, 'a status this script does not know')}."
+    return f"{line} Error: {md_inline(run['error'])}" if run.get("error") else line
+
+
+def render_ignored(entries):
+    """What the client sent with a run that the chat UI did not use: each entry's kind, its content fenced."""
+    entries = [e for e in entries or [] if isinstance(e, dict)]
+    if not entries:
+        return ""
+    out = [IGNORED_HEADING, "",
+           "The client sent this with the run below; the agent never received it.", ""]
+    for e in entries:
+        kind, message = md_inline(e.get("kind")) or "?", e.get("message")
+        if isinstance(message, dict):
+            out += [f"**{kind}**: {md_inline(message.get('role')) or '?'} message {code_span(message.get('id'))}", "",
+                    fence(json.dumps(message, indent=2, ensure_ascii=False), "json"), ""]
+        else:
+            out += [f"**{kind}**: message {code_span(message)}", ""]
+    return "\n".join(out[:-1])
+
+
+def render_output(m):
+    """A run's output items in order: text and results fenced, tool calls with fenced arguments, a marker as a
+    Compacted section."""
+    out = []
+    for it in m.get("output") or []:
+        if not isinstance(it, dict):
+            continue
+        t = it.get("type")
+        if is_compaction(it):
+            out.append("## Compacted\n\nFrom here the model saw this summary instead of the messages above.\n\n"
+                       + fence(texts(it.get("content"))))
+        elif t == "message":
+            if texts(it.get("content")).strip():
+                out.append(fence(texts(it.get("content"))))
+        elif t == "reasoning":
+            out.append("<details><summary>Reasoning</summary>\n\n" + fence(texts(it.get("content")))
+                       + "\n\n</details>")
+        elif t == "function_call":
+            out.append(f"**Tool call** {code_span(it.get('name'))}\n\n"
+                       + fence(pretty_args(it.get("arguments")), "json"))
+        elif t == "function_call_output":
+            out.append("<details><summary>Tool result</summary>\n\n" + fence(texts(it.get("output")))
+                       + "\n\n</details>")
+        else:
+            out.append(fence(json.dumps(it, indent=2, ensure_ascii=False), "json"))
+    if not out and str(m.get("content") or "").strip():
+        out.append(fence(str(m["content"])))
+    return "\n\n".join(out)
+
+
+def render_agui_message(m, off_branch=False):
+    role = m.get("role", "?")
+    head = f"## {md_inline(role) or '?'} · {when(m.get('timestamp'))}"
+    if off_branch:
+        parent = m.get("parentId")
+        head += f" · after {code_span(parent)}" if parent else " · first message"
+    lines = []
+    if role == "assistant":
+        ignored = render_ignored(m.get("spe_ignored"))
+        if ignored:  # sent with the user's turn above, so between the two turns
+            lines += [ignored, ""]
+        lines += [head, ""]
+        status = render_status(m.get("spe_run"))
+        if status:
+            lines += [status, ""]
+        body = render_output(m)
+    else:
+        lines += [head, ""]
+        text = texts(m.get("content"))
+        body = fence(text) if text.strip() else ""
+    if body:
+        lines += [body, ""]
+    return lines
+
+
+def agui_branch(chat):
+    """The messages along currentId, oldest first, like active_branch() but stopping at a message already seen:
+    the parent links came from a client, and a forged cycle must not hang the archive."""
+    msgs = (chat.get("history") or {}).get("messages") or {}
+    cur, out, seen = (chat.get("history") or {}).get("currentId"), [], set()
+    while isinstance(cur, str) and cur in msgs and cur not in seen and isinstance(msgs[cur], dict):
+        seen.add(cur)
+        out.append(msgs[cur])
+        cur = msgs[cur].get("parentId")
+    return out[::-1]
+
+
+def history_of(c):
+    msgs = ((c.get("chat") or {}).get("history") or {}).get("messages") or {}
+    return [m for m in msgs.values() if isinstance(m, dict)]
+
+
+def agui_state(c):
+    deleted = (c.get("meta") or {}).get("spe_deleted_at")
+    if deleted:
+        return f"deleted {when_iso(deleted)}"
+    return "hidden" if c.get("archived") else "active"
+
+
+def agui_runs(c):
+    return [m["spe_run"] for m in history_of(c) if isinstance(m.get("spe_run"), dict)]
+
+
+def render_agui_chat(c):
+    tags = [one_line(t) for t in (c.get("meta") or {}).get("tags") or []]
+    counts = {}
+    for r in agui_runs(c):
+        counts[str(r.get("status"))] = counts.get(str(r.get("status")), 0) + 1
+    runs = f"{sum(counts.values())} (" + ", ".join(f"{md_inline(k)} {v}" for k, v in sorted(counts.items())) + ")" \
+        if counts else "0"
+    lines = []
+    if (c.get("meta") or {}).get("spe_deleted_at"):
+        lines += [f"Deleted by the participant at {when_iso(c['meta']['spe_deleted_at'])}.", ""]
+    lines += [
+        f"# {md_inline(c.get('title')) or 'Untitled'}",
+        "",
+        f"- Session: {code_span(c.get('id'))}",
+        f"- Created: {when(c.get('created_at'))}",
+        f"- Updated: {when(c.get('updated_at'))}",
+        f"- Tags: {md_inline(', '.join(tags)) or '-'}",
+        f"- State: {agui_state(c)}",
+        f"- Runs: {runs}",
+        "",
+    ]
+    branch = agui_branch(c.get("chat") or {})
+    for m in branch:
+        lines += render_agui_message(m)
+    on_branch = {m.get("id") for m in branch}
+    rest = [m for m in history_of(c) if m.get("id") not in on_branch]
+    if rest:
+        lines += ["## Other branches", "",
+                  "Messages not on the branch above, in the order they were recorded; each names the message "
+                  "it follows.", ""]
+        for m in rest:
+            lines += render_agui_message(m, off_branch=True)
+    return "\n".join(lines)
+
+
+def write_agui(b, run_dir):
+    chats = sorted((c for c in b.get("chats") or [] if isinstance(c, dict)),
+                   key=lambda c: (c.get("created_at") or 0, str(c.get("id") or "")))
+    chats_dir = os.path.join(run_dir, "chats")
+    # A re-render starts chats/ afresh, so no chat is left under an old title.
+    if os.path.islink(chats_dir):
+        os.unlink(chats_dir)
+    elif os.path.isdir(chats_dir):
+        shutil.rmtree(chats_dir)
+    rows = []
+    for i, c in enumerate(chats, 1):
+        name = f"{i:02d}-{slug(one_line(c.get('title')))}"
+        write(os.path.join(chats_dir, name + ".md"), render_agui_chat(c))
+        write(os.path.join(chats_dir, name + ".json"), json.dumps(c, indent=1))
+        compactions = sum(1 for m in history_of(c) for it in m.get("output") or [] if is_compaction(it))
+        tags = md_inline(", ".join(one_line(t) for t in (c.get("meta") or {}).get("tags") or [])) or "-"
+        rows.append(f"| {i:02d} | [{md_inline(c.get('title')) or 'Untitled'}](chats/{name}.md) | {tags} "
+                    f"| {when(c.get('created_at'))} | {len(agui_runs(c))} | {compactions} | {agui_state(c)} |")
+
+    mode = b.get("spe_archive_mode")
+    log = os.path.join(run_dir, "agent-runs.jsonl")
+    index = [
+        f"# Run {os.path.basename(run_dir.rstrip('/'))}",
+        "",
+        "- Frontend: agui (CopilotKit chat). The AG-UI frontend has no run report.",
+        f"- Archive: {ARCHIVE_MODES.get(mode) or md_inline(mode)}",
+        f"- Exported: {when(b.get('exported_at'))}",
+        "- Parameters and canary record: [run.yml](run.yml), canaries.json",
+    ]
+    if os.path.isdir(os.path.join(run_dir, "agui-journals")):
+        index.append("- Session journals as stored (hidden and deleted included): [agui-journals/](agui-journals/)")
+    if os.path.isfile(log):
+        index.append(f"- Agent run log: [agent-runs.jsonl](agent-runs.jsonl), {count_lines(log)} runs")
+    else:
+        index.append("- Agent run log: none (no run reached the agent)")
+    index.append("")
+    index += [*AGUI_HEADER, *rows, ""] if rows else ["No session was recorded.", ""]
+    write(os.path.join(run_dir, "index.md"), "\n".join(index))
+    hidden = sum(1 for c in chats if agui_state(c) == "hidden")
+    deleted = sum(1 for c in chats if agui_state(c).startswith("deleted"))
+    print(f"{len(chats)} sessions ({hidden} hidden, {deleted} deleted), {md_inline(mode)} archive, "
+          f"{'run log' if os.path.isfile(log) else 'no run log'}")
+
+
 def main(argv):
     bundle_path, run_dir, report_title = argv[:3]
     with open(bundle_path) as f:
@@ -101,6 +365,10 @@ def main(argv):
     raw = os.path.join(run_dir, "openwebui-export.json")
     if not (os.path.exists(raw) and os.path.samefile(bundle_path, raw)):  # re-rendering in place
         shutil.copy(bundle_path, raw)
+
+    if "spe_archive_mode" in b:  # an AG-UI bundle: the chat UI's exporter
+        write_agui(b, run_dir)
+        return
 
     # Notes: the run report, plus anything else the participant wrote.
     report = None

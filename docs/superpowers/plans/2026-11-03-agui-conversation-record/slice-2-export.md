@@ -582,7 +582,7 @@ export function bundleJson(bundle: Bundle): string {
 ```bash
 git add platform/agui/copilotkit-chat/lib/export.ts platform/agui/copilotkit-chat/lib/export.test.ts \
   platform/dev/tests/fixtures/agui-record
-git status --short   # only the files above, the nine fixture files included
+git status --short   # only the files above, the eight fixture files included
 git commit -s -m "Chat: export a rebuilt session as an Open WebUI chat
 
 One assistant message per run, its AG-UI messages as Open WebUI output items in
@@ -1114,7 +1114,7 @@ def test_helpers():
   Expected: the byte-identical test passes; the others fail (no AG-UI branch: `write_run.py` renders the bundle
   as Open WebUI, and `test_helpers` fails on the missing `is_compaction`).
 
-- [ ] **Step 5: implement.** In `ARCHIVE/write_run.py`, change the docstring's first paragraph to:
+- [ ] **Step 5: implement.** In `ARCHIVE/write_run.py`, replace the docstring (l. 2–13) with:
 
 ```python
 """Turn an OpenWebUI export bundle into a readable run directory.

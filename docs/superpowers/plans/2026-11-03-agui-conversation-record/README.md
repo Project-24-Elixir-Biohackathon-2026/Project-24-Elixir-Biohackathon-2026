@@ -99,7 +99,7 @@ Every task's requirements include these.
   refusal and failure messages `invalid session`, `this session was deleted`, `the chat UI is shutting down`,
   `this session could not be saved`, `this run carries no new message`, `this run was already recorded`;
   `globalThis` keys `Symbol.for("spe.sessions.queue")` and `Symbol.for("spe.sessions.index")`; archive paths `agui-journals/<uuid>.jsonl`, `agent-runs.jsonl`; bundle field
-  `spe_archive_mode` `live` | `final`; chat fields `spe_run` (`run_id`, `status`, `started_at`, `ended_at`),
+  `spe_archive_mode` `live` | `final`; chat fields `spe_run` (`run_id`, `status`, `started_at`, `ended_at`, `error`),
   `spe_ignored`, `meta.spe_deleted_at`; the block heading "sent by the client, not used".
 - **Never stored:** request headers and the chat UI's configuration (the agent key) are never in a journal, a
   log line or the archive; message content is stored unchanged (decision 27). Log lines name ids, never content.
@@ -161,7 +161,7 @@ checks in `AGENTS.md`, *Overrides*, pass; the status column then reads `merged #
 | n/N | Branch | Tasks | Delivers | Est. LOC | Reviewer checks | File | Status |
 |---|---|---|---|---|---|---|---|
 | 1/4 | `impl/agui-conversation-record-1-history` | 4 | **feasibility check** (decision 5) first; journal format and writer, rebuild, anchor, all unwired | ~1,100 | `npm test`; `npm run build` | [slice-1-history.md](slice-1-history.md) | merged #22 |
-| 2/4 | `impl/agui-conversation-record-2-export` | 3 | exporter in the image; `write_run.py` renders AG-UI chats (status, ignored, compaction, columns) | ~800 | `npm test`; `docker build` + exporter run in the image; `pytest platform/dev/tests` | [slice-2-export.md](slice-2-export.md) | planned |
+| 2/4 | `impl/agui-conversation-record-2-export` | 3 | exporter in the image; `write_run.py` renders AG-UI chats (status, ignored, compaction, columns) | ~800 | `npm test`; `docker build` + exporter run in the image; `pytest platform/dev/tests` | [slice-2-export.md](slice-2-export.md) | merged #23 |
 | 3/4 | `impl/agui-conversation-record-3-route` | 5 | the store, the run route and the API on journals; archive exports journals (barrier kept); built-server check; **early output** samples 1 and 2 | ~1,500 | `npm test`; `npm run build`; `check-built-server.mjs`; `check-shutdown.mjs`; `docker build` + exporter run in the image (slice 2's check again: `sessions.ts` rewritten); pytest; `--syntax-check`; e2e `sessions.py` | [slice-3-route.md](slice-3-route.md) | planned |
 | 4/4 | `impl/agui-conversation-record-4-live-archive` | 5 | live archive and final barrier (decision 30); Playwright for decisions 6, 13, 24–26; key check (17); TM-007 (18); dev VM acceptance; spec marked built | ~700 | e2e `sessions.py`; `verify.yml` and `archive.yml` on the dev VM; `validate.py` | [slice-4-live-archive.md](slice-4-live-archive.md) | planned |
 

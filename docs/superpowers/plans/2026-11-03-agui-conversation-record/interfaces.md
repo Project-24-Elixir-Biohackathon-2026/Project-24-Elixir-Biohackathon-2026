@@ -112,6 +112,7 @@ export type SpeRun = { run_id: string; status: RunView["status"]; started_at: st
 export type ExportedMessage = {                                       // an Open WebUI message, plus the record's fields
   id: string; parentId: string | null; childrenIds: string[]; role: string; content: string; timestamp: number;
   output?: OutputItem[]; spe_run?: SpeRun; spe_ignored?: Ignored[];
+  spe_original_id?: string;   // ruling D1: set when `id` was remapped to avoid a collision (below)
 };
 export type OpenWebUIChat = {
   id: string; title: string; created_at: number; updated_at: number; archived: boolean;
@@ -124,6 +125,13 @@ export type Loose = {                                                 // the fie
   toolCalls?: { id: string; function: { name: string; arguments: string } }[];
 };
 export function runMessageId(runId: string): string;                  // "spe-run-<run id>": a run's exported assistant message
+// A journal/client message id already in `messages`, or that starts with the run-message prefix "spe-run-" or
+// the remap's own prefix "spe-msg-", is exported under a fresh id instead (ruling D1): a candidate
+// "spe-msg-<n>" (n counting up from 0) is tried until it names no id exported so far, not just the forged id's
+// own slot, so two forged ids in the same chat can't collide with each other either; the chosen id carries
+// `spe_original_id` set to the forged id. Without this, a participant could make a run's own exported message
+// collide with, or become the parent of, itself, hanging any `currentId` → `parentId` walk. The run-message
+// prefix itself stays module-private: no test outside this module needs to import it.
 export function outputItems(message: Loose): OutputItem[];
 export function toOpenWebUIChat(conv: Conversation): OpenWebUIChat;
 export function exportJournals(dir: string, mode: ArchiveMode, opts?: { now?: () => Date }): Promise<Bundle>;   // every <uuid>.jsonl via rebuildText, hidden and deleted included

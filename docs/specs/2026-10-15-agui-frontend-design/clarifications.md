@@ -81,3 +81,21 @@ in the parts it amends.
    alarm an analyst must read past; a damaged journal's late lines are left out of the rebuild, though the
    archive's raw journal keeps them. *Amends:* §13 *The run route*, step 2, and *Rebuilding the conversation*;
    decision 2. *Status:* folded.
+
+8. **The archive's chat file also shows the messages off the active branch; the exported chat names a run's
+   error, folds an anchor into its run's message and never reuses a client id** (2026-11-03; AG-UI conversation
+   record, slice 2/4). `chats/NN-<slug>.md` renders the branch along `currentId`, then a section "Other branches"
+   with every other message in record order, each naming the message it follows, with the same status lines and
+   ignored blocks; `index.md` has the AG-UI columns `# | Session | Tags | Created | Runs | Compactions | State`.
+   In the exported chat, `spe_run` also carries `error` (from `run_end.error`), which the status line shows; a
+   run's `content` is its text joined without a compaction marker's summary, which stays its own `message` item;
+   a run's message is `spe-run-<run id>`, and an anchor folded into an earlier run's message makes that run's
+   message the parent; a client message id that is already exported, or starts with `spe-run-` or `spe-msg-`,
+   is exported under a fresh `spe-msg-<n>` id with `spe_original_id`. *Reason:* a refused run adds no message,
+   so it is never on the tip's branch, and two tabs make sibling branches; rendering only the active branch would
+   hide a refused run's status and ignored content, which decision 16 says the archive shows. A failed run's
+   reason belongs in the archive next to its status. Open WebUI shows a run's `content` as the reply, which the
+   summary is not. An anchor is an AG-UI message id, and an assistant one lives inside its run's exported
+   message. A client-chosen id equal to its own run's message, or to another exported id, could make a message
+   its own ancestor and hang the walk along `currentId`. *Amends:* §14 *The Open WebUI chat* and *Write*.
+   *Status:* folded.

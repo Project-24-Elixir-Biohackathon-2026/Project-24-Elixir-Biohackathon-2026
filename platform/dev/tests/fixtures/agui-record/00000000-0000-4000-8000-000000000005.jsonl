@@ -1,0 +1,9 @@
+{"type":"created","at":"2026-11-03T10:50:00.000Z","version":1,"id":"00000000-0000-4000-8000-000000000005"}
+{"type":"run_start","at":"2026-11-03T10:50:00.010Z","run_id":"r5-1","anchor":null,"messages":[{"id":"u1","role":"user","content":"# x\n<script>alert(2)</script>\n| a | b |"}],"ignored":[],"request":{"tools":[],"context":[],"state":{},"forwardedProps":{}},"source":"chat"}
+{"type":"event","at":"2026-11-03T10:50:00.100Z","run_id":"r5-1","event":{"type":"RUN_STARTED","threadId":"00000000-0000-4000-8000-000000000005","runId":"r5-1"}}
+{"type":"event","at":"2026-11-03T10:50:00.200Z","run_id":"r5-1","event":{"type":"TEXT_MESSAGE_START","messageId":"a1","role":"assistant"}}
+{"type":"event","at":"2026-11-03T10:50:00.210Z","run_id":"r5-1","event":{"type":"TEXT_MESSAGE_CONTENT","messageId":"a1","delta":"```\nfenced\n```\n## not a heading"}}
+{"type":"event","at":"2026-11-03T10:50:00.220Z","run_id":"r5-1","event":{"type":"TEXT_MESSAGE_END","messageId":"a1"}}
+{"type":"event","at":"2026-11-03T10:50:00.300Z","run_id":"r5-1","event":{"type":"RUN_FINISHED","threadId":"00000000-0000-4000-8000-000000000005","runId":"r5-1"}}
+{"type":"run_end","at":"2026-11-03T10:50:00.310Z","run_id":"r5-1","status":"completed","error":null}
+{"type":"meta","at":"2026-11-03T10:51:00.000Z","title":"Try | the [pipe]\n# forged heading <script>alert(1)</script>","tags":["a|b","<b>x</b>"]}

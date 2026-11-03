@@ -1,0 +1,31 @@
+{
+ "id": "c2",
+ "title": "Second | chat [b]",
+ "created_at": 1793700300,
+ "updated_at": 1793700400000,
+ "archived": true,
+ "meta": {
+  "tags": []
+ },
+ "chat": {
+  "history": {
+   "currentId": null,
+   "messages": {}
+  },
+  "messages": [
+   {
+    "id": "m1",
+    "role": "user",
+    "content": "plain fallback list",
+    "timestamp": 1793700300
+   },
+   {
+    "id": "m2",
+    "role": "assistant",
+    "model": "qwen",
+    "content": "  answer  ",
+    "timestamp": 1793700301
+   }
+  ]
+ }
+}

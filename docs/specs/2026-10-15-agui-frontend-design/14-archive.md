@@ -64,18 +64,23 @@ notes: []}`, plus our `spe_archive_mode`), one chat per session, using the rebui
   `meta.spe_deleted_at` for a deleted session;
 - `chat.history.messages`: every message of every branch, keyed by id, with `parentId` and `childrenIds`;
   `chat.history.currentId`: the exported assistant message of the tip's run (each run is folded into one, below);
-- a user message as Open WebUI's: `role`, `content`;
-- **one assistant message per run**, parent the run's last new user message (the anchor, for a run that
-  added none), with `output` items in the order
-  their first event arrived, in v0.11.3's shapes (`utils/middleware.py`, `utils/ask_user.py`): a text message as
+- a user message as Open WebUI's: `role`, `content`. A client message id that is already an exported id, or
+  starts with `spe-run-` or `spe-msg-`, is exported under a fresh `spe-msg-<n>` id and keeps its own as
+  `spe_original_id`, so no client id can make a message its own ancestor (clarification 8);
+- **one assistant message per run**, `spe-run-<run id>`, parent the run's last new user message (for a run that
+  added none, the anchor; an anchor that was folded into an earlier run's message is that run's message), with
+  `output` items in the order their first event arrived, in v0.11.3's shapes (`utils/middleware.py`,
+  `utils/ask_user.py`): a text message as
   `{type: "message", id, role: "assistant", content: [{type: "output_text", text}]}`, a tool call as
   `{type: "function_call", id, call_id, name, arguments}` (`arguments` a JSON string), a tool result as
   `{type: "function_call_output", id, call_id, output: [{type: "input_text", text}]}`, reasoning as
   `{type: "reasoning", id, content}`, each with `status: "completed"`; a compaction marker as a `message` item
-  keeping its id; `content` is the run's text joined. These are the items Open WebUI itself replays to a model
-  (`MESSAGE_REPLAY_KEYS`, `process_messages_with_output`), so the export is a chat Open WebUI could continue;
-- `spe_run` on that assistant message (`run_id`, `status`, `started_at`, `ended_at`), and `spe_ignored` (the
-  run's ignored content) on it too, so a refused run still has a message to carry what it was sent.
+  keeping its id; `content` is the run's text joined, without a compaction marker's summary, which stays its
+  own item. These are the items Open WebUI itself replays to a model (`MESSAGE_REPLAY_KEYS`,
+  `process_messages_with_output`), so the export is a chat Open WebUI could continue;
+- `spe_run` on that assistant message (`run_id`, `status`, `started_at`, `ended_at`, `error` from the run's
+  `run_end`), and `spe_ignored` (the run's ignored content) on it too, so a refused run still has a message to
+  carry what it was sent.
 
 Fields starting with `spe_` are ours; Open WebUI itself never writes them, so its own runs render as before.
 
@@ -86,22 +91,25 @@ Fields starting with `spe_` are ours; Open WebUI itself never writes them, so it
 ```
 <run dir>/
   run.yml                     as for every run
-  index.md                    chats table, as for Open WebUI; says that the AG-UI frontend has no run report,
-                              and whether the archive was live (incomplete runs may still have been going) or final
+  index.md                    sessions table `# | Session | Tags | Created | Runs | Compactions | State`; says
+                              that the AG-UI frontend has no run report, and whether the archive was live
+                              (incomplete runs may still have been going) or final
+  openwebui-export.json       the bundle, copied as for Open WebUI; an in-place re-render reads it back
   chats/NN-<slug>.md          the active branch along currentId: user and assistant text, each tool call with
-                              fenced arguments and result, plus the three additions below
+                              fenced arguments and result, plus the three additions below; then every message on
+                              other branches, each naming the message it follows (clarification 8)
   chats/NN-<slug>.json        the exported chat
   agui-journals/<uuid>.jsonl  the raw journals, untouched
   agent-runs.jsonl            the agent's run log, when a run reached it
 ```
 
 `write_run.py` also renders the three things only the AG-UI record has (decision 16): a run's status when it
-is not `completed`; its ignored content as a block "sent by the client, not used", with its kind and the
-content fenced, between the turns it was sent with; and a compaction marker as a "Compacted" section. Fences
-are one backtick longer than the longest run of backticks in the content (at least three). A bundle with no
-chats gives an `index.md` saying no session was recorded; without `agent-runs.jsonl` the index says no run
-reached the agent. Given an archived run directory, the script re-renders it in place. Open WebUI runs render
-as before.
+is not `completed`, with its `error` if any; its ignored content as a block "sent by the client, not used",
+with its kind and the content fenced, between the turns it was sent with; and a compaction marker as a
+"Compacted" section. Fences are one backtick longer than the longest run of backticks in the content (at
+least three). A bundle with no chats gives an `index.md` saying no session was recorded; without
+`agent-runs.jsonl` the index says no run reached the agent. Given an archived run directory, the script
+re-renders it in place. Open WebUI runs render as before.
 
 The run directory's AG-UI files contain canaries, like the run log: they are outside git and **not**
 shareable, as `canaries.json` is.
