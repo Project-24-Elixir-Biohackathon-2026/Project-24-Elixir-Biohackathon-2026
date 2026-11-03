@@ -124,6 +124,59 @@ a security boundary.** Anyone who can reach the server can send it any request, 
 or recording has to happen in `chat-ui`'s server route or in the agent. A check in `chat-ui` alone misses calls
 made straight to the agent. Whether a participant can ever hold the agent key is still unverified.
 
+## Why two records, and whether that still holds
+
+**Question** (the user): Open WebUI has no split between agent and chat logs. Why does AG-UI keep a chat
+session (`chat-ui`'s `/data/sessions/<id>.json`) apart from the agent's run log (`runs.jsonl`), and is that
+useful?
+
+**Where the split comes from.** It wasn't designed as a feature:
+
+- **Two processes.** Open WebUI is both the chat app and the thing that calls the model and runs the tools, so
+  one stored chat is the whole record. In AG-UI the agent (`pydantic-ai-agent`, port 8100) runs the model and
+  the tools, `chat-ui` (CopilotKit) is a separate app in front of it, and the agent keeps no conversation state:
+  the client resends the whole history on every run.
+- **Build order.** The run log came first (`docs/specs/2026-10-15-agui-frontend-design.md`, *Run log*), when the
+  chat had "no persistence" (§6): it was the only record, written where the tool calls happen. Sessions came
+  later (`docs/superpowers/specs/2026-10-29-agui-chat-sessions-design.md`) for the sidebar, restoring chats and
+  the archive, stored in CopilotKit's own message format so that restoring is `setMessages()`.
+- **Explained afterwards.** The sessions spec (§1) then gave each a role: "the run log stays the authoritative
+  record of tool calls; the session is the conversation as the participant saw it", joined by `run_id` and
+  `thread_id`.
+
+**What is useful about it.** Two things, and neither needs two formats:
+
+- **The participant can't change the run log later.** The session's history comes from the browser; the run log
+  is appended by the agent and never rebuilt from that history.
+- **It catches requests that skip the chat app.** A call straight to port 8100 never reaches `chat-ui`, but the
+  agent logs it.
+
+**What the run log already rebuilds.** Read in order per `thread_id`, each line's `input`, `tool_calls` and
+`answer` give much of the conversation, so comparing it with the session file already shows an edited earlier
+reply. What it can't give:
+
+- the history each run *received*;
+- branches: lines are ordered, but not linked to the point they continued from;
+- the order of text and tool calls within a run (`answer` joins all text);
+- earlier messages when a run brought several (`input` is the last user message);
+- exact content (the three key values redacted, each field cut at 16 KB);
+- a run lost to a hard kill, or one the agent refuses before its recorder (its 503s, only in the session).
+
+The session keeps only the latest version of the conversation. So edits and branches fall between the two
+records, and the sessions spec's *"the record says what the agent saw, not more"* doesn't hold over time.
+Adopting a fix would need a clarification in that spec.
+
+**A cheap step** (unverified, not built): the agent logs per run a hash of the history it received and of what
+it returned; the next run in the thread should start with the previous output. That tells continuation, branch
+or edit apart on every path, without signatures, but not what changed.
+
+**If designed fresh, one record would do** (unverified, a direction, not decided): the agent writes an
+append-only journal, per run the history it received (or a hash of it) and every event it emitted, and the chat
+session shrinks to UI state (title, tags, pinned, hidden, deleted) plus the `thread_id`. That is one record like
+Open WebUI's, but kept where the participant can't edit it and where every request passes. In this note's terms
+it merges B and D into the agent. Still to settle: logging the runs the agent refuses before its recorder, the
+storage of every received history, and linking branches to the point they continued from (the hash above can).
+
 ## Synthesis
 
 **The one question underneath:** who holds the history the model sees, and can we trust it and record it? Each
@@ -173,6 +226,6 @@ the participant controls what arrives.
 
 **Open:**
 
-- B alone, or B with D?
+- B alone, or B with D? Or both in one journal at the agent (*Why two records*)?
 - Can a participant ever hold the agent key? That decides whether D is needed at all.
 - Does the canary ladder's scoring need attempt counts per branch?
