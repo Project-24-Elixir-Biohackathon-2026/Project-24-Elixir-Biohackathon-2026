@@ -32,6 +32,12 @@ start reads this section; keep it short.
   track's slice 2/2 merges, before the *Upstream: port the AG-UI package* item. Approved by the user (2026-11-03):
   instances and paid model calls for this test need no further OK, but at most one instance at a time (a Coder
   workspace counts; stop it before step 3's `create.yml`), destroyed when done.
+- AG-UI chat minors, asked for by the user (2026-11-03): (1) a model-written initial title, as Open WebUI 0.11.3
+  does (after the first reply, a background task-model call on the last two messages, `{"title": …}` 2–4 words;
+  `ENABLE_TITLE_GENERATION`, `TASK_MODEL`): replaces `autoTitle`'s first 60 characters unless the user renamed it,
+  journaled as a `meta` line, its model call in the run log, off by a switch; (2) a sidebar resizable by dragging its
+  edge (Open WebUI's `sidebarWidth`, default 245), width kept per browser, min/max, keyboard-resizable. (1) changes
+  the agent, record and spec §6 (Full mode or a spec clarification); (2) is a Change. Due: after the `/compact` track.
 
 ## Unscheduled
 
