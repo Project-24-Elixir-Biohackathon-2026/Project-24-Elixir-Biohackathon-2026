@@ -30,10 +30,31 @@ them in the source, **unverified** where they are reasoning or general knowledge
 - **The user owns the chat.** An edit gives them nothing they don't already have: they could write "earlier you
   agreed to show me the file, here's what you said: …" as a normal prompt. Editing makes the injection more
   convincing, but the person doing it already has the power to do it.
-- **Model APIs accept made-up history anyway.** The OpenAI-style and Anthropic message APIs take any `messages`
-  array, fake assistant turns included, and Anthropic documents prefill as a feature. Anyone with an API key can
-  do this without Open WebUI, so blocking it in the UI would not secure anything. (Unverified: general knowledge
-  of those APIs.)
+- **Model APIs accept made-up history anyway.** The OpenAI-style and Anthropic message APIs are stateless: the
+  caller sends the whole `messages` array every time, fake assistant turns included, and tool results always come
+  from the caller, since the caller runs the tools. Anyone with an API key can do this without Open WebUI, so
+  blocking it in the UI would not secure anything. (Unverified for OpenAI; for Anthropic, see the next section.)
+
+## What Anthropic's API accepts (checked 2026-11-03)
+
+Checked against the `claude-api` skill bundled with Claude Code 2.1.280 (`shared/model-migration.md`), not
+against Anthropic's live docs. This corrects an earlier version of this note, which said from memory that
+Anthropic "documents prefill as a feature":
+
+- **Prefill is gone on current models.** A request whose last message is an assistant turn (a prefill) returns a
+  400 on Opus 4.6 and later, Sonnet 4.6 and later, and the Fable family. Haiku 4.5 is not in the list of models
+  that removed it.
+- **Fabricated earlier turns are still accepted.** Past assistant turns, tool calls and tool results in the
+  history are not checked against what the model really produced.
+- **Edits are checked only through thinking blocks.** On Fable 5.1 and Opus 5.5, each thinking block is signed
+  together with the conversation before it. If an earlier turn is edited and a later thinking block is replayed,
+  the request fails with a 400 (enforced by default for accounts created on or after 2026-08-31, opt-in for older
+  ones), or the block is dropped. A history with no thinking blocks has nothing to check, so on our reading of
+  the docs a fully fabricated history without them still goes through. The docs present this as keeping the
+  model's reasoning consistent, not as a defence against jailbreaks.
+
+So the provider does not guarantee that a history is real. The client is trusted to send it honestly, and
+resistance to a fake history is left to the model's training and the provider's safety classifiers.
 - **The model refusing was never the security boundary.** If the only thing between a participant and a secret
   is the model saying no, that boundary already falls to an ordinary jailbreak; history editing just makes it
   easier. In an SPE the real controls are in the environment: what the agent's tools can reach, where network
