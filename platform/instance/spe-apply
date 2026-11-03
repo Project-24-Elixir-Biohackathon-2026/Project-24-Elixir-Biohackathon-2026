@@ -118,7 +118,7 @@ run_ansible() {  # playbook arguments
     echo "spe-apply: $adir/instances/local.yml not found: this instance was built before local re-apply existed; start a new workspace" >&2
     exit 2
   fi
-  if [[ ! -d $adir/collections/ansible_collections/community/docker ]]; then
+  if ! ansible-galaxy collection list 2>/dev/null | grep -q '^community\.docker '; then
     echo "spe-apply: the collections are not installed yet (ansible-galaxy runs in the background at creation). To install now:" >&2
     echo "  (cd $adir && ansible-galaxy collection install -r requirements.yml -p collections)" >&2
     exit 2
