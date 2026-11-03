@@ -36,3 +36,13 @@ one conversation of two runs, built from the shapes in `runlog.py` (`RunRecorder
 - Add the "two records" answer and the hash idea to the note?
 - The note's open questions: B alone or B with D; can a participant hold the agent key; does the canary ladder
   need attempt counts per branch.
+
+## Correction after the example
+
+The user pointed out that the run log, read in order per `thread_id`, rebuilds much of the conversation
+(each run's `input`, `tool_calls`, `answer`), so comparing that with the session file already shows an edited
+earlier reply. The example had said the edit was not visible: too strong. What the log still cannot give: the
+history each run *received*; branches (lines are ordered, but not linked to the point they continued from);
+the order of text and tool calls within a run (`answer` joins all text); earlier messages when a run brought
+several (`input` is the last); exact content (redacted, 16 KB per field); a run lost to a hard kill. Worth adding
+to the note with the "two records" answer.
