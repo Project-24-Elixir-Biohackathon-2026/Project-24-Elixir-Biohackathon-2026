@@ -34,3 +34,11 @@ destroy that should archive, `create.yml` first to put the real agent back.
 **`[Errno 24] Too many open files`** (and `npm error code EMFILE` in `npm ci`), twice on 2026-11-03: in
 `create.yml`'s *Build-context files* task and in `npm ci`. `ulimit -n` was 1048576, the system was far from
 `file-max`, and no process held many descriptors afterwards. Transient: a plain re-run passed both times.
+
+The limit is the host's, not the guest's: `/workspace` is a `virtiofs` mount, and the host daemon holds a
+descriptor for each inode the guest caches. A third time, on 2026-11-03, it did not pass on re-runs:
+`git worktree add` under `.claude/worktrees/` failed every time (`fatal: cannot create directory at 'docs/…':
+Too many open files`, so `next-session.sh --next` stopped with "worktree.sh could not make …'s worktree"), while
+the same command into `/var/tmp` (not virtiofs) worked. The fix that works: drop the guest's inode cache, then
+re-run: `sync; echo 2 | sudo tee /proc/sys/vm/drop_caches`. Before re-running a failed `worktree.sh`, remove its
+half-made worktree and branch (`git worktree remove --force <dir>; git branch -D <branch>`).
