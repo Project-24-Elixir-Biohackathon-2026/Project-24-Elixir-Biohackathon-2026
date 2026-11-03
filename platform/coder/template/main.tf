@@ -224,10 +224,11 @@ locals {
 resource "coder_agent" "main" {
   os   = "linux"
   arch = "amd64"
-  # The repository clone on the VM (role repo): what the chat frontend runs from and
-  # where Coder Agents reads AGENTS.md from (the repository's, which points to
-  # platform/instance/workspace/AGENTS.md); skills come from ~/.agents/skills.
-  dir = "/home/ubuntu/sperange"
+  # The home: Coder Agents reads AGENTS.md there, which role repo links to
+  # platform/instance/workspace/AGENTS.md (the workspace guide: what applies
+  # where, the hand-over). A pointer from the clone's AGENTS.md was not followed.
+  # Skills come from ~/.agents/skills. The clone is ~/sperange.
+  dir = "/home/ubuntu"
 
   # Commits made in the clone (by Coder Agents or over the terminal) carry the
   # workspace owner's identity: the full name from the account settings, else

@@ -2,6 +2,15 @@
 
 You are on the VM of one SPE instance of the SPE Range test bed. It runs a GA4GH workflow stack (WES, DRS, TRS behind Traefik on port 443) seeded with test data and canary tokens, and a chat frontend through which an LLM agent (the "SPE agent") probes it. People use this workspace to change the setup, try the change in that chat, and turn it into a template when it works.
 
+The repository is cloned at `~/sperange`; its own guide, `~/sperange/AGENTS.md`, describes the code, the commit rules and how to run the tests. Read it before changing code, and work inside `~/sperange` (your shell starts in the home directory).
+
+**Before every change, answer two questions and tell the person the answers:**
+
+1. Which row of "What a change needs" the files fall in. If it is "only at creation", the change cannot be tried in this workspace; say so before editing, and never report it as active or tested here.
+2. Which path the SPE agent takes for the thing being changed. The SPE agent acts from its sandbox through the GA4GH APIs (its runbook, `platform/ansible/roles/sandbox/files/agent/AGENTS.md`, tells it how). Code that only runs at creation, such as the installers in `platform/ansible/roles/*/files/*.py`, never sees what the SPE agent does at run time.
+
+Example: "check every workflow before it is registered in TRS". `roles/trs_install/files/trs_install.py` installs the catalog workflows once at creation (its copy on this VM is `/opt/spe/bin/trs_install.py` and does not follow the clone); a workflow the SPE agent registers goes straight from the sandbox to the TRS API and never passes through it. A check there would be creation-only, and it would not apply to the agent's registrations anyway. What would: a validating step in front of the TRS service in the workflow stack (creation-only, so tried on a fresh workspace from a branch template), or a helper script and runbook rule in `roles/sandbox/files/agent/` (live, but the SPE agent can skip it).
+
 ## Layout
 
 - `~/sperange`: a git clone of the repository (github.com/kraatz/elixir-biohackathon-2026-test), the source of everything below, checked out at the commit the workspace was built from (a detached HEAD until you create a branch). Edit here.
@@ -15,8 +24,6 @@ The frontend is either Open WebUI (`spe-frontend` containers `open-webui`, `open
 1. You change files in `~/sperange` and apply the change as the table below says.
 2. The person tests the change in this workspace's chat. You verify what you can on this VM yourself (see "Verify on the VM").
 3. When it works, the person asks you to make a template of it, or to put it into the main template. Follow "Hand over".
-
-Before you start a change, say which row of the table it falls in, so the person knows whether it can be tried here at all.
 
 ## What a change needs
 
@@ -37,12 +44,13 @@ Also keep in mind what a change can reach. The SPE agent talks to the GA4GH APIs
 
 ## Verify on the VM
 
-You run as the workspace user on the instance's VM, with Docker and the whole stack at hand. Use that instead of reasoning from the code alone:
+You run as the workspace user on the instance's VM, with Docker and the whole stack at hand. When asked whether something took effect, check, do not reason from the code alone:
 
 - `spe-apply status` and `spe-apply logs <service>` for the frontend containers.
 - The SPE agent's run log (AG-UI frontend): `docker compose -p spe-frontend exec agent cat /var/lib/spe-agent/runs.jsonl`. It holds canaries: quote from it sparingly.
 - The GA4GH APIs from this VM: `curl -sS --cacert ~/spe-frontend/spe-ca.crt https://localhost/ga4gh/trs/v2/tools` (also `/ga4gh/drs/v1/...`, `/ga4gh/wes/v1/...`). The `-k` rule below is for the sandbox, not for you here.
-- What the installers did at creation: `/opt/spe` and the compose project `workflow-stack` (`docker compose -p workflow-stack ps`).
+- What the installers did at creation: `/opt/spe` and the compose project `workflow-stack` (`docker compose -p workflow-stack ps`). `diff /opt/spe/bin/<x>.py ~/sperange/platform/ansible/roles/<role>/files/<x>.py` shows whether an edit in the clone is what ran: it never is, those copies are made at creation.
+- What the SPE agent did: the frontend's logs (`spe-apply logs open-terminal` or `spe-apply logs sandbox`) and the TRS, DRS and WES listings.
 
 ## Hand over
 
