@@ -4,6 +4,11 @@ Threat models for agents in Secure Processing Environments (SPEs) and the
 Ansible automation that builds SPE evaluation instances. This file is the
 guide for humans and coding agents working in this repository.
 
+**On an SPE instance VM** (a portal workspace: `~/spe-frontend/.env` exists and this
+file sits in `~/sperange`), read `platform/instance/workspace/AGENTS.md` first. It says
+what a change needs there (nothing, `spe-apply`, or a new template), how the person
+tests it, and how a tested change becomes a template.
+
 | Path | What |
 |---|---|
 | `threats/`, `vocabulary.yaml`, `validate.py` | Threat model catalog (`TM-NNN-*.md`, new entries start from `threats/TEMPLATE.md`), its controlled vocabulary and validator |
@@ -73,6 +78,9 @@ Ansible needs a blocking stdin here: always run it with `</dev/null`, from
 `platform/coder/` is a self-service portal (Coder) that runs the playbooks for
 participants, proxies the chat frontend into the browser and archives each run on
 stop (`platform/coder/README.md`). Testbed presets are `platform/coder/template/testbeds/*.yml`.
+A pushed branch named `template/<name>` becomes its own portal template `spe-<name>`
+within minutes, for trying creation-time changes (Ansible roles, the template) on a
+fresh workspace before they are merged.
 
 ## AG-UI agent frontend
 

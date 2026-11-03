@@ -54,11 +54,11 @@ Ansible playbooks in `../ansible`; the Coder template only wraps them.
 
 ### Working in a workspace
 
-A workspace is for changing the setup and trying the change in its chat right
-away, with Coder Agents (the portal's chat agent, Admin settings > AI) or by hand
-over the web terminal. The VM holds a clone of this repository at
-`~/sperange`, checked out at the commit the workspace was built from, and the chat
-frontend runs from it:
+A workspace is for changing the setup, trying the change in its chat right
+away, and turning it into a template when it works, with Coder Agents (the
+portal's chat agent, Admin settings > AI) or by hand over the web terminal. The
+VM holds a clone of this repository at `~/sperange`, checked out at the commit the
+workspace was built from, and the chat frontend runs from it:
 
 | Change | What it needs |
 |---|---|
@@ -67,14 +67,31 @@ frontend runs from it:
 | the agent's Python source (`platform/agui/pydantic-ai-agent/src/`) | nothing: the agent restarts itself on a saved file |
 | the chat UI's source, with `spe_agui_ui_dev: true` (compose profile `ui-dev`) | nothing: hot reload. The first start installs the packages from the npm registry, about two minutes |
 | the compose file (`platform/instance/compose.yml`) or `~/spe-frontend/agent.yaml` | `spe-apply up` |
-| the agent's dependencies, the chat UI (built mode), `Dockerfile.terminal`, the GA4GH images | `spe-apply` (build, then up): the **Rebuild** button on the workspace page runs it once and leaves a shell open |
-| the Ansible roles, the Coder template | merge, then restart the workspace |
+| the agent's dependencies, the chat UI (built mode), `Dockerfile.terminal` | `spe-apply` (build, then up): the **Rebuild** button on the workspace page runs it once and leaves a shell open |
+| the other Ansible roles (workflow stack, data, catalog installers, `~/spe-frontend`), the Coder template, the GA4GH images | a fresh workspace from a branch template (below) |
 
-Coder Agents finds `AGENTS.md` and the `spe-apply` skill in the workspace
-(`platform/instance/workspace/`, linked into the home directory), so it knows this
-table. The VM is destroyed when the workspace stops: a change worth keeping is
-committed on a branch and pushed from the clone (pushing needs a GitHub token in
-the workspace, not set up yet), or ported into a pull request from the controller.
+The loop, as the Coder agent is instructed to follow it (`platform/instance/workspace/AGENTS.md`,
+reached from the repository's `AGENTS.md`, which it reads at the start of every chat):
+
+1. The agent edits the clone and applies the change as the table says, or says
+   that the change only applies at creation.
+2. The person tests the change in the workspace's chat; the agent verifies what
+   it can on the VM (container logs, the GA4GH APIs, the SPE agent's run log).
+3. On "make a template of it": the agent commits on a branch `template/<name>`
+   and pushes it. The sync timer (step 7) turns every such branch into the
+   template `spe-<name>` within five minutes, built from that branch's Ansible
+   code with the clone on the VM at that branch's commit. A later push updates
+   the template; deleting the branch deletes the template once no workspace uses
+   it. Workspaces from the main template are not affected.
+4. On "put it into the main template": the person opens the pull request from
+   that branch (the agent gives the link; it cannot open one); merging updates
+   the main template within minutes, existing workspaces pick it up on their
+   next start.
+
+Commits in the clone carry the workspace owner's name and email (set by the
+template). Pushing needs GitHub access in the workspace: see "GitHub access from
+workspaces" under step 7. The VM is destroyed when the workspace stops; only what
+is pushed survives.
 
 ### Adding a testbed
 
@@ -305,6 +322,40 @@ static site (`platform/site/build.py`, every run) and pushes the template when
 
 Workspace builds always run the Ansible code currently checked out, including
 for stopping workspaces that were created from an older version.
+
+**Branch templates.** The same run keeps one template per branch named
+`template/<name>`: a worktree of the branch under `SPE_BRANCH_DIR` (default
+`sperange-branches` next to the checkout), the template `spe-<name>` (prefix
+`SPE_BRANCH_TEMPLATE_PREFIX`) pushed from it with the same two variables, display
+name `template/<name>`. A push to the branch updates the template; deleting the
+branch deletes the template and the worktree, unless workspaces still use it,
+then the script says so and keeps it until they are gone (delete the workspaces,
+or delete the template in the dashboard once they are). `<name>` must be lowercase
+letters, digits and hyphens, 28 characters at most (template names are limited to
+32). This is how a change made in a workspace is tried on a fresh workspace
+before it is merged ("Working in a workspace").
+
+**GitHub access from workspaces (optional).** `git push` from a workspace's clone
+needs credentials. Coder's external authentication provides them per person
+through the agent's git askpass, so nothing is stored on the VMs:
+
+1. Register a GitHub OAuth app (the organisation's or a maintainer's): homepage
+   `https://<zone>`, callback URL `https://<zone>/external-auth/github/callback`.
+2. Add to `coder.env` and restart Coder:
+
+   ```
+   CODER_EXTERNAL_AUTH_0_ID=github
+   CODER_EXTERNAL_AUTH_0_TYPE=github
+   CODER_EXTERNAL_AUTH_0_CLIENT_ID=...
+   CODER_EXTERNAL_AUTH_0_CLIENT_SECRET=...
+   ```
+
+3. Each person links GitHub once under their account settings, External
+   authentication. From then on `git push` over https in their workspaces uses
+   their GitHub account, and so do commits pushed by Coder Agents on their behalf.
+
+Without it, the agent's push fails with an authentication error and the agent
+is instructed to say so and stop.
 
 ### 8. Coder Agents on the de.NBI endpoint (optional)
 

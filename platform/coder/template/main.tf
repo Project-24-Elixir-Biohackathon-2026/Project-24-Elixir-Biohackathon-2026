@@ -221,8 +221,18 @@ resource "coder_agent" "main" {
   os   = "linux"
   arch = "amd64"
   # The repository clone on the VM (role repo): what the chat frontend runs from and
-  # where Coder Agents reads AGENTS.md and .agents/skills from.
+  # where Coder Agents reads AGENTS.md from (the repository's, which points to
+  # platform/instance/workspace/AGENTS.md); skills come from ~/.agents/skills.
   dir = "/home/ubuntu/sperange"
+
+  # Commits made in the clone (by Coder Agents or over the terminal) carry the
+  # workspace owner's identity.
+  env = {
+    GIT_AUTHOR_NAME     = coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)
+    GIT_AUTHOR_EMAIL    = data.coder_workspace_owner.me.email
+    GIT_COMMITTER_NAME  = coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)
+    GIT_COMMITTER_EMAIL = data.coder_workspace_owner.me.email
+  }
 
   display_apps {
     vscode          = false
