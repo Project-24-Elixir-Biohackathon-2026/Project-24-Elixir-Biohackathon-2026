@@ -60,9 +60,32 @@ frame that gives it authority. The plan's marker is an assistant text message id
 producer's* (`provider_name` not `spe-agent`) is ignored (slice 1, task 5), but a forged *own* marker is
 accepted by design: the agent has no way to tell it apart.
 
-**Open WebUI, for comparison** (unverified, from general knowledge): its browser also sends the message list
-for each completion, and its UI lets a user edit and regenerate messages on purpose. Its database stores the
-edited chat, with no record the user can't touch. So it has cases 1–4 too, without any tooling.
+**Open WebUI, for comparison.** Verified against Open WebUI v0.11.3 (the image `spe_frontend_webui_image` pins),
+`backend/open_webui/`; an earlier version of this paragraph guessed the opposite and was wrong:
+
+- **The server owns the history the model sees.** For a saved chat, `process_chat_payload` rebuilds `messages`
+  from the database up to the new user message (`utils/middleware.py`, `load_messages_from_db`, ~line 2413) and
+  keeps only the client's system message. The history in the completion request is ignored, so the request
+  itself cannot fabricate turns: this is option A below, built in. The user message and the assistant
+  placeholder are saved before the model call, and streamed events and errors are saved as they arrive
+  (`main.py` ~line 1490, `utils/middleware.py` ~line 4665), so a crash mid-reply loses little.
+- **The stored copy is editable, by design.** `POST /api/v1/chats/{id}/messages/{message_id}` overwrites any
+  message's `content`, the assistant's included (the UI's *edit*), and `POST /api/v1/chats/{id}` merges a whole
+  `history` in, the incoming messages winning by id and `currentId` taken from the request (`routers/chats.py`,
+  `models/chats.py` `merge_history`). The next completion loads the edited copy, so cases 1, 3 and 4 work as
+  *edit, then continue*. Whether a crafted message's structured `output` can also fabricate tool calls (case 2)
+  was not traced.
+- **No record of the original is kept.** Both endpoints overwrite in place; nothing versions a message. They
+  publish `message.updated` (with the first 300 characters) and `chat.updated` events to Open WebUI's event
+  sinks (socket, functions, webhook, notification: `events.py`), which reach a durable record only if a webhook
+  is configured. The audit log is off by default (`AUDIT_LOG_LEVEL=NONE`) and excludes `/chats` by default
+  (`AUDIT_EXCLUDED_PATHS`, `env.py`). Our role sets neither (`roles/openwebui/templates/`), and the archive
+  exports the final, edited chat.
+
+So Open WebUI closes the request path but leaves the stored copy editable without a trace; the AG-UI stack
+leaves both open. In neither case is it a bug in the frontend's own threat model: the user owns the chat, and
+could type the same text as a prompt. It matters here because the agent holds data and tools the participant
+must not steer, and because the evaluation needs to know what really happened.
 
 ## Data loss in the same design
 
@@ -126,6 +149,8 @@ of the whole run.
 - Should client history fabrication get its own threat model entry in `threats/` (close to TM-005, pasted-text
   injection, but the injected content claims to be the agent's or the environment's own words)?
 - Does the canary ladder's scoring need to know when a run's history was modified?
+- Open WebUI: turn on a durable record of edits (an event webhook, or `AUDIT_LOG_LEVEL` with `/chats` no
+  longer excluded) so its archive can show them too?
 
 ## Related
 
