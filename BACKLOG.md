@@ -29,8 +29,9 @@ start reads this section; keep it short.
   saved as it happens (journal written per run, live archive keeps up); and nothing is lost: each session's
   messages in the chat, its rebuilt journal after a reload, the live archive and the final archive agree, run for
   run — asked for by the user (2026-11-03); due: after the `/compact`
-  track's slice 2/2 merges, before the *Upstream: port the AG-UI package* item; each run needs the user's OK
-  (instances, paid model calls).
+  track's slice 2/2 merges, before the *Upstream: port the AG-UI package* item. Approved by the user (2026-11-03):
+  instances and paid model calls for this test need no further OK, but at most one instance at a time (a Coder
+  workspace counts; stop it before step 3's `create.yml`), destroyed when done.
 
 ## Unscheduled
 
