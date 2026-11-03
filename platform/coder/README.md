@@ -67,7 +67,7 @@ frontend runs from it:
 | the agent's Python source (`platform/agui/pydantic-ai-agent/src/`) | nothing: the agent restarts itself on a saved file |
 | the chat UI's source, with `spe_agui_ui_dev: true` (compose profile `ui-dev`) | nothing: hot reload. The first start installs the packages from the npm registry, about two minutes |
 | the compose file (`platform/instance/compose.yml`) or `~/spe-frontend/agent.yaml` | `spe-apply up` |
-| the agent's dependencies, the chat UI (built mode), `Dockerfile.terminal`, the GA4GH images | `spe-apply` (build, then up): the **Rebuild** button on the workspace page |
+| the agent's dependencies, the chat UI (built mode), `Dockerfile.terminal`, the GA4GH images | `spe-apply` (build, then up): the **Rebuild** button on the workspace page runs it once and leaves a shell open |
 | the Ansible roles, the Coder template | merge, then restart the workspace |
 
 Coder Agents finds `AGENTS.md` and the `spe-apply` skill in the workspace
