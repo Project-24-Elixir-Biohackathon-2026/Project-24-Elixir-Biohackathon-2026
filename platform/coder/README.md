@@ -306,7 +306,37 @@ static site (`platform/site/build.py`, every run) and pushes the template when
 Workspace builds always run the Ansible code currently checked out, including
 for stopping workspaces that were created from an older version.
 
-### 8. Template settings (optional)
+### 8. Coder Agents on the de.NBI endpoint (optional)
+
+Coder Agents is Coder's built-in chat agent (Admin settings > AI). It runs in
+the control plane and can read templates, create workspaces and run commands
+in them on the user's behalf, so the portal VM, not the SPE VMs, needs to reach
+the LLM. `coder-agents-setup.sh` configures it against our OpenAI-compatible
+endpoint without touching the dashboard:
+
+```bash
+platform/coder/deploy/coder-agents-setup.sh      # on the portal VM, as ubuntu
+```
+
+It creates (or updates) the provider `denbi` with the base URL and the key from
+`coder.env`, and the model `gemma-4-31b` as the organization's default; it is
+safe to rerun. Not every model on the endpoint works: Coder Agents sends a
+system message in the middle of the conversation, which the chat templates of
+`qwen3.8-27b` and `mistral-medium-3.5` reject ("System message must be at the
+beginning"); `gpt-oss-120b`, `gemma-4-31b` and `glm-5.3` accept it. Everything is a variable (`SPE_LLM_BASE_URL`, `SPE_LLM_MODELS`
+as `model:context_limit:display name` separated by commas, …), see the header
+of the script. The API details it relies on, found in Coder 2.38's dashboard
+client since the docs only show the UI: `POST /api/v2/ai/providers` with type
+`openai-compat` and `api_keys: ["<key>"]`, `PATCH .../providers/<id>` with
+`api_keys: [{"api_key": "<key>"}]`, and
+`POST /api/v2/organizations/<org>/chats/models`.
+
+Once a model exists, every portal user can open a chat with the agent, and the
+agent can build workspaces. To keep it away from the testbed template, block
+the template for the agent in the dashboard, or create the model with
+`"enabled": false` (edit the script) until it has been tried.
+
+### 9. Template settings (optional)
 
 ```bash
 coder templates edit spe-testbed --default-ttl 12h     # auto-stop after 12 h idle
