@@ -18,6 +18,15 @@ start reads this section; keep it short.
   due: before the ladder's slice 5 (agent suite), whose plan 0015 reviews.
 - Dev VM: redeploy `dev-local` (`create.yml -e @instances/dev-local.yml`, no model call) and run `verify.yml`, so the agent there compacts at Haiku's window: the private instance file already says `spe_agent_context_window_tokens: 1000000`, but `/` had 4.5 GB free on 2026-11-03, under the preflight's 5 — from the compaction plan, slice 3/3, task 4, step 5; waits on the user, who decides whether to prune the dev VM's Docker build cache (12 GB, `docker builder prune -af`, see `docs/knowledge/denbi-disk-full.md`).
 - AG-UI `/compact`: plan merged (#27, `docs/superpowers/plans/2026-11-03-agui-compact-command/`) — asked for by the user (2026-11-03, PR #21); due: slice 1/2 (`impl/agui-compact-command-1-agent`), next; then slice 2/2 (#25, which it waited on, has merged).
+- AG-UI via Coder, before any upstream PR: (1) merge `upstream/main` into our `main`, moving our AG-UI work onto
+  its clone-on-VM layout (`platform/instance/compose.yml`, `spe-apply`; `roles/agui/templates/docker-compose.yml.j2`
+  is gone upstream); (2) test end to end in a workspace from the portal's main template: `~/sperange` fetches our
+  fork's branch, `spe-apply all`, then in the chat: several sessions open at once, switching between them (also
+  mid-run), new / rename / delete, reload and reopen, automatic compaction, `/compact` with and without a focus,
+  stop mid-run, the live archive; (3) the archive on stop runs from the portal's upstream checkout, so test it with
+  `create.yml`/`destroy.yml` from our checkout — asked for by the user (2026-11-03); due: after the `/compact`
+  track's slice 2/2 merges, before the *Upstream: port the AG-UI package* item; each run needs the user's OK
+  (instances, paid model calls).
 
 ## Unscheduled
 
