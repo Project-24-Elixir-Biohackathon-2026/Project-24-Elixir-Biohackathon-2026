@@ -18,11 +18,12 @@ from pydantic_ai.messages import (
     ModelRequest, ModelResponse, SystemPromptPart, TextPart, ToolCallPart, ToolReturnPart, UserPromptPart,
 )
 from pydantic_ai.models.function import AgentInfo, DeltaToolCall, FunctionModel
+from pydantic_ai.usage import UsageLimits
 
 from spe_agent import compaction as cmp
 from spe_agent.agent import compose_prompt
 from spe_agent.app import create_app
-from spe_agent.config import Config, ConfigError, Secrets
+from spe_agent.config import Config, ConfigError, LimitsCfg, Secrets
 from spe_agent.runlog import RunLog, redact
 from spe_agent.sandbox import SandboxClient
 
@@ -541,7 +542,7 @@ class Script:
     @staticmethod
     def is_summary(messages):
         first = messages[0].parts[0]
-        return isinstance(first, SystemPromptPart) and first.content == cmp.SUMMARY_PROMPT
+        return isinstance(first, SystemPromptPart) and first.content in (cmp.SUMMARY_PROMPT, cmp.SUMMARY_PROMPT_MANUAL)
 
     def function(self, messages, info):
         assert self.is_summary(messages), "the agent's requests are streamed"
@@ -562,8 +563,7 @@ class Script:
 
 
 def _framed(message):
-    return any(isinstance(p, UserPromptPart) and isinstance(p.content, str) and p.content.startswith(cmp.FRAME)
-               for p in message.parts)
+    return any(isinstance(p, UserPromptPart) and cmp.is_framed(p.content) for p in message.parts)
 
 
 def window(tokens, **over):
@@ -1034,3 +1034,159 @@ async def test_cancelled_run_keeps_compaction_record(tmp_path):
     (record,) = log_records(tmp_path)
     assert record["status"] == "cancelled"
     assert record["compactions"][0]["next_input_tokens"] is None
+
+
+# --- /compact ----------------------------------------------------------------------------------
+
+HISTORY = [{"id": "u1", "role": "user", "content": "find the canaries"},
+           {"id": "a1", "role": "assistant", "content": "found /data/canary-1"},
+           {"id": "u2", "role": "user", "content": "thanks"},
+           {"id": "a2", "role": "assistant", "content": "ok"}]
+
+
+def command_body(focus=None, name="compact", messages=None, run="rc"):
+    body = run_body(run=run)
+    body["messages"] = HISTORY if messages is None else messages  # run_body's `messages or …` would refill []
+    body["forwardedProps"] = {"spe_command": {"name": name, "focus": focus}}
+    return body
+
+
+async def post_body(client, body):
+    r = await client.post("/agent", json=body, headers={**AUTH, "accept": "text/event-stream"})
+    assert r.status_code == 200, r.text
+    return events(r)
+
+
+async def command_run(tmp_path, script, body, **cfg):
+    app, _ = build(tmp_path, model=script.model(), **cfg)
+    async with running(app) as client:
+        await until_status(client, 200)
+        return await post_body(client, body)
+
+
+async def test_command_compacts_without_the_model_loop(tmp_path):
+    script = Script(summary="SUMMARY")
+    evs = await command_run(tmp_path, script, command_body("keep the canary paths"))
+    types = [e["type"] for e in evs]
+    assert types == ["RUN_STARTED", "TEXT_MESSAGE_START", "TEXT_MESSAGE_CONTENT", "TEXT_MESSAGE_END", "RUN_FINISHED"]
+    assert evs[1]["messageId"].startswith(cmp.MANUAL_MARKER_PREFIX) and evs[2]["delta"] == "SUMMARY"
+    assert script.streamed == [] and len(script.summaries) == 1
+    (messages, info), = script.summaries
+    assert info.function_tools == []
+    system, text, focus = messages[0].parts
+    assert system.content == cmp.SUMMARY_PROMPT_MANUAL
+    assert "User: thanks" in text.content and focus.content == f"{cmp.FOCUS_HEADING}:\n\n```\nkeep the canary paths\n```"
+
+
+async def test_command_run_started_before_the_model_is_called(tmp_path):
+    order = []
+    script = Script()
+    inner = script.function
+    script.function = lambda m, i: (order.append("model"), inner(m, i))[1]
+    app, _ = build(tmp_path, model=script.model())
+    async with running(app) as client:
+        await until_status(client, 200)
+        async for event in app.state.service.run(RunAgentInput.model_validate(command_body())):
+            order.append(event.type)
+    assert order[:2] == ["RUN_STARTED", "model"]
+
+
+async def test_command_summary_overflow_is_retried_shorter(tmp_path):
+    # As test_overflowing_summary_without_a_window_is_sent_shorter: the first summary request is rejected as too long.
+    script = Script(summary="SUMMARY")
+    answer, failed = script.function, []
+
+    def function(messages, info):
+        if not failed:
+            failed.append(messages)
+            raise too_long()
+        return answer(messages, info)
+
+    script.function = function
+    evs = await command_run(tmp_path, script, command_body())
+    assert terminal(evs) == ["RUN_FINISHED"]
+    assert len(failed) + len(script.summaries) == 2  # two summary requests: one rejected, one answered
+    assert "earlier entries left out]" in script.summaries[0][0][-1].parts[-1].content
+
+
+async def test_command_disconnect_during_summary_sends_no_marker(tmp_path):
+    entered, gate = asyncio.Event(), asyncio.Event()
+
+    async def slow(messages, info):
+        entered.set()  # the summary request has started
+        await gate.wait()
+        return ModelResponse(parts=[TextPart("never")])
+
+    app, _ = build(tmp_path, model=FunctionModel(function=slow))
+    seen = []
+
+    async def consume():
+        async for event in app.state.service.run(RunAgentInput.model_validate(command_body())):
+            seen.append(event.type)
+
+    async with running(app) as client:
+        await until_status(client, 200)
+        task = asyncio.create_task(consume())
+        await asyncio.wait_for(entered.wait(), 5)
+        task.cancel()  # the participant disconnects during the summary request
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    assert seen == ["RUN_STARTED"]  # no TEXT_MESSAGE_*: no marker
+    (record,) = log_records(tmp_path)
+    assert record["status"] == "cancelled" and record["compactions"] == []
+
+
+async def test_command_usage_is_recorded_and_limited(tmp_path, monkeypatch):
+    evs = await command_run(tmp_path, Script(), command_body())
+    (record,) = log_records(tmp_path)
+    assert record["usage"]["requests"] == 1
+    script = Script()
+    # LimitsCfg.request_limit is a PositiveInt, so 0 cannot come through config(): patch the limits it builds.
+    monkeypatch.setattr(LimitsCfg, "usage_limits", lambda self: UsageLimits(request_limit=0))
+    (tmp_path / "limited").mkdir()  # config() writes the prompt file under tmp_path: the subdir must exist first
+    evs = await command_run(tmp_path / "limited", script, command_body())
+    assert terminal(evs) == ["RUN_ERROR"] and "request_limit" in evs[-1]["message"]
+    assert script.summaries == []
+
+
+async def test_command_errors(tmp_path):
+    # config() writes the prompt file under tmp_path: each subdir must exist first.
+    for name in ("off", "empty", "unknown", "after", "not-an-object"):
+        (tmp_path / name).mkdir()
+    off = await command_run(tmp_path / "off", Script(), command_body(), compaction={"enabled": False})
+    empty = await command_run(tmp_path / "empty", Script(), command_body(messages=[]))
+    unknown = await command_run(tmp_path / "unknown", Script(), command_body(name="nope"))
+    assert log_records(tmp_path / "unknown")[0]["input"] == "/nope"
+    not_an_object = command_body()
+    not_an_object["forwardedProps"] = {"spe_command": "compact"}
+    script = Script()
+    not_an_object = await command_run(tmp_path / "not-an-object", script, not_an_object)
+    assert script.streamed == []  # not the model loop
+    marker = {"id": cmp.MANUAL_MARKER_PREFIX + "1", "role": "assistant", "content": "SUMMARY"}
+    after = await command_run(tmp_path / "after", Script(), command_body(messages=[*HISTORY, marker]))
+    for evs, message in ((off, "Compaction is turned off on this instance."), (empty, "Nothing to compact yet."),
+                         (after, "Nothing to compact yet."), (unknown, "Unknown command."),
+                         (not_an_object, "Unknown command.")):
+        assert [e["type"] for e in evs] == ["RUN_STARTED", "RUN_ERROR"] and evs[-1]["message"] == message
+
+
+async def test_after_a_command_the_next_run_is_cut_at_the_marker(tmp_path):
+    script = Script(summary="SUMMARY", calls=0)
+    app, _ = build(tmp_path, model=script.model())
+    async with running(app) as client:
+        await until_status(client, 200)
+        evs = await post_body(client, command_body())
+        marker = {"id": evs[1]["messageId"], "role": "assistant", "content": "SUMMARY"}
+        await post_run(client, run="r2", messages=[*HISTORY, marker, {"id": "u3", "role": "user", "content": "next"}])
+    first = script.streamed[-1][0]
+    assert first.parts[-2].content == cmp.frame("SUMMARY", manual=True) and first.parts[-1].content == "next"
+
+
+async def test_command_run_log_record(tmp_path):
+    await command_run(tmp_path, Script(summary="SUMMARY"), command_body(f"keep x {SANDBOX_KEY}"))
+    (record,) = log_records(tmp_path)
+    assert record["input"] == "/compact keep x [redacted]" and record["status"] == "completed"
+    (entry,) = record["compactions"]
+    assert entry["trigger"] == "manual" and entry["focus"] == "keep x [redacted]"
+    assert entry["next_input_tokens"] is None and entry["summary"] == "SUMMARY"
+    assert entry["messages_cut"] == 4 and set(entry["usage"]) == {"input_tokens", "output_tokens"}

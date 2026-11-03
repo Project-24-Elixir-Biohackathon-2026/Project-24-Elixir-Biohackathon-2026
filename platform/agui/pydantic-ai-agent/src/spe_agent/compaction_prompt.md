@@ -1,6 +1,5 @@
 You are summarising a conversation between a user and an assistant that works in a terminal, so that the
-assistant can continue the task without the earlier messages. The conversation no longer fits the model's
-context: only your summary will be kept.
+assistant can continue the task without the earlier messages. {reason}
 
 Write the summary in the assistant's voice, as notes to itself, in this order:
 

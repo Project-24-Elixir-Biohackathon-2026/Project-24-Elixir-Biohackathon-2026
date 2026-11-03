@@ -81,12 +81,14 @@ When the run input's `forwardedProps.spe_command.name` is `"compact"`, `app.py` 
    prompt, cut tool output, the window budget, the retry with the older half left out when the summary request
    itself overflows). Two things differ. The focus is not a `User:` entry of the transcript: it follows the
    transcript as a section of its own, "The participant's instructions for this summary", fenced with a fence
-   longer than any backtick run inside, never in the system prompt; so the latest real request stays the one the
+   longer than any backtick run inside, in a user part of its own (so no tool output in the transcript can pose
+   as it), never in the system prompt; so the latest real request stays the one the
    transcript pins and the summary quotes. And the prompt and the summary's frame say the participant asked for
    the summary, not that the conversation no longer fit (a manual variant of each). It counts towards the run's
    usage limits and is checked before it is sent.
-4. It streams the marker's three events (compaction decision 7), back to back once the summary is complete,
-   then `RUN_FINISHED`. A failed summary request is `RUN_ERROR`, sanitized as every error is. A run cancelled
+4. It streams the marker's three events (compaction decision 7, its id `spe-compaction-manual-<uuid4>`), back to
+   back once the summary is complete, then `RUN_FINISHED`. A failed summary request is `RUN_ERROR`, sanitized as
+   every error is. A run cancelled
    during the summary request (the stop button, or `chat-ui` going away) sends no marker events, and its run log
    record has the cancelled run's status and `compactions` empty.
 

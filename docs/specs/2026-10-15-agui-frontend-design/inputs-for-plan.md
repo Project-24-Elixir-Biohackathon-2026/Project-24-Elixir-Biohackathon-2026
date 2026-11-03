@@ -42,6 +42,7 @@ For the plan that builds §15 (decisions 31–39).
 - The chat's README and the getting-started guide gain `/compact`: slice 2 writes them.
 - Both slices change files with known defects, fixed there: `platform/dev/fake_agent.py` answers a second
   compaction request in an already compacted session without compacting (its check must require a framed
-  summary after the latest real prompt, not anywhere) and guards a request type with a bare `assert` (slice 1);
+  summary after the latest real prompt, not anywhere; slice 1 ruled otherwise, a nonce per summary: see
+  the compaction command plan's slice 2 handoff) and guards a request type with a bare `assert` (slice 1);
   `copilotkit-chat/app/compaction-divider.tsx` casts `message.content as string` where `typeof` would narrow
   (slice 2).

@@ -9,10 +9,13 @@ The model runs one `run_command` per turn and then answers; a message containing
 $SPE_FAKE_SLOW_STEP_SECONDS; about 10 s by default),
 for stopping, closing or archiving a run in progress; a message containing "compact"
 runs a command with a long output, so the history passes the scripted window
-(COMPACT_WINDOW tokens) and the agent compacts it with a scripted summary (once per
-session: in a session that already compacted, "compact" answers "compacted" without
-running the command, as the summary stays in the history); a message containing "echo-input" makes the model answer, instead of
-running a command, with the JSON list of {role, id} of what it was sent (the system prompt left out), so a
+(COMPACT_WINDOW tokens) and the agent compacts it with a scripted summary; it compacts
+every time it is sent, not once per session (the request right after a fresh compaction,
+within the same run, is answered "compacted" without running the command again, as the
+summary is already the latest thing in the history); a command (`spe_command`) is
+answered with a fixed summary that quotes its focus; a message containing "echo-input"
+makes the model answer, instead of running a command, with the JSON list of {role, id}
+of what it was sent (the system prompt left out), so a
 client can see which history reached the model. The run log
 goes to a temporary directory, or to --run-log PATH; --key defaults to
 $SPE_AGENT_API_KEY, so the key need not sit in argv.
@@ -36,7 +39,7 @@ from pydantic_ai.ui._utils import get_ui_message_id
 from pydantic_ai.models.function import DeltaToolCall, FunctionModel
 
 from spe_agent.app import create_app
-from spe_agent.compaction import FRAME, SUMMARY_PROMPT
+from spe_agent.compaction import FOCUS_HEADING, SUMMARY_PROMPT, SUMMARY_PROMPT_MANUAL, is_framed
 from spe_agent.config import Config, Secrets
 from spe_agent.sandbox import SandboxClient
 
@@ -72,15 +75,28 @@ def fake_sandbox(request: httpx.Request) -> httpx.Response:
     return httpx.Response(404, json={"detail": "not in the fake sandbox"})
 
 
+# Automatic summaries written but not yet answered with "compacted" (scripted's check).
+FRESH: set[str] = set()
+
+
 def summarise(messages, info) -> ModelResponse:
-    """The compaction's summary request: system prompt SUMMARY_PROMPT, the transcript as the user part."""
-    parts = messages[0].parts
-    if not (isinstance(parts[0], SystemPromptPart) and parts[0].content == SUMMARY_PROMPT):
+    """The compaction's summary request: system prompt SUMMARY_PROMPT (automatic) or SUMMARY_PROMPT_MANUAL
+    (/compact), the transcript as the first user part, a manual request's focus (after FOCUS_HEADING) as a second."""
+    system, text_part, *focus_part = messages[0].parts
+    if not isinstance(system, SystemPromptPart) or system.content not in (SUMMARY_PROMPT, SUMMARY_PROMPT_MANUAL):
         raise RuntimeError("not a summary request")
-    text = str(parts[-1].content)
+    text = str(text_part.content)
+    if system.content == SUMMARY_PROMPT_MANUAL:
+        focus = str(focus_part[0].content).removeprefix(f"{FOCUS_HEADING}:\n\n") if focus_part else ""
+        focus_text = focus.strip("`\n") or "(none)"
+        return ModelResponse(parts=[TextPart(f"Scripted summary on request of {len(text)} characters. "
+                                             f"Focus: {focus_text}")])
     latest = next((line for line in reversed(text.splitlines()) if "compact" in line.lower()), "")
+    nonce = f"[summary {uuid.uuid4().hex[:8]}]"
+    FRESH.add(nonce)
     return ModelResponse(parts=[TextPart(
-        f"Scripted summary of {len(text)} characters of conversation. The latest request was: {latest.strip()}")])
+        f"Scripted summary of {len(text)} characters of conversation. The latest request was: {latest.strip()} "
+        f"{nonce}")])
 
 
 def received(messages) -> list[dict]:
@@ -105,7 +121,7 @@ def received(messages) -> list[dict]:
 
 async def scripted(messages, info):
     users = [str(p.content) for m in messages if isinstance(m, ModelRequest)
-             for p in m.parts if isinstance(p, UserPromptPart) and not str(p.content).startswith(FRAME)]
+             for p in m.parts if isinstance(p, UserPromptPart) and not is_framed(p.content)]
     last_user = users[-1] if users else ""
     if "echo-input" in last_user.lower():
         yield json.dumps(received(messages))
@@ -114,9 +130,13 @@ async def scripted(messages, info):
         raise RuntimeError("scripted model failure (the message asked for it)")
     last = messages[-1].parts[-1]
     compacting = "compact" in last_user.lower()
-    if compacting and isinstance(last, UserPromptPart) and any(
-            isinstance(p, UserPromptPart) and str(p.content).startswith(FRAME)
-            for m in messages if isinstance(m, ModelRequest) for p in m.parts):
+    # Already compacted for this very request: the head's frame holds a summary not answered yet. The shape
+    # can't tell: after a marker from an earlier run, build_sent also puts the frame and the latest prompt in
+    # the head request, as compacted() does right after a fresh compaction; so summarise() tags each summary.
+    fresh = next((n for p in messages[0].parts if isinstance(p, UserPromptPart) and is_framed(p.content)
+                  for n in FRESH if n in str(p.content)), None)
+    if compacting and isinstance(last, UserPromptPart) and fresh is not None:
+        FRESH.discard(fresh)
         # The agent compacted after the long output: the request holds the summary and the latest request.
         yield f"Turn {len(users)}: the command ran. The conversation was compacted."
         return

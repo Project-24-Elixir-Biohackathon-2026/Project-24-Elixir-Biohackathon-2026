@@ -126,6 +126,10 @@ class RunRecorder:
         elif isinstance(event, RunErrorEvent):
             self.record["error"] = event.message
 
+    def command_input(self, text: str) -> None:
+        """A command run's `input` is the command, not the history's last user message (§15)."""
+        self.record["input"] = text
+
     def usage(self, usage: Any) -> None:
         self.record["usage"] = {k: getattr(usage, k, None)
                                 for k in ("requests", "tool_calls", "input_tokens", "output_tokens")}

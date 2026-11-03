@@ -43,7 +43,7 @@ the task text it changes.
    sends back; every reader matches the prefix `spe-compaction-` (`isCompactionMarker`, `is_compaction`,
    `_is_marker_message`), so nothing else changes. `markers_to_activities` carries the id onto the
    `CompactionPart` (`id=`), and `build_sent` picks the frame from it. Slice 1 folds this into §15 *The agent*
-   and compaction decision 7 with clarification 13. *Cost if wrong:* a marker written before slice 1 is
+   and compaction decision 7 with clarification 15. *Cost if wrong:* a marker written before slice 1 is
    automatic, which it was; a reader that parses the id after the prefix as a UUID breaks (none does).
 2. **Every compaction record gains `focus`** (null for `threshold` and `overflow`), so decision 11's records keep
    one shape. *Cost if wrong:* one more null field per record.
@@ -100,7 +100,7 @@ Every task's requirements include these.
 | `AGENT/src/spe_agent/compaction.py`, `compaction_prompt.md`, `tests/test_compaction.py` | 1 | `summarise()`, `fence()`, manual prompt, frame and marker id (rulings 1, 2) |
 | `AGENT/src/spe_agent/app.py`, `runlog.py`, `tests/test_app.py` | 1 | the command path, its run log record |
 | `platform/dev/fake_agent.py` | 1 | a command's fixed summary; the "compacted anywhere" fix |
-| spec `15-compact-command.md`, `clarifications.md`; compaction design decisions 7 and 11 | 1 | clarification 13 (ruling 1, 2) |
+| spec `15-compact-command.md`, `clarifications.md`; compaction design decisions 7 and 11 | 1 | clarification 15 (ruling 1, 2) |
 | `CHAT/lib/command.ts`, `lib/command.test.ts`, `lib/journal.ts`, `lib/rebuild.ts`, `lib/anchor.ts`, `lib/recorder.ts`, `lib/test-agent.ts`, `lib/recorder.test.ts`, `lib/rebuild.test.ts`, `lib/anchor.test.ts` | 2 | the command run in the route (31–34, 37) |
 | `platform/dev/e2e/sessions.py`; `docs/superpowers/plans/2026-11-03-agui-compact-command/evidence/slice-2/` | 2 | Playwright (33); the early output |
 | `CHAT/lib/export.ts`, `lib/export.test.ts`, `platform/dev/tests/fixtures/agui-record/`, `ARCHIVE/write_run.py`, `platform/dev/tests/test_write_run_agui.py` | 2 | the archive (38) |
