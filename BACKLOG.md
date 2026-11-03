@@ -24,7 +24,11 @@ start reads this section; keep it short.
   fork's branch, `spe-apply all`, then in the chat: several sessions open at once, switching between them (also
   mid-run), new / rename / delete, reload and reopen, automatic compaction, `/compact` with and without a focus,
   stop mid-run, the live archive; (3) the archive on stop runs from the portal's upstream checkout, so test it with
-  `create.yml`/`destroy.yml` from our checkout — asked for by the user (2026-11-03); due: after the `/compact`
+  `create.yml`/`destroy.yml` from our checkout. Passes when, on the AG-UI route: long conversations (several
+  compactions per session) run smoothly with no error in the chat or in the agent and `chat-ui` logs; every run is
+  saved as it happens (journal written per run, live archive keeps up); and nothing is lost: each session's
+  messages in the chat, its rebuilt journal after a reload, the live archive and the final archive agree, run for
+  run — asked for by the user (2026-11-03); due: after the `/compact`
   track's slice 2/2 merges, before the *Upstream: port the AG-UI package* item; each run needs the user's OK
   (instances, paid model calls).
 
