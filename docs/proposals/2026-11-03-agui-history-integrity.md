@@ -73,9 +73,19 @@ accepted by design: the agent has no way to tell it apart.
   message's `content`, the assistant's included (the UI's *edit*), and `POST /api/v1/chats/{id}` merges a whole
   `history` in, the incoming messages winning by id and `currentId` taken from the request (`routers/chats.py`,
   `models/chats.py` `merge_history`). The next completion loads the edited copy, so cases 1, 3 and 4 work as
-  *edit, then continue*. Whether a crafted message's structured `output` can also fabricate tool calls (case 2)
-  was not traced.
-- **No record of the original is kept.** Both endpoints overwrite in place; nothing versions a message. They
+  *edit, then continue*. **Case 2 works from the UI**: an assistant message's edit view
+  (`src/lib/components/chat/Messages/ResponseMessage.svelte`, `OutputEditView.svelte`) edits its structured
+  `output`, tool calls and their results (`function_call`, `function_call_output`) included, in a visual or a JSON
+  editor, and the backend replays `output` to the model as tool calls and tool results
+  (`utils/middleware.py`, `MESSAGE_REPLAY_KEYS`, `process_messages_with_output`).
+- **Edits in the UI** (`Messages.svelte`, `editMessage`): on a user message, *Send* adds a new sibling message
+  and regenerates (the old branch stays, browsable as 1/2), while *Save* changes it in place and keeps the replies
+  after it, even when they no longer fit; on an assistant message, *Save* edits in place and *Save As Copy* adds a
+  sibling.
+- **Almost no record of the original is kept.** Both endpoints overwrite in place; nothing versions a message.
+  The one trace: an in-place *text* edit of an assistant message from the UI keeps the previous text in
+  `originalContent` (one level, replaced on the next edit, written by the client, so an API call can leave it
+  out); an edit of `output` or of a user message keeps nothing. They
   publish `message.updated` (with the first 300 characters) and `chat.updated` events to Open WebUI's event
   sinks (socket, functions, webhook, notification: `events.py`), which reach a durable record only if a webhook
   is configured. The audit log is off by default (`AUDIT_LOG_LEVEL=NONE`) and excludes `/chats` by default
