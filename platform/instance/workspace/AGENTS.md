@@ -83,6 +83,8 @@ Pushes go over SSH with the git key the portal holds for the person (origin's pu
 - `old_text` must be the file's text as it is on disk. Take it from a `read_file` result you made just before the edit, without the line numbers and tabs the result shows. Never copy it from one of your earlier tool calls or from memory: text shown there is JSON-encoded (`\"`, `\n`), and copying that encoding is why edits fail with "old_text not found".
 - If `edit_files` answers "old_text not found", do not send the same edit again. Call `read_file` on the file, then make the edit from that fresh text. If it fails a second time, rewrite the file with `write_file` (complete content) instead.
 - Never repeat any failed tool call unchanged.
+- A failed `spe-apply` step is never "expected" and never evidence that something works. Read the failing task, fix the cause, run it again, and report only what passed.
+- Before reporting, test the behaviour the person asked for in the shape they will use it (the runbook's request shapes for the SPE agent, the chat frontend for a frontend change): one case that must be refused and one that must still work, each with the actual response.
 
 
 - Keep changes in `~/sperange`, committed on your branch. The VM is destroyed on the next workspace stop; only what is pushed survives.
