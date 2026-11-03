@@ -6,9 +6,13 @@ For exercising the chat UI and AG-UI clients without an LLM or a sandbox:
 The model runs one `run_command` per turn and then answers; a message containing
 "fail" makes the model raise, so the run ends in RUN_ERROR; a message containing
 "slow" streams its answer in SLOW_STEPS chunks, SLOW_STEP_SECONDS apart (about 10 s),
-for stopping, closing or archiving a run in progress. The run log goes to a
-temporary directory, or to --run-log PATH; --key defaults to $SPE_AGENT_API_KEY, so
-the key need not sit in argv.
+for stopping, closing or archiving a run in progress; a message containing "compact"
+runs a command with a long output, so the history passes the scripted window
+(COMPACT_WINDOW tokens) and the agent compacts it with a scripted summary (once per
+session: in a session that already compacted, "compact" answers "compacted" without
+running the command, as the summary stays in the history). The run log
+goes to a temporary directory, or to --run-log PATH; --key defaults to
+$SPE_AGENT_API_KEY, so the key need not sit in argv.
 """
 from __future__ import annotations
 
@@ -21,10 +25,13 @@ from pathlib import Path
 
 import httpx
 import uvicorn
-from pydantic_ai.messages import ModelRequest, ToolReturnPart, UserPromptPart
+from pydantic_ai.messages import (
+    ModelRequest, ModelResponse, SystemPromptPart, TextPart, ToolReturnPart, UserPromptPart,
+)
 from pydantic_ai.models.function import DeltaToolCall, FunctionModel
 
 from spe_agent.app import create_app
+from spe_agent.compaction import FRAME, SUMMARY_PROMPT
 from spe_agent.config import Config, Secrets
 from spe_agent.sandbox import SandboxClient
 
@@ -32,6 +39,13 @@ FIXTURE = Path(__file__).resolve().parents[1] / "agui" / "pydantic-ai-agent" / "
 
 SLOW_STEPS = 10
 SLOW_STEP_SECONDS = 1.0
+
+# Not the brief's ≈8,500: FunctionModel's own usage estimate (pydantic_ai.models.function._estimate_usage)
+# counts only message content, never tool schemas, so the brief's ≈3,000-token tool overhead never enters
+# the estimate once a response carries usage. An ordinary turn is ≈95 tokens; the long output, cut to the
+# tool cap, takes the next request to ≈5,500 — over this window's trigger (0.8 × 6000) but under 8000's.
+COMPACT_WINDOW = 6000        # tokens
+LONG_OUTPUT_CHARS = 20_000   # more than the tool cap, so the cut, not this number, sets the size
 
 
 def fake_sandbox(request: httpx.Request) -> httpx.Response:
@@ -44,18 +58,39 @@ def fake_sandbox(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"features": {"system": False}})
     if path == "/execute":
         cmd = json.loads(request.content).get("command", "")
+        if cmd.startswith("print-long-output"):
+            return httpx.Response(200, json={"id": "p1", "status": "done", "exit_code": 0,
+                                             "output": f"$ {cmd}\n" + "x" * LONG_OUTPUT_CHARS})
         return httpx.Response(200, json={"id": "p1", "status": "done", "exit_code": 0,
                                          "output": f"$ {cmd}\nfake output line 1\nfake output line 2"})
     return httpx.Response(404, json={"detail": "not in the fake sandbox"})
 
 
+def summarise(messages, info) -> ModelResponse:
+    """The compaction's summary request: system prompt SUMMARY_PROMPT, the transcript as the user part."""
+    parts = messages[0].parts
+    if not (isinstance(parts[0], SystemPromptPart) and parts[0].content == SUMMARY_PROMPT):
+        raise RuntimeError("not a summary request")
+    text = str(parts[-1].content)
+    latest = next((line for line in reversed(text.splitlines()) if "compact" in line.lower()), "")
+    return ModelResponse(parts=[TextPart(
+        f"Scripted summary of {len(text)} characters of conversation. The latest request was: {latest.strip()}")])
+
+
 async def scripted(messages, info):
-    users = [p.content for m in messages if isinstance(m, ModelRequest)
-             for p in m.parts if isinstance(p, UserPromptPart)]
-    last_user = str(users[-1]) if users else ""
+    users = [str(p.content) for m in messages if isinstance(m, ModelRequest)
+             for p in m.parts if isinstance(p, UserPromptPart) and not str(p.content).startswith(FRAME)]
+    last_user = users[-1] if users else ""
     if "fail" in last_user.lower():
         raise RuntimeError("scripted model failure (the message asked for it)")
     last = messages[-1].parts[-1]
+    compacting = "compact" in last_user.lower()
+    if compacting and isinstance(last, UserPromptPart) and any(
+            isinstance(p, UserPromptPart) and str(p.content).startswith(FRAME)
+            for m in messages if isinstance(m, ModelRequest) for p in m.parts):
+        # The agent compacted after the long output: the request holds the summary and the latest request.
+        yield f"Turn {len(users)}: the command ran. The conversation was compacted."
+        return
     if isinstance(last, ToolReturnPart):
         if "slow" in last_user.lower():
             for step in range(1, SLOW_STEPS + 1):
@@ -64,7 +99,8 @@ async def scripted(messages, info):
         for chunk in (f"Turn {len(users)}: ", "the command ran. ", "Its output was:\n\n", str(last.content)):
             yield chunk
     else:
-        yield {0: DeltaToolCall(name="run_command", json_args=json.dumps({"command": f"echo turn {len(users)}"}),
+        command = f"print-long-output turn {len(users)}" if compacting else f"echo turn {len(users)}"
+        yield {0: DeltaToolCall(name="run_command", json_args=json.dumps({"command": command}),
                                 tool_call_id=f"call-{len(users)}")}
 
 
@@ -87,12 +123,13 @@ def main() -> None:
         "prompt": {"file": str(tmp / "prompt.txt")},
         "tools": {"sandbox_url": "http://sandbox:8000"},
         "run_log": str(run_log),
+        "compaction": {"context_window_tokens": COMPACT_WINDOW},
     })
     secrets = Secrets(agent_api_key=args.key, sandbox_api_key="fake-sandbox-key", llm_api_key="no-llm")
     client = SandboxClient("http://sandbox:8000", "fake-sandbox-key",
                            http=httpx.AsyncClient(transport=httpx.MockTransport(fake_sandbox)))
-    app = create_app(config, secrets, model_override=FunctionModel(stream_function=scripted), sandbox_client=client,
-                     retry_delay=0.1)
+    app = create_app(config, secrets, model_override=FunctionModel(summarise, stream_function=scripted),
+                     sandbox_client=client, retry_delay=0.1)
     print(f"fake agent on http://{args.host}:{args.port}/agent, run log {run_log}", flush=True)
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 

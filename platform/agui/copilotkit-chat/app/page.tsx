@@ -16,10 +16,14 @@ import { fetchSession, fetchSessions, removeSession, updateSession } from "../li
 import { searchWith, sessionFromSearch } from "../lib/session-url.ts";
 import type { MetaPatch, SessionMeta } from "../lib/sessions.ts";
 import { ChatHeader } from "./chat-header";
+import { AssistantOrCompaction } from "./compaction-divider";
 import { ChevronRight } from "./icons";
 import { Sidebar } from "./sidebar";
 import { useHydrated } from "./use-hydrated";
 import { useRunReconcile } from "./use-run-reconcile";
+
+// A stable object: CopilotChat re-renders its message view when the slot value changes identity.
+const MESSAGE_VIEW = { assistantMessage: AssistantOrCompaction };
 
 const MAX_RESULT_LINES = 40;
 const MAX_RESULT_CHARS = 4000;
@@ -274,6 +278,7 @@ function Chat() {
               key={active}
               agentId="spe"
               className="spe-chat"
+              messageView={MESSAGE_VIEW}
               onError={(event) => {
                 // The prop's type also admits a DOM error event; only CopilotKit's carries `error`.
                 if ("error" in event && event.error instanceof Error) {

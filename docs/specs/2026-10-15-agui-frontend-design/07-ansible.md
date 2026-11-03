@@ -93,7 +93,7 @@ spe_agent_request_limit: 50
 spe_agent_tool_calls_limit: 100
 spe_agent_total_tokens_limit: null   # or a number: a per-run token cap
 spe_agent_api_key: "{{ (spe_seed | string ~ ':agent-api') | hash('sha256') }}"
-spe_agui_source_dir: "{{ playbook_dir }}/../.."   # repo root on the controller
+spe_agui_source_dir: "{{ playbook_dir }}/../../agui"   # platform/agui on the controller
 ```
 
 `spe_frontend_terminal_image`, `spe_terminal_api_key`, `spe_llm_base_url`

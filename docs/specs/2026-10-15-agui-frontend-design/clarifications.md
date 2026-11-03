@@ -24,3 +24,12 @@ in the parts it amends.
    rebuild already skips, and a run without `run_end` reads as `incomplete`. *Cost if wrong:* a live archive
    can miss the last second of a run and show runs as `incomplete` that complete later; the final archive
    still has them whole. *Amends:* §14 *Export* and *Write*, decision 30. *Status:* folded.
+
+3. **The archive renders the agent's compaction marker as a section, and `index.md` counts them** (2026-11-03;
+   AG-UI compaction, slice 2/3, the fork's PR #18). An assistant text message whose id starts with
+   `spe-compaction-` is rendered as `## Compacted`, the line "From here the model saw this summary instead of the
+   messages above." and the summary in a fence; `index.md`'s columns become `# | Session | Tags | Created | Runs |
+   Compactions | State`. *Reason:* the agent compacts a conversation that no longer fits the model's context and
+   marks the point in the session's messages (`docs/superpowers/specs/2026-11-03-agui-compaction-design.md`, §7,
+   clarification 1). It was written as the chat sessions spec's clarification 8 on that branch, which #19's fold
+   took first. *Amends:* §14, the archive as built (`index.md` columns). *Status:* folded.

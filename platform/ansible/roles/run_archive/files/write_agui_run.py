@@ -10,8 +10,8 @@ there was one), it re-renders that directory in place:
 
     write_agui_run.py <run dir> <run dir>
 
-Writes index.md (one row per session: title, tags, created, runs, state),
-chats/NN-<title>.md and .json (NN in created_at order; the .json is the
+Writes index.md (one row per session: title, tags, created, runs, compactions,
+state), chats/NN-<title>.md and .json (NN in created_at order; the .json is the
 session file as stored), agui-sessions/ (the raw files, untouched) and
 agent-runs.jsonl. Hidden and deleted sessions are included. Stdlib only;
 slug() and fence() come from write_run.py in the same directory.
@@ -89,6 +89,14 @@ def runs_summary(rec):
 
 TEXT_ROLES = ("user", "assistant", "system", "developer")
 
+MARKER_PREFIX = "spe-compaction-"
+
+
+def is_compaction(m):
+    """The agent's compaction marker: an assistant text message whose id has the prefix, with no tool calls."""
+    return (m.get("role") == "assistant" and str(m.get("id") or "").startswith(MARKER_PREFIX)
+            and isinstance(m.get("content"), str) and not m.get("toolCalls"))
+
 
 def render_messages(messages):
     """User and assistant text; each tool call with its arguments and result, fenced."""
@@ -103,6 +111,10 @@ def render_messages(messages):
         if not isinstance(m, dict):
             continue
         role = m.get("role", "?")
+        if is_compaction(m):
+            out += ["## Compacted", "", "From here the model saw this summary instead of the messages above.", "",
+                    fence(m["content"]), ""]
+            continue
         if role == "tool":
             if m.get("toolCallId") in call_ids:
                 continue
@@ -223,8 +235,9 @@ def main(argv):
         shutil.copyfile(os.path.join(raw_dir, name), os.path.join(run_dir, "chats", stem + ".json"))
         link = re.sub(r"([\[\]|\\])", r"\\\1", title_of(rec))
         tags = ", ".join(one_line(t) for t in rec.get("tags") or []) or "-"
+        compactions = sum(1 for m in rec.get("messages") or [] if isinstance(m, dict) and is_compaction(m))
         rows.append(f"| {i:02d} | [{link}](chats/{stem}.md) | {tags} | {when(rec.get('created_at'))} "
-                    f"| {len(rec.get('runs') or [])} | {state_of(rec)} |")
+                    f"| {len(rec.get('runs') or [])} | {compactions} | {state_of(rec)} |")
 
     index = [
         f"# Run {os.path.basename(os.path.abspath(run_dir))}",
@@ -239,7 +252,7 @@ def main(argv):
         index.append("- Agent run log: none (no run reached the agent)")
     index.append("")
     if rows:
-        index += ["| # | Session | Tags | Created | Runs | State |", "|---|---|---|---|---|---|", *rows, ""]
+        index += ["| # | Session | Tags | Created | Runs | Compactions | State |", "|---|---|---|---|---|---|---|", *rows, ""]
     else:
         index += ["No session was recorded.", ""]
     if unreadable:

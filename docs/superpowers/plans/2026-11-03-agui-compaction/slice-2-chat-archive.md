@@ -9,7 +9,7 @@ until it compacts, whose screenshots, archived `chats/NN-*.md` and run-log `comp
 user to look at.
 
 **Implements:** spec [`2026-11-03-agui-compaction-design.md`](../../specs/2026-11-03-agui-compaction-design.md)
-§6, §7, *Early output*, *Inputs for the plan* (the chat sessions spec clarification). Decisions **8** (task 4
+§6, §7, *Early output*, *Inputs for the plan* (the living AG-UI spec's clarification). Decisions **8** (task 4
 `check_compaction`, screenshots), **9** (task 1, the recorder test), **10** (task 3 `test_agui_run_compaction_*`),
 **12**'s `verify.yml` part (task 5, step 3). Slice 1 already folded clarification 1, so the spec's decision 7, §6
 and §7 speak of the assistant-message marker; read them as rewritten there.
@@ -152,9 +152,9 @@ test("a compacting run stopped after the marker: cancelled, the marker kept", as
 // summary the model continues from. The agent rewrites only such plain text messages into its cut point.
 export const MARKER_PREFIX = "spe-compaction-";
 
-export function isCompactionMarker(message: {
+export function isCompactionMarker<M extends {
   id?: string; role?: string; content?: unknown; toolCalls?: unknown[];
-}): boolean {
+}>(message: M): message is M & { content: string } {
   return message.role === "assistant" && typeof message.id === "string" && message.id.startsWith(MARKER_PREFIX)
     && typeof message.content === "string" && !message.toolCalls?.length;
 }
@@ -188,7 +188,7 @@ export function CompactionDivider({ summary }: { summary: string }) {
 
 function render(props: ComponentProps<typeof CopilotChatAssistantMessage>) {
   if (isCompactionMarker(props.message)) {
-    return <CompactionDivider summary={props.message.content as string} />;
+    return <CompactionDivider summary={props.message.content} />;
   }
   return <CopilotChatAssistantMessage {...props} />;
 }
@@ -284,11 +284,20 @@ The recorder tests pin that the session record keeps it, also when stopped."
     `from spe_agent.compaction import FRAME, SUMMARY_PROMPT`;
   - constants beside `SLOW_STEPS`:
 
+Not this task's own first draft of ≈8,500: `FunctionModel`'s usage estimate
+(`pydantic_ai.models.function._estimate_usage`) counts only message content, never tool schemas, so the
+≈3,000-token tool-definition overhead never enters the estimate once a response carries usage. An ordinary
+turn is ≈95 tokens; the long output, cut to the agent's 16,384-byte tool cap, takes the next request to
+≈5,500 — under an 8000 window's trigger (0.8 × 8000 = 6,400), so that window never compacts; 6000's trigger
+(4,800) does. Confirmed by hand (Step 2) against both windows: `compactions` is `[]` at 8000, one record at
+6000.
+
 ```python
-# The 16 tool definitions alone estimate ≈ 3,000 tokens (slice 1's verified facts), so an ordinary turn is
-# ≈ 3,100, under the trigger (0.8 × 8000 = 6,400). The long output is cut to the agent's 16,384-byte tool cap,
-# ≈ 5,460 tokens, which takes the next request to ≈ 8,500, past it.
-COMPACT_WINDOW = 8000        # tokens
+# Not the brief's ≈8,500: FunctionModel's own usage estimate (pydantic_ai.models.function._estimate_usage)
+# counts only message content, never tool schemas, so the brief's ≈3,000-token tool overhead never enters
+# the estimate once a response carries usage. An ordinary turn is ≈95 tokens; the long output, cut to the
+# tool cap, takes the next request to ≈5,500 — over this window's trigger (0.8 × 6000) but under 8000's.
+COMPACT_WINDOW = 6000        # tokens
 LONG_OUTPUT_CHARS = 20_000   # more than the tool cap, so the cut, not this number, sets the size
 ```
 
@@ -501,12 +510,13 @@ git commit -s -m "Archive: render a compaction as '## Compacted' and count them 
 
 ---
 
-### Task 4: Playwright, light and dark, and the chat sessions spec clarification
+### Task 4: Playwright, light and dark, and the living AG-UI spec's clarification
 
 **Files:**
 - Modify: `platform/dev/e2e/sessions.py` (`check_compaction`; `LOCAL`; `main`)
 - Create: `docs/superpowers/plans/2026-11-03-agui-compaction/evidence/slice-2/` (screenshots)
-- Modify: `docs/specs/2026-10-15-agui-frontend-design/clarifications.md` (clarification for §14), `docs/specs/2026-10-15-agui-frontend-design/14-archive.md` (*Write*)
+- Modify: `docs/specs/2026-10-15-agui-frontend-design/clarifications.md` (clarification 3, for §14),
+  `docs/specs/2026-10-15-agui-frontend-design/14-archive.md` (the archive as built)
 
 **Interfaces:**
 - Consumes: task 1's classes and texts; task 2's `compact` keyword and answer text.
@@ -518,7 +528,7 @@ git commit -s -m "Archive: render a compaction as '## Compacted' and count them 
 ```python
 COMPACTED = "Earlier conversation compacted"
 SUMMARY_LINE = "Summary the model continues from"
-XSS = "compact <img src=x onerror=window.__speXss=1>"
+COMPACTION_XSS = "compact <img src=x onerror=window.__speXss=1>"
 
 
 def check_compaction(r: Run) -> None:
@@ -528,7 +538,7 @@ def check_compaction(r: Run) -> None:
     page.get_by_role("button", name="New chat").click()
     expect(page.locator(".spe-header-title")).to_have_text("New chat")
     box = page.get_by_test_id("copilot-chat-textarea")
-    box.fill(XSS)
+    box.fill(COMPACTION_XSS)
     box.press("Enter")
     expect(page.get_by_text("The conversation was compacted.")).to_be_visible(timeout=20_000)
     divider = page.locator(".spe-compaction")
@@ -544,12 +554,12 @@ def check_compaction(r: Run) -> None:
     r.shot("compaction-open")
     # The divider sits between the user's message and the answer that followed the compaction.
     texts = page.locator(".spe-chat").inner_text()
-    assert texts.index(XSS) < texts.index(COMPACTED) < texts.index("The conversation was compacted."), texts
+    assert texts.index(COMPACTION_XSS) < texts.index(COMPACTED) < texts.index("The conversation was compacted."), texts
     sid = r.url_session()
     rec = r.wait_runs(sid, 1)
-    markers = [m for m in rec["messages"] if m["id"].startswith("spe-compaction-")]
+    markers = [m for m in rec["messages"] if str(m.get("id") or "").startswith("spe-compaction-")]
     assert [m["role"] for m in markers] == ["assistant"] and "Scripted summary" in markers[0]["content"], rec
-    assert rec["title"] == XSS, rec["title"]
+    assert rec["title"] == COMPACTION_XSS, rec["title"]
     page.reload()
     expect(page.locator(".spe-compaction")).to_have_count(1, timeout=10_000)
     expect(page.get_by_text("The conversation was compacted.")).to_be_visible()
@@ -557,15 +567,19 @@ def check_compaction(r: Run) -> None:
     box = page.get_by_test_id("copilot-chat-textarea")
     box.fill("one more")
     box.press("Enter")
-    expect(page.get_by_text(re.compile(r"Turn \d+: the command ran\.$"))).to_have_count(1, timeout=20_000)
+    # Turn numbering restarts after a compaction (the sent history is cut), so this later answer is also
+    # "Turn 1"; it is told apart from the compacted one by "Its output was:", never in the compacted answer.
+    expect(page.get_by_text(re.compile(r"Turn \d+: the command ran\. Its output was:"))).to_have_count(
+        1, timeout=20_000)
     expect(page.locator(".spe-compaction")).to_have_count(1)
     r.wait_runs(sid, 2)
     r.ok("compaction: divider in place live and after a reload, summary collapsed and shown as text, record keeps it")
 ```
 
-  The `$` anchors the later answer apart from the compacted one (`… the command ran. The conversation was
-  compacted.`); if `get_by_text` with a regex matches a container rather than the message, narrow it to the
-  assistant message's element as `check_view` and `send` do.
+  `COMPACTION_XSS`, not `XSS`: the module already has an `XSS`. The later answer is matched on `Its output
+  was:`, which the compacted answer (`… the command ran. The conversation was compacted.`) never holds: turn
+  numbering restarts after a compaction, so both are `Turn 1`. If `get_by_text` with a regex matches a
+  container rather than the message, narrow it to the assistant message's element as `check_view` and `send` do.
 
 - [ ] **Step 2: wire the scenarios.** `LOCAL = ("all", "stop", "compaction")`; in `main`'s local branch, call
   `check_compaction(r)` in `all` after `check_deleted_open(r)`, and for `--scenario compaction` after
@@ -579,18 +593,22 @@ def compaction_live(r: Run, turns: int = 8) -> None:
     page.get_by_role("button", name="New chat").click()
     box = page.get_by_test_id("copilot-chat-textarea")
     for turn in range(1, turns + 1):
-        box.fill(f"Turn {turn}: run `seq 1 3000` and tell me only the last line it printed.")
+        box.fill(f"Turn {turn}: run `seq 1 3000` exactly as written, without pipes, filters or redirection, "
+                 "then read its whole output and tell me only the last line it printed.")
         box.press("Enter")
         # New chat is disabled while a run is in flight (as two_turn waits for a run's end).
         expect(page.get_by_role("button", name="New chat")).to_be_disabled(timeout=10_000)
         expect(page.get_by_role("button", name="New chat")).to_be_enabled(timeout=120_000)
         if page.locator(".spe-compaction").count():
             break
-    expect(page.locator(".spe-compaction")).to_have_count(1)
+    assert page.locator(".spe-compaction").count(), f"no compaction after {turns} turns"
+    # One turn can compact more than once: the model reads a truncated output again and the window fills again.
+    expect(page.locator(".spe-compaction").first).to_be_visible()
     r.shot("live-compaction")
-    page.locator(".spe-compaction-summary > summary").click()
+    page.locator(".spe-compaction-summary > summary").first.click()
     r.shot("live-compaction-open")
-    print(f"session {r.url_session()}, compacted after {turn} turns")
+    print(f"session {r.url_session()}, {page.locator('.spe-compaction').count()} compactions "
+          f"after {turn} turns")
 ```
 
   `INSTANCE = ("stop", "slow-loop", "two-turn", "compaction-live")`, dispatched in the `--url` branch beside
@@ -660,7 +678,7 @@ tokens, under $0.10. No cloud instance is created or destroyed.
 ```bash
 cd /workspace/biohackathon/biohackathon/elixir-biohackathon-2026-test/platform/ansible
 ansible-playbook playbooks/create.yml -e @instances/dev-local.yml \
-  -e spe_agui_source_dir=$PWD/../../.claude/worktrees/impl-agui-compaction-2-chat-archive </dev/null
+  -e spe_agui_source_dir=$PWD/../../.claude/worktrees/impl-agui-compaction-2-chat-archive/platform/agui </dev/null
 ```
 
 - [ ] **Step 2: run the session.** With the chat UI's URL and compose file as `docs/getting-started.md` gives
@@ -671,18 +689,20 @@ python3 platform/dev/e2e/sessions.py --url http://127.0.0.1:3000 --compose-file 
   --scenario compaction-live --shots docs/superpowers/plans/2026-11-03-agui-compaction/evidence/slice-2/live
 ```
 
-  Expected: `compacted after N turns` with N about 3 (20000 × 0.8 = 16000 tokens; each `seq 1 3000` adds about
-  5000). If it never compacts in 8 turns, read the run log's estimates before changing anything: the trigger or
-  the estimate is wrong, and that is a slice 1 bug to fix here with a test.
+  Expected: `session <id>, <n> compactions after <t> turns`, with t about 2 (20000 × 0.8 = 16000 tokens; each
+  `seq 1 3000` adds about 5000) and n ≥ 1 (one turn can compact more than once). If it never compacts in 8
+  turns, read the run log's estimates before changing anything: the trigger or the estimate is wrong, and that
+  is a slice 1 bug to fix here with a test.
 
 - [ ] **Step 3: verify and archive.**
   `ansible-playbook playbooks/verify.yml -e @instances/dev-local.yml </dev/null`: the new task shows the rendered
   `compaction` block with `context_window_tokens: 20000` (decision 12). Then
   `ansible-playbook playbooks/archive.yml -e @instances/dev-local.yml </dev/null` and, in the output directory it
-  prints, read `index.md` (the session's row has `Compactions` 1), the session's `chats/NN-*.md` (the
+  prints, read `index.md` (the session's row has `Compactions` ≥ 1), the session's `chats/NN-*.md` (the
   `## Compacted` section where the divider was) and `agent-runs.jsonl`'s `compactions` (trigger, estimated tokens,
-  messages cut, usage, `next_input_tokens` below 20000). Copy the chat's `.md` into `evidence/slice-2/live/`
-  only after checking it holds no canary or key (the session ran `seq` only; the system prompt is not in it);
+  messages cut, usage, each entry's `next_input_tokens` below 20000). Copy the chat's `.md` into
+  `evidence/slice-2/live/` only after checking it holds no canary or key (the session ran `seq` only; the system
+  prompt is not in it);
   never copy `canaries.json` or the `.json` record.
 
 - [ ] **Step 4: put the VM back.** Leave `spe_agent_context_window_tokens: 20000` in `dev-local.yml` until

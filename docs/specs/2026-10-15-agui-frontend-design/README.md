@@ -8,7 +8,7 @@ records what implementation verified and changed). §6's sessions and sidebar: i
 `thodkatz/elixir-biohackathon-2026-test`), not built yet; the live archive (§14, decision 30) since
 clarification 2. The history before this directory is that of the single
 file it replaced: `git log -- docs/specs/2026-10-15-agui-frontend-design.md`.
-**Latest clarification:** 2.
+**Latest clarification:** 3.
 §13 and §14 were read against `@ag-ui/client` 1.0.2 and CopilotKit 1.79.0 (`@copilotkit/runtime`,
 `@copilotkit/react-core`) as pinned in `package-lock.json`, and Open WebUI v0.11.3 (the image
 `spe_frontend_webui_image` pins) as the model to follow, read in its source at tag `v0.11.3` (`2a960a5`).

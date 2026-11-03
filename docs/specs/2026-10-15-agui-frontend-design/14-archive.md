@@ -7,7 +7,8 @@ way. Decisions 15, 16 and 30 of the [README](README.md#decisions-taken).
 
 Until the record is built, the archive is the chat sessions' as built: `agui-sessions/<uuid>.json` copied from
 the volume and rendered by `files/write_agui_run.py` (`index.md` columns `# | Session | Tags | Created | Runs |
-State`). Runs archived in that form keep the files written for them; the new renderer does not re-render them.
+Compactions | State`). A compaction marker is rendered as a `## Compacted` section (clarification 3). Runs
+archived in that form keep the files written for them; the new renderer does not re-render them.
 
 ### Export
 

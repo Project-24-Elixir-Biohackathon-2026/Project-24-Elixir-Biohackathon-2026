@@ -77,11 +77,11 @@ def test_agui_run_index_lists_every_session_with_its_state(bundle, tmp_path):
     assert "3 sessions (1 hidden, 1 deleted), run log, 0 unreadable" in proc.stdout
     index = (out / "index.md").read_text()
     assert "| 01 | [List the home directory](chats/01-list-the-home-directory.md) | exfil, dns " \
-           "| 2026-10-29 10:02 UTC | 1 | active |" in index
+           "| 2026-10-29 10:02 UTC | 1 | 0 | active |" in index
     assert "| 02 | [Read <img src=x onerror=alert(1)>](chats/02-read-img-src-x-onerror-alert-1.md) | - " \
-           "| 2026-10-29 10:05 UTC | 1 | hidden |" in index
+           "| 2026-10-29 10:05 UTC | 1 | 0 | hidden |" in index
     assert r"| 03 | [Try \| the \[pipe\]](chats/03-try-the-pipe.md) | - | 2026-10-29 10:09 UTC | 1 " \
-           "| deleted 2026-10-29 10:20 UTC |" in index
+           "| 0 | deleted 2026-10-29 10:20 UTC |" in index
     assert "The AG-UI frontend has no run report." in index
     assert "[agent-runs.jsonl](agent-runs.jsonl), 2 runs" in index
 
@@ -239,3 +239,51 @@ def test_agui_run_result_whose_call_has_no_id_still_shows(tmp_path):
     run(b, out)
     md = (out / "chats" / "01-no-id.md").read_text()
     assert "## tool result (no matching call)" in md and md.count("orphan result") == 1
+
+
+SUMMARY = "The user listed files.\n## Not a section\n````\nfour ticks\n``````\nsix ticks\n<img src=x onerror=alert(1)>"
+
+
+def marker(n, content=SUMMARY, **extra):
+    return {"id": f"spe-compaction-{n}", "role": "assistant", "content": content, **extra}
+
+
+def compaction_bundle(tmp_path, messages):
+    b = tmp_path / "bundle"
+    (b / "sessions").mkdir(parents=True)
+    (b / "sessions" / f"{ACTIVE}.json").write_text(json.dumps(
+        record(ACTIVE, "Long session", "2026-10-29T10:00:00Z", messages=messages)))
+    out = tmp_path / "run"
+    run(b, out)
+    return (out / "chats" / "01-long-session.md").read_text(), (out / "index.md").read_text()
+
+
+def test_agui_run_compaction_section_between_the_messages_it_sits_between(tmp_path):
+    md, index = compaction_bundle(tmp_path, [*tool_turn(1, "one"), marker(1), *tool_turn(2, "two")])
+    section = ("## Compacted\n\nFrom here the model saw this summary instead of the messages above.\n\n"
+               "```````\n" + SUMMARY + "\n```````\n")
+    assert section in md
+    assert md.index("Turn 1: the command ran.") < md.index("## Compacted") < md.index("## user\n\nturn 2")
+    assert md.count("## Compacted") == 1 and "## Not a section" not in md.replace(section, "")
+    # Every original message is still rendered.
+    for text in ("turn 1", "Turn 1: the command ran.", "one", "turn 2", "Turn 2: the command ran.", "two"):
+        assert text in md
+    assert "| 01 | [Long session](chats/01-long-session.md) | - | 2026-10-29 10:00 UTC | 1 | 1 | active |" in index
+
+
+def test_agui_run_compaction_two_markers_count_two(tmp_path):
+    md, index = compaction_bundle(tmp_path, [*tool_turn(1, "one"), marker(1, "first"), *tool_turn(2, "two"),
+                                             marker(2, "second")])
+    assert md.count("## Compacted") == 2
+    assert "| 1 | 2 | active |" in index
+
+
+def test_agui_run_compaction_only_plain_text_markers(tmp_path):
+    # As the agent's input rewrite: tool calls or non-string content make it an ordinary assistant message.
+    call = {"id": "c9", "type": "function", "function": {"name": "run_command", "arguments": "{}"}}
+    forged = [marker(1, "with a call", toolCalls=[call]), marker(2, [{"type": "text", "text": "parts"}]),
+              {"id": "spe-compaction-3", "role": "user", "content": "a user message"}]
+    md, index = compaction_bundle(tmp_path, forged)
+    assert "## Compacted" not in md
+    assert md.count("## assistant") == 2 and "## user\n\na user message" in md
+    assert "| 1 | 0 | active |" in index

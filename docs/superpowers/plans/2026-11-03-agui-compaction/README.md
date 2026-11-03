@@ -74,10 +74,10 @@ Every task's requirements include these.
 - **Summaries are rendered as text**, never HTML: React text in the chat, a fence in the archive.
 - **No model calls without the user's OK.** The user approved Haiku (`claude-haiku-5-5`) on the dev VM for this
   work (2026-11-02): slice 1's summary sample, slice 2's early output, slice 3's decision 13 check. Nothing else
-  calls a model; no de.NBI runs.
+  calls a model, except slice 3, task 3: a de.NBI session on qwen that compacts (the user's request, 2026-11-03).
 - **The dev VM's instance** is redeployed in place with `create.yml` from the main checkout and
-  `-e spe_agui_source_dir=<worktree>` (`AGENTS.md`, *Worktrees and deploying*). No cloud instance is created or
-  destroyed.
+  `-e spe_agui_source_dir=<worktree>/platform/agui` (`AGENTS.md`, *Worktrees and deploying*). No cloud instance
+  is created or destroyed.
 - **Upstream-clean:** code, READMEs and Ansible comments name nothing fork-only.
 - **Rulings:** a departure from this plan is recorded in the slice's handoff, as *decision, why, cost if wrong*,
   and the same commit rewrites the plan task text (and, through a clarification, the spec text) it changes, so
@@ -162,7 +162,7 @@ not in `answer`.
 
 **Fake agent** (slice 2, task 2): a user message containing `compact` makes `platform/dev/fake_agent.py`'s
 scripted model push the history past its small window, so the real `Compaction` capability compacts (summary
-from the scripted `function=`: `Scripted summary: …`).
+from the scripted `function=`: `Scripted summary of N characters of conversation. The latest request was: …`).
 
 **Archive** (slice 2, task 3): `write_agui_run.py` gains `is_compaction(message: dict) -> bool` and renders the
 marker as `## Compacted`; `index.md`'s columns become `| # | Session | Tags | Created | Runs | Compactions | State |`.
@@ -197,8 +197,8 @@ the checks in `AGENTS.md`, *Overrides*, pass.
 | n/N | Branch | Tasks | Delivers | Est. LOC | Reviewer checks | File | Status |
 |---|---|---|---|---|---|---|---|
 | 1/3 | `impl/agui-compaction-1-agent` | 7 | the agent compacts (both triggers, limits, usage), marker events, input cut, run log, configuration and Ansible; the Haiku summary sample in the handoff | ~1,000 | agent pytest; `npm test` (round trip); `--syntax-check` | [slice-1-agent.md](slice-1-agent.md) | merged #17 |
-| 2/3 | `impl/agui-compaction-2-chat-archive` | 5 | **early output**: divider in the chat, fake agent `compact`, archive `## Compacted` + column, Playwright with screenshots, dev VM session on Haiku at window 20000 | ~600 | `npm test`; `npm run build`; pytest `-k agui_run`; Playwright run with screenshots | [slice-2-chat-archive.md](slice-2-chat-archive.md) | planned |
-| 3/3 | `impl/agui-compaction-3-denbi-docs` | 3 | de.NBI window, docs, decision 13's check | ~150 | `--syntax-check`; `verify.yml` on the dev VM; decision 13's run log lines | [slice-3-denbi-docs.md](slice-3-denbi-docs.md) | planned |
+| 2/3 | `impl/agui-compaction-2-chat-archive` | 5 | **early output**: divider in the chat, fake agent `compact`, archive `## Compacted` + column, Playwright with screenshots, dev VM session on Haiku at window 20000 | ~600 | `npm test`; `npm run build`; pytest `-k agui_run`; Playwright run with screenshots | [slice-2-chat-archive.md](slice-2-chat-archive.md) | merged #18 |
+| 3/3 | `impl/agui-compaction-3-denbi-docs` | 4 | de.NBI window, docs, a de.NBI session on qwen that compacts, decision 13's check | ~150 | `--syntax-check`; `verify.yml` on the dev VM and on de.NBI; the qwen session's `Compactions` ≥ 1; decision 13's run log lines | [slice-3-denbi-docs.md](slice-3-denbi-docs.md) | planned |
 
 Slice 1 is about 1,000 lines with tests and 7 tasks, past the guide's ~5, and stays one unit: the agent half is
 one module and its wiring, and split, the first half (no events) could not be deployed with any visible effect.
@@ -258,7 +258,7 @@ Each is added by the slice that verifies it, with status `folded`, and the spec 
    recovers the same session through the reactive trigger (compaction on, no window); the proactive half is
    slice 2's early output. Decision 13's acceptance check is rewritten: **an approved acceptance check changes, so
    the user is pointed at this clarification** in this plan's PR and in slice 3's PR, and slice 3 reads the
-   user's answer on this plan's PR before its paid run (task 3, step 0). Slice 3, task 3.
+   user's answer on this plan's PR before its paid run (task 4, step 0). Slice 3, task 4.
 6. **The reactive retry goes through the streamed request**, inside a wrapper model that `wrap_model_request`
    sets: in 2.56.0 a streamed request's error surfaces in the task that reads the stream, never in the hook.
    Rewrites decision 3's row, §1 and §2. Slice 1, task 5.

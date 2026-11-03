@@ -599,3 +599,40 @@ test("a compaction marker survives the round trip: recorded, reopened, sent back
     await server.close();
   }
 });
+
+test("a compacting run: the marker is stored in order, the file stays version 1, the title is the user's", async () => {
+  const { store, server, recorder, agent } = await setup();
+  try {
+    const id = randomUUID();
+    const out = await drive(recorder, input(id, "compact the conversation"), agent());
+    assert.equal(types(out).at(-1), EventType.RUN_FINISHED);
+    const [record, run] = await onlyRun(store, id);
+    assert.equal(run.status, "completed");
+    assert.equal(record.version, 1);
+    assert.deepEqual([record.title, record.title_source], ["compact the conversation", "auto"]);
+    assert.deepEqual(record.messages.map((m) => [m.role, m.id.startsWith("spe-compaction-"), m.content]), [
+      ["user", false, "compact the conversation"],
+      ["assistant", true, "SUMMARY of the earlier turns"],
+      ["assistant", false, "echo: compact the conversation"],
+    ]);
+  } finally {
+    await server.close();
+  }
+});
+
+test("a compacting run stopped after the marker: cancelled, the marker kept", async () => {
+  const { store, server, recorder, agent } = await setup();
+  try {
+    const id = randomUUID();
+    await drive(recorder, input(id, "compact and hang"), agent(),
+      (e) => e.type === EventType.TEXT_MESSAGE_END && String((e as { messageId?: string }).messageId).startsWith("spe-compaction-"));
+    await settled(id);
+    const [record, run] = await onlyRun(store, id);
+    assert.equal(run.status, "cancelled");
+    // Only the marker is asserted: a reply's start can arrive in the same chunk as the marker's end.
+    assert.ok(record.messages.some((m) => m.role === "assistant" && String(m.id).startsWith("spe-compaction-")
+      && m.content === "SUMMARY of the earlier turns"));
+  } finally {
+    await server.close();
+  }
+});

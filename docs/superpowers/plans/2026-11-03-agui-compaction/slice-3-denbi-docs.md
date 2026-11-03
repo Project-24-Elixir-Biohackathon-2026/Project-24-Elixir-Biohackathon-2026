@@ -1,4 +1,4 @@
-# Slice 3/3: the de.NBI window, the docs, and decision 13's check
+# Slice 3/3: the de.NBI window, the docs, a de.NBI session on qwen, and decision 13's check
 
 Delivers the last of the configuration and the record of how to use it: the de.NBI model's context window set
 beside `spe_webui_model_id`, so an instance on that model compacts before vLLM refuses a request; the
@@ -8,9 +8,10 @@ then recovers. It ends the track.
 
 **Implements:** spec [`2026-11-03-agui-compaction-design.md`](../../specs/2026-11-03-agui-compaction-design.md)
 §9 (the de.NBI value, the docs), decision **12**'s remaining part (the window beside `spe_webui_model_id`, the
-dev VM's in its instance file) and decision **13** (task 3), with proposed clarification 5 (plan README).
+dev VM's in its instance file) and decision **13** (task 4), with proposed clarification 5 (plan README); and a
+de.NBI session on qwen that compacts (task 3, the user's request, the spec's clarification 8).
 
-**Review Focus** (plan README): none of its items is this slice's; task 3, step 3 is the one live check of
+**Review Focus** (plan README): none of its items is this slice's; task 4, step 3 is the one live check of
 the overflow list against a provider's real wording.
 
 **Branch:** `impl/agui-compaction-3-denbi-docs`, from `main` after slice 2 merged. Global constraints, shared
@@ -178,7 +179,37 @@ git commit -s -m "Document the agent's compaction configuration"
 
 ---
 
-### Task 3: decision 13 on the dev VM, clarification 5, the VM put back, the end of the track
+### Task 3: a de.NBI session on qwen compacts (added at the user's request, 2026-11-03)
+
+The user asked for it while slice 2 ran (2026-11-03): "as a test for compaction when we finish please include a
+test on denbi with qwen, a dummy conversation that stretches the context and verifying that compaction works".
+Paid on de.NBI's quota: a scripted session of ordinary commands, no participant data.
+
+**Files:**
+- Create: `docs/superpowers/plans/2026-11-03-agui-compaction/evidence/slice-3/denbi/` (screenshots, the archived
+  chat `.md`, the run log's `compactions` entry)
+
+- [ ] **Step 0: the instance.** Use a running de.NBI AG-UI instance on `qwen3.8-27b` (the main checkout's
+  `instances/denbi-agui-01.yml`, if it is up) and redeploy its agent and chat from this slice's worktree
+  (`-e spe_agui_source_dir=<worktree>/platform/agui`). If none is running, creating one is a cloud instance the
+  user has not yet approved for this check: ask on the PR (one comment, `next-session.sh --end --blocked <PR>`),
+  do not create it.
+- [ ] **Step 1: the window.** Task 1's `spe_webui_model_context_tokens` is qwen's full window, so a scripted
+  session would take many turns to pass 0.8 of it. For this check only, set `spe_agent_context_window_tokens:
+  20000` in that instance file (as slice 2 did on the dev VM), and say so in the evidence.
+- [ ] **Step 2: the session.** `python3 platform/dev/e2e/sessions.py --url <the instance's chat URL> --compose-file
+  <its frontend compose file> --scenario compaction-live --shots <evidence>/denbi` (the dummy conversation: `seq
+  1 3000` turns until the agent compacts). Expected: `session <id>, <n> compactions after <t> turns` with
+  n ≥ 1, the divider, and a later answer that still knows the task (the summary carried it).
+- [ ] **Step 3: verify and archive.** `verify.yml` shows the `compaction` block; `archive.yml`, then the session's
+  `index.md` row (`Compactions` ≥ 1), its `## Compacted` section, and the run log's `compactions` (each entry's
+  trigger `threshold`, `next_input_tokens` below the window). Copy only the screenshots, the chat `.md` and the
+  run log's `compactions` entry (as `compactions.json`), each grepped for canaries and keys first. Put the window
+  back to task 1's value afterwards.
+
+---
+
+### Task 4: decision 13 on the dev VM, clarification 5, the VM put back, the end of the track
 
 Paid: Haiku on the dev VM, approved for this work (README, *Global Constraints*). About five model requests:
 two that Anthropic rejects as too long, one small summary request, two ordinary answers. No cloud instance is
@@ -214,11 +245,13 @@ slice 2's early output, cited, not repeated.
 ```bash
 cd /workspace/biohackathon/biohackathon/elixir-biohackathon-2026-test/platform/ansible
 ansible-playbook playbooks/create.yml -e @instances/dev-local.yml -e spe_agent_max_output_bytes=<C> \
-  -e spe_agui_source_dir=$PWD/../../.claude/worktrees/impl-agui-compaction-3-denbi-docs </dev/null
+  -e spe_agui_source_dir=$PWD/../../.claude/worktrees/impl-agui-compaction-3-denbi-docs/platform/agui </dev/null
 ```
 
 - [ ] **Step 2: the overflow.** In the chat UI (Playwright or by hand, screenshots into `evidence/slice-3/`), a
-  new chat: "Run `seq 1 <N>` and tell me only the last line it printed." Expected: the tool call and its result
+  new chat: "Run `seq 1 <N>` exactly as written, without pipes, filters or redirection, then read its whole
+  output and tell me only the last line it printed." (Haiku piped a shorter prompt's output to `tail` in slice 2,
+  task 5.) Expected: the tool call and its result
   show, then the red error bar with Anthropic's `prompt is too long` (through `Service.sanitize`); the session
   record's last run is `failed`. Then check, in that order:
   - **The request was rejected.** If the run completed instead, the request was billed in full: stop, put the VM

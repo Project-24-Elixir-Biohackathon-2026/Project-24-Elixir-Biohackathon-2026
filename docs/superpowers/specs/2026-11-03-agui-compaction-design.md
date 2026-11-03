@@ -1,6 +1,6 @@
 # AG-UI compaction — design
 
-**Status:** approved, PR #15. **Latest clarification:** 7 (2026-11-03, slice 1).
+**Status:** approved, PR #15. **Latest clarification:** 8 (2026-11-03, slice 2).
 Read against this repo at `4a59a6c` (`main`), with `pydantic-ai-slim` 2.56.0, `ag-ui-protocol` 0.1.22,
 `@ag-ui/core`/`@ag-ui/client` 1.0.2 and CopilotKit 1.79.0 as pinned there.
 
@@ -225,8 +225,8 @@ How the chat sessions spec's constraints change:
   14 of the chat sessions spec). Other activity messages keep today's JSON rendering. `index.md` gains a
   `compactions` column.
 
-The chat sessions spec's §4 (archive layout, `index.md` columns) gains a clarification pointing here
-(*Inputs for the plan*).
+The living AG-UI spec's §14 (the archive as built, `index.md` columns), into which #19 folded the chat
+sessions spec's §4, gains a clarification pointing here (its clarification 3; *Inputs for the plan*).
 
 ## 8. Run log
 
@@ -301,8 +301,9 @@ this work (`docs/guides/contributing-upstream.md`). No upstream PR is part of th
   - `BACKLOG.md`: the canary-ladder item (runs may be compacted, so scoring reads the run log's
     `compactions`) is added with this spec; the slice that ships the run log's field checks it still holds.
 - Paid runs: decision 13, the early output and slice 1's summary sample use Haiku on the dev VM, approved by
-  the user for this work (2026-11-02). No de.NBI runs are needed; the window value is read from the vLLM
-  server's `/v1/models` once, by hand.
+  the user for this work (2026-11-02). The window value is read from the vLLM server's `/v1/models` once, by
+  hand. One de.NBI session on `qwen3.8-27b` checks that a stretched conversation compacts there too (clarification
+  8).
 
 ## Clarifications
 
@@ -367,3 +368,12 @@ this work (`docs/guides/contributing-upstream.md`). No upstream PR is part of th
    `test_overflowing_summary_with_a_window_is_sent_shorter` and `test_transcript_cuts_tool_call_arguments` pin
    it. *Amends:* decision 5, §4.
    *Status:* folded.
+
+8. **One de.NBI session on qwen checks compaction there** (2026-11-03; the user, while slice 2/3 ran). The paid
+   runs were Haiku on the dev VM only; the user asked for "a test on denbi with qwen, a dummy conversation that
+   stretches the context and verifying that compaction works". Slice 3 adds it as its task 3: the e2e
+   `compaction-live` session against a running de.NBI AG-UI instance, its window lowered for that check, with
+   `verify.yml`, the archive and the run log's `compactions` as evidence. *Reason:* qwen behind vLLM is the model
+   participants use; the Haiku runs do not show that its token counts, its `max_model_len` and its summaries
+   work with the trigger. *Cost if wrong:* a few qwen requests on de.NBI's quota. *Amends:* *Inputs for the
+   plan* (paid runs). *Status:* folded.

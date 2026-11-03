@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -661,6 +662,56 @@ def check_deleted_open(r: Run) -> None:
     r.ok("open session deleted elsewhere: a message says it was deleted, never that it could not be saved")
 
 
+COMPACTED = "Earlier conversation compacted"
+SUMMARY_LINE = "Summary the model continues from"
+COMPACTION_XSS = "compact <img src=x onerror=window.__speXss=1>"
+
+
+def check_compaction(r: Run) -> None:
+    """A message that makes the scripted agent compact: the divider appears where the compaction was made,
+    live and after a reload; the summary is collapsed, and expanded shows its markup as text."""
+    page = r.page
+    page.get_by_role("button", name="New chat").click()
+    expect(page.locator(".spe-header-title")).to_have_text("New chat")
+    box = page.get_by_test_id("copilot-chat-textarea")
+    box.fill(COMPACTION_XSS)
+    box.press("Enter")
+    expect(page.get_by_text("The conversation was compacted.")).to_be_visible(timeout=20_000)
+    divider = page.locator(".spe-compaction")
+    expect(divider).to_have_count(1)
+    expect(divider.locator(".spe-compaction-label")).to_have_text(COMPACTED)
+    summary = divider.locator(".spe-compaction-summary")
+    expect(summary.locator("> div")).not_to_be_visible()
+    r.shot("compaction")
+    summary.locator("summary", has_text=SUMMARY_LINE).click()
+    expect(summary.locator("> div")).to_contain_text("<img src=x onerror=window.__speXss=1>")
+    assert page.evaluate("window.__speXss") is None, "the summary's markup ran"
+    assert summary.locator("img").count() == 0
+    r.shot("compaction-open")
+    # The divider sits between the user's message and the answer that followed the compaction.
+    texts = page.locator(".spe-chat").inner_text()
+    assert texts.index(COMPACTION_XSS) < texts.index(COMPACTED) < texts.index("The conversation was compacted."), texts
+    sid = r.url_session()
+    rec = r.wait_runs(sid, 1)
+    markers = [m for m in rec["messages"] if str(m.get("id") or "").startswith("spe-compaction-")]
+    assert [m["role"] for m in markers] == ["assistant"] and "Scripted summary" in markers[0]["content"], rec
+    assert rec["title"] == COMPACTION_XSS, rec["title"]
+    page.reload()
+    expect(page.locator(".spe-compaction")).to_have_count(1, timeout=10_000)
+    expect(page.get_by_text("The conversation was compacted.")).to_be_visible()
+    # A later run in the same session still answers, and the divider stays where it was.
+    box = page.get_by_test_id("copilot-chat-textarea")
+    box.fill("one more")
+    box.press("Enter")
+    # Turn numbering restarts after a compaction (the sent history is cut), so this later answer is also
+    # "Turn 1"; it is told apart from the compacted one by "Its output was:", never in the compacted answer.
+    expect(page.get_by_text(re.compile(r"Turn \d+: the command ran\. Its output was:"))).to_have_count(
+        1, timeout=20_000)
+    expect(page.locator(".spe-compaction")).to_have_count(1)
+    r.wait_runs(sid, 2)
+    r.ok("compaction: divider in place live and after a reload, summary collapsed and shown as text, record keeps it")
+
+
 def check_save_failed(r: Run) -> None:
     """The chat UI cannot write the session (its directory made read-only for the run): the
     server's save-failed event puts the error bar up, and the list is not fetched again and again
@@ -757,8 +808,33 @@ class InstanceRun(Run):
         return json.loads(out.stdout)
 
 
-LOCAL = ("all", "stop")
-INSTANCE = ("stop", "slow-loop", "two-turn")
+def compaction_live(r: Run, turns: int = 8) -> None:
+    """On an instance with a small window: commands with long output until the agent compacts."""
+    page = r.page
+    page.goto(BASE + "/")
+    page.get_by_role("button", name="New chat").click()
+    box = page.get_by_test_id("copilot-chat-textarea")
+    for turn in range(1, turns + 1):
+        box.fill(f"Turn {turn}: run `seq 1 3000` exactly as written, without pipes, filters or redirection, "
+                 "then read its whole output and tell me only the last line it printed.")
+        box.press("Enter")
+        # New chat is disabled while a run is in flight (as two_turn waits for a run's end).
+        expect(page.get_by_role("button", name="New chat")).to_be_disabled(timeout=10_000)
+        expect(page.get_by_role("button", name="New chat")).to_be_enabled(timeout=120_000)
+        if page.locator(".spe-compaction").count():
+            break
+    assert page.locator(".spe-compaction").count(), f"no compaction after {turns} turns"
+    # One turn can compact more than once: the model reads a truncated output again and the window fills again.
+    expect(page.locator(".spe-compaction").first).to_be_visible()
+    r.shot("live-compaction")
+    page.locator(".spe-compaction-summary > summary").first.click()
+    r.shot("live-compaction-open")
+    print(f"session {r.url_session()}, {page.locator('.spe-compaction').count()} compactions "
+          f"after {turn} turns")
+
+
+LOCAL = ("all", "stop", "compaction")
+INSTANCE = ("stop", "slow-loop", "two-turn", "compaction-live")
 
 
 def main() -> None:
@@ -791,8 +867,10 @@ def main() -> None:
                 print(f"session {check_stop(r)}")
             elif args.scenario == "slow-loop":
                 slow_loop(r)
-            else:
+            elif args.scenario == "two-turn":
                 two_turn(r)
+            else:
+                compaction_live(r)
             browser.close()
         return
     if args.scenario not in LOCAL:
@@ -824,12 +902,16 @@ def main() -> None:
                 check_view(r)
                 check_header(r, ids)
                 check_deleted_open(r)
+                check_compaction(r)
                 check_stop(r)
                 check_save_failed(r)
-            else:
+            elif args.scenario == "stop":
                 page.goto(BASE + "/")
                 # New chat is disabled until the page is ready, so the click right after goto is safe
                 check_stop(r)
+            else:
+                page.goto(BASE + "/")
+                check_compaction(r)
             browser.close()
         print(f"sessions: {data}")
     finally:
