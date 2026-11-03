@@ -98,6 +98,7 @@ import type { Conversation } from "./rebuild.ts";
 export type Classification = { anchor: string | null; path: Message[]; newMessages: Message[]; ignored: Ignored[] };
 export function canonical(message: Message): string;    // canonical JSON of role, content, toolCalls, toolCallId
 export function classify(conv: Conversation | null, client: Message[]): Classification;   // readings: ruling 6
+// `path` never holds an activity message (slice 3, task 2): @ag-ui/client drops them from every run's input.
 ```
 
 ## `lib/export.ts` (slice 2, task 1) and `scripts/export-journals.ts` (slice 2, task 2)
@@ -184,13 +185,14 @@ The index is built once per process: a journal written behind the server's back 
 
 ## `lib/recorder.ts` (slice 3, task 2)
 
-`export class SessionRecorder extends Middleware { constructor(journals: () => Journals, now?: () => Date); readonly fetch; run(input, next) }`.
+`export class SessionRecorder extends Middleware { constructor(journals: () => Journals); readonly fetch; run(input, next) }`.
 `REFUSAL_MESSAGES` lists the six messages a run is refused or ended with by the recorder: `invalid session`,
 `this session was deleted`, `the chat UI is shutting down`, `this session could not be saved`,
 `this run carries no new message` (decision 3, journaled) and `this run was already recorded` (a reused `runId`,
 no line); `lib/reconcile.ts`'s `REFUSED_RUN_MESSAGES` copies them. `SAVE_FAILED` and the "already running"
 refusal are gone. Admission checks `closing` before the journal read, after it, and again once `run_start` is
-written; the last ends the run with `run_end` `refused` and the closing refusal.
+written; the last ends the run with `run_end` `cancelled` (error `the chat UI is shutting down`: its `run_start`
+already carries the new user message, and a refused run adds none, §13) and the closing refusal.
 
 ## Test agents
 

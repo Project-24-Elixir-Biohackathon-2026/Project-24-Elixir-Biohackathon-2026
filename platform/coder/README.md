@@ -108,8 +108,8 @@ Runs are saved to `/data-share/runs/<UTC time>_<instance>/`:
 | `run.yml` | Participant, parameters, seed, versions |
 | `canaries.json`, `canaries.manifest.sha256` | The canary record of this instance |
 | `openwebui-export.json` | Complete raw export (re-render with `write_run.py`) |
-| `chats/NN-<title>.md`, `.json` (agui) | Each AG-UI session, readable, and as stored; a deleted one opens with "Deleted by the participant at …" |
-| `agui-sessions/` (agui) | Every session file as stored, hidden and deleted included (re-render with `write_agui_run.py`) |
+| `chats/NN-<title>.md`, `.json` (agui) | Each AG-UI session, exported as an Open WebUI chat: every branch in `.json`, the active one readable, with run statuses, the content the client sent that was not used, and compactions |
+| `agui-journals/` (agui) | Every session's journal as written, hidden and deleted included |
 | `agent-runs.jsonl` (agui) | The agent's run log: every run, tool calls and results |
 
 ## Deploying the portal on a new VM
@@ -300,7 +300,7 @@ forgotten instances from eating quota.
 | Logs | `journalctl -u coder`, `journalctl -u caddy`, build logs in the UI (Workspace → Builds) |
 | List instances | Coder dashboard (all users: Workspaces, filter off); OpenStack: servers named `cw-<user>-<workspace>-api` |
 | Save a run without stopping | on the VM: `ansible-playbook playbooks/archive.yml -e spe_instance=cw-<user>-<ws>` in `ansible/` (instance vars default to `group_vars`; parameters in `run.yml` are then the defaults, not the workspace's) |
-| Re-render an old run | `platform/ansible/roles/run_archive/files/write_run.py <run>/openwebui-export.json <run> "Run report"`; AG-UI: `platform/ansible/roles/run_archive/files/write_agui_run.py <run> <run>` |
+| Re-render an old run | `platform/ansible/roles/run_archive/files/write_run.py <run>/openwebui-export.json <run> "Run report"`; AG-UI the same, with the bundle `write_run.py` keeps in the run directory (`openwebui-export.json`) |
 | Update Coder | re-run the install script, `sudo systemctl restart coder` |
 | Back up Coder | stop Coder, archive `~ubuntu/.config/coderv2/` (built-in PostgreSQL) |
 

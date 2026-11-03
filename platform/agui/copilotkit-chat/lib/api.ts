@@ -1,7 +1,8 @@
-// The session API's handlers, framework-free: the Next.js routes in
-// app/api/sessions/ only call these. Error bodies are generic; details go to the server log.
-import { ValidationError, isDeleted, isSessionId, parsePatch } from "./sessions.ts";
-import type { SessionStore, SessionView } from "./sessions.ts";
+// The session API's handlers, framework-free: the Next.js routes in app/api/sessions/ only call these.
+// Metadata only: PATCH and DELETE append a meta line; no route changes a message. Error bodies are
+// generic; details go to the server log.
+import { ValidationError, codeOf, isSessionId, parsePatch } from "./sessions.ts";
+import type { Journals } from "./sessions.ts";
 
 const MAX_BODY = 16 * 1024;
 
@@ -10,7 +11,7 @@ function fail(status: number, error: string): Response {
 }
 
 function serverError(what: string, error: unknown): Response {
-  console.error(`sessions api: ${what}:`, error instanceof Error ? error.message : error);
+  console.error(`sessions api: ${what}:`, codeOf(error));
   return fail(500, "the session store failed; see the chat-ui logs");
 }
 
@@ -37,27 +38,25 @@ async function readBody(request: Request): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-export async function listSessions(store: SessionStore): Promise<Response> {
+export async function listSessions(journals: Journals): Promise<Response> {
   try {
-    return Response.json(await store.list());
+    return Response.json(await journals.list());
   } catch (error) {
     return serverError("list", error);
   }
 }
 
-export async function getSession(store: SessionStore, id: string): Promise<Response> {
+export async function getSession(journals: Journals, id: string): Promise<Response> {
   if (!isSessionId(id)) return fail(400, "invalid session id");
   try {
-    const record = await store.read(id);
-    if (!record || isDeleted(record)) return fail(404, "no such session");
-    const { deleted_at: _deleted, runs: _runs, ...view } = record;
-    return Response.json(view satisfies SessionView);
+    const view = await journals.get(id);
+    return view ? Response.json(view) : fail(404, "no such session");
   } catch (error) {
     return serverError(`read ${id}`, error);
   }
 }
 
-export async function patchSession(store: SessionStore, id: string, request: Request): Promise<Response> {
+export async function patchSession(journals: Journals, id: string, request: Request): Promise<Response> {
   if (!isSessionId(id)) return fail(400, "invalid session id");
   let patch;
   try {
@@ -68,17 +67,17 @@ export async function patchSession(store: SessionStore, id: string, request: Req
     return serverError(`read body for ${id}`, error);
   }
   try {
-    const meta = await store.patch(id, patch, new Date());
+    const meta = await journals.patch(id, patch);
     return meta ? Response.json(meta) : fail(404, "no such session");
   } catch (error) {
     return serverError(`patch ${id}`, error);
   }
 }
 
-export async function deleteSession(store: SessionStore, id: string): Promise<Response> {
+export async function deleteSession(journals: Journals, id: string): Promise<Response> {
   if (!isSessionId(id)) return fail(400, "invalid session id");
   try {
-    return (await store.softDelete(id, new Date())) ? new Response(null, { status: 204 }) : fail(404, "no such session");
+    return (await journals.softDelete(id)) ? new Response(null, { status: 204 }) : fail(404, "no such session");
   } catch (error) {
     return serverError(`delete ${id}`, error);
   }

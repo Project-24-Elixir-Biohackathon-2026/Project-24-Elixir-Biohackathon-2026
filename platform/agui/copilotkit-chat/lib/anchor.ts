@@ -57,11 +57,14 @@ export function classify(conv: Conversation | null, client: Message[]): Classifi
   // An anchor inside a run moves back to the last boundary on its path; the journal's messages after that
   // boundary are deleted, so the agent is never sent a dangling tool call.
   const cut: string[] = [];
-  const path = conv ? pathTo(conv, anchor) : [];
+  const held = conv ? pathTo(conv, anchor) : [];
   if (conv) {
-    while (path.length > 0 && !isBoundary(conv, path.at(-1)!.id)) cut.unshift(path.pop()!.id);
-    anchor = path.at(-1)?.id ?? null;
+    while (held.length > 0 && !isBoundary(conv, held.at(-1)!.id)) cut.unshift(held.pop()!.id);
+    anchor = held.at(-1)?.id ?? null;
   }
+  // Activity messages stay out of the path: @ag-ui/client's prepareRunAgentInput drops them from every run's
+  // input, so the client never sends one back (not deleted) and the agent is never sent one.
+  const path = held.filter((m) => m.role !== "activity");
 
   const ignored: Ignored[] = [];
   const newMessages: Message[] = [];

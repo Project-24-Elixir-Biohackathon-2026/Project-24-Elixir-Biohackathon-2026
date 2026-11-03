@@ -1,27 +1,34 @@
-// The session recorder: AG-UI middleware on the `spe` agent that records each run's
-// conversation into its session file. One instance serves every clone of the agent, so all
-// per-run state lives in the closure of run().
+// The run route's hook: AG-UI middleware on the `spe` agent that keeps each session's journal. Per run it
+// admits or refuses; classifies the client's history against the journal (lib/anchor.ts); writes run_start,
+// fsynced, before the agent is called; sends the agent the journal's path plus the new messages; journals every
+// event; and writes run_end before the terminal event is passed on (spec §13, *The run route*). One instance
+// serves every clone of the agent, so all per-run state lives in the closure of run().
 import { EventType, Middleware } from "@ag-ui/client";
 import type { AbstractAgent, BaseEvent, Message, RunAgentInput } from "@ag-ui/client";
 import { Observable } from "rxjs";
 import type { Subscription } from "rxjs";
-import { isDeleted, isSessionId, shared, withSession } from "./sessions.ts";
-import type { RunHandle, RunStatus, SessionStore } from "./sessions.ts";
+import { classify } from "./anchor.ts";
+import type { Classification } from "./anchor.ts";
+import type { Durability, NewLine, RunStatus } from "./journal.ts";
+import { codeOf, isSessionId, shared, withSession } from "./sessions.ts";
+import type { Journals, RunHandle } from "./sessions.ts";
 
-export const SAVE_FAILED = "spe.session_save_failed";
-
-// Why a run is refused before it reaches the agent: the RUN_ERROR message of a refused run.
+// The RUN_ERROR messages of a run the recorder refuses or ends itself. lib/reconcile.ts copies them.
 const INVALID = "invalid session";
 const DELETED = "this session was deleted";
-const RUNNING = "this session is already running";
 const CLOSING = "the chat UI is shutting down";
-const UNREADABLE = "this session could not be read";
-export const REFUSAL_MESSAGES: readonly string[] = Object.freeze([INVALID, DELETED, RUNNING, CLOSING, UNREADABLE]);
+const NOT_SAVED = "this session could not be saved";
+const NO_NEW_MESSAGE = "this run carries no new message";
+const DUPLICATE_RUN = "this run was already recorded";
+const STOPPED = "the run was stopped";
+export const REFUSAL_MESSAGES: readonly string[] = Object.freeze([
+  INVALID, DELETED, CLOSING, NOT_SAVED, NO_NEW_MESSAGE, DUPLICATE_RUN,
+]);
 
-type Admission = { refused: string } | { refused: null };
+type Admission = { refused: string } | { refused: null; classification: Classification };
 
-// A run's key among the recorder's requests: its session and run id. The client supplies the run
-// id, so two sessions could send the same one; a session runs one run at a time (admission).
+// A run's key among the recorder's requests and in shared().running: its session and run id. The client
+// supplies the run id, so two sessions could send the same one; runs on one session may overlap.
 function runKey(threadId: string, runId: string): string {
   return JSON.stringify([threadId, runId]);
 }
@@ -36,46 +43,43 @@ function runKeyOf(body: unknown): string | undefined {
   }
 }
 
-// A run's status from its terminal event: RUN_FINISHED completed; RUN_ERROR failed, or cancelled
-// when it is the stop button (HttpAgent.abortRun() turns the aborted fetch into RUN_ERROR with
-// code "abort" — but only once @ag-ui/client 1.0.2's SSE parser has subscribed, which happens
-// after the agent's response headers arrive; see isAbort() for a stop before that). A stream that
-// errors or ends without a terminal event is failed; one the client leaves first is cancelled.
+// A run's status from its terminal event: RUN_FINISHED completed; RUN_ERROR failed, or cancelled when it is
+// the stop button (HttpAgent.abortRun() turns the aborted fetch into RUN_ERROR with code "abort", but only
+// once @ag-ui/client 1.0.2's SSE parser has subscribed, after the agent's response headers; see isAbort()).
 function statusOf(event: BaseEvent): RunStatus | null {
   if (event.type === EventType.RUN_FINISHED) return "completed";
   if (event.type === EventType.RUN_ERROR) return (event as { code?: string }).code === "abort" ? "cancelled" : "failed";
   return null;
 }
 
-// True for a stop clicked before the agent's response headers arrive: @ag-ui/client 1.0.2 only
-// turns an aborted fetch into RUN_ERROR{code:"abort"} inside its SSE parser (statusOf(), above),
-// which subscribes after the HEADERS frame. Before that, an abort reaches the stream's own
-// `error:` callback as the fetch's raw AbortError (never as a RUN_ERROR next() event), so it must
-// be told apart from an actual failure (a dropped connection, a timeout) by name: the Fetch/DOM
-// AbortError is the only built-in error with this name, and nothing else in this stream's chain
-// (undici's connection errors, AG-UI's own validation errors) uses it.
+function errorOf(event: BaseEvent): string | null {
+  return event.type === EventType.RUN_ERROR ? String((event as { message?: unknown }).message ?? "") : null;
+}
+
+// True for a stop clicked before the agent's response headers arrive: it reaches the stream's `error:`
+// callback as the fetch's raw AbortError, the only built-in error with this name in this chain.
 function isAbort(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
 
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export class SessionRecorder extends Middleware {
-  readonly store: () => SessionStore;
-  readonly now: () => Date;
+  readonly journals: () => Journals;
   // One abort controller per admitted run, by runKey(), for its request to the agent.
   private readonly requests = new Map<string, AbortController>();
 
-  constructor(store: () => SessionStore, now: () => Date = () => new Date()) {
+  constructor(journals: () => Journals) {
     super();
-    this.store = store;
-    this.now = now;
+    this.journals = journals;
   }
 
-  // The agent's fetch: pass it to the HttpAgent (`new HttpAgent({ url, fetch: recorder.fetch })`)
-  // so that a run the recorder ends (cancel(), or the client leaving) also closes its request
-  // to the agent. Unsubscribing from the agent's stream does not abort that request in
-  // @ag-ui/client 1.0.2, and a middleware's `next` is a wrapper, not the agent, so the recorder
-  // cannot call abortRun() itself. The agent's own signal (abortRun(), the stop button) still
-  // applies.
+  // The agent's fetch: pass it to the HttpAgent (`new HttpAgent({ url, fetch: recorder.fetch })`) so that a
+  // run the recorder ends (cancel(), a failed append, the client leaving) also closes its request to the
+  // agent. Unsubscribing from the agent's stream does not abort that request in @ag-ui/client 1.0.2, and a
+  // middleware's `next` is a wrapper, not the agent. The agent's own signal (abortRun()) still applies.
   readonly fetch = (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const key = runKeyOf(init?.body);
     const controller = key === undefined ? undefined : this.requests.get(key);
@@ -87,124 +91,156 @@ export class SessionRecorder extends Middleware {
   run(input: RunAgentInput, next: AbstractAgent): Observable<BaseEvent> {
     return new Observable<BaseEvent>((out) => {
       const id = input.threadId;
-      const key = runKey(id, input.runId);
+      const runId = input.runId;
+      const key = runKey(id, runId);
       const { running } = shared();
-      const startedAt = this.now().toISOString();
-      let messages: Message[] = input.messages;
-      let admitted = false;
-      let finalised = false;
-      let terminal: RunStatus | null = null; // status of the first terminal event seen
+      let started = false; // run_start is on disk: every way the run ends writes run_end
+      let finalised = false; // run_end is written or being written
+      let terminal = false; // a terminal event, a stream end or a cancel has reached the recorder
       let inner: Subscription | undefined;
       let chain: Promise<void> = Promise.resolve();
       const request = new AbortController();
-      // Stops listening to the agent and closes the request to it.
       const disconnect = () => {
         inner?.unsubscribe();
         request.abort();
       };
-
       const pass = (event: BaseEvent) => {
         if (!out.closed) out.next(event);
       };
-      // Leaves the running set only if this run is still the one in it.
+      const fail = (text: string, code?: string) => {
+        pass({ type: EventType.RUN_ERROR, message: text, ...(code ? { code } : {}) } as BaseEvent);
+        if (!out.closed) out.complete();
+      };
       const release = () => {
-        if (running.get(id) === handle) running.delete(id);
+        if (running.get(key) === handle) running.delete(key);
         if (this.requests.get(key) === request) this.requests.delete(key);
       };
-      // Exactly once per run: the first termination wins, every later one does nothing.
-      // recordRun joins the session's queue synchronously, so the run leaves the running set as
-      // soon as its write is queued: the next admission of this session queues behind the write
-      // and is never refused by a run that has already ended.
-      // Returns false when the write failed (logged here, without message content).
-      const finalise = async (status: RunStatus): Promise<boolean> => {
-        if (!admitted || finalised) return true;
+      // Every append of this run joins the session's queue, so lines of overlapping runs never interleave
+      // within a line.
+      const append = (line: NewLine, durability: Durability) =>
+        withSession(id, () => this.journals().append(id, line, durability));
+      // Exactly once per run: the first end wins. The run_end append joins the queue synchronously, so the
+      // run leaves the running set at once and a drain started right after sees the write.
+      const finalise = async (status: RunStatus, error: string | null): Promise<boolean> => {
+        if (!started || finalised) return true;
         finalised = true;
+        const writing = append({ type: "run_end", run_id: runId, status, error }, "now");
+        release();
         try {
-          const run = { run_id: input.runId, started_at: startedAt, ended_at: this.now().toISOString(), status };
-          const saving = this.store().recordRun(id, messages, run, this.now());
-          release();
-          await saving;
+          await writing;
           return true;
-        } catch (error) {
-          console.error(`sessions: saving run ${input.runId} of ${id} failed:`, error instanceof Error ? error.message : error);
+        } catch (failure) {
+          console.error(`journal: run_end of run ${runId} of ${id} failed: ${codeOf(failure)}`);
           return false;
-        } finally {
-          release();
         }
       };
-      const saveFailed = (): BaseEvent =>
-        ({ type: EventType.CUSTOM, name: SAVE_FAILED, value: { session: id } }) as BaseEvent;
-      // A terminal event or stream end: write first, then pass the outcome on.
-      const end = async (status: RunStatus, last: () => void) => {
-        if (!(await finalise(status))) pass(saveFailed());
-        last();
+      // A terminal event or stream end: run_end first, then the outcome; a run_end that cannot be written
+      // turns the outcome into "this session could not be saved".
+      const end = async (status: RunStatus, error: string | null, last: () => void) => {
+        if (await finalise(status, error)) last();
+        else fail(NOT_SAVED);
       };
-      // Queues fn after every earlier step of this run. A step that throws is logged (without
-      // its message, which may quote the conversation) and the chain goes on.
+      // Queues fn after every earlier step of this run. A step that throws is logged without its message.
       const step = (fn: () => void | Promise<void>) => {
         chain = chain.then(fn).catch(() => {
-          console.error(`sessions: a step of run ${input.runId} of ${id} threw`);
+          console.error(`journal: a step of run ${runId} of ${id} threw`);
         });
       };
       const handle: RunHandle = {
         // A run that has seen its terminal event ends with that event, not as cancelled.
         cancel: () => {
-          if (finalised || terminal !== null) return;
+          if (finalised || terminal) return;
+          terminal = true;
           disconnect();
-          step(() =>
-            end("cancelled", () => {
-              pass({ type: EventType.RUN_ERROR, message: "the run was stopped", code: "cancelled" } as BaseEvent);
-              out.complete();
-            }),
-          );
+          step(() => end("cancelled", STOPPED, () => fail(STOPPED, "cancelled")));
         },
       };
 
-      this.admit(id, handle).then((admission) => {
+      this.admit(input, handle).then((admission) => {
         if (admission.refused !== null) {
-          pass({ type: EventType.RUN_STARTED, threadId: id, runId: input.runId } as BaseEvent);
-          pass({ type: EventType.RUN_ERROR, message: admission.refused } as BaseEvent);
-          out.complete();
+          pass({ type: EventType.RUN_STARTED, threadId: id, runId } as BaseEvent);
+          fail(admission.refused);
           return;
         }
-        admitted = true;
+        started = true;
         if (out.closed) {
-          // Unsubscribed while admission was pending: nothing reached the agent.
-          finalised = true;
-          release();
+          // Unsubscribed while admission was pending: the agent is never called.
+          terminal = true;
+          step(async () => {
+            await finalise("cancelled", null);
+          });
           return;
         }
+        const { path, newMessages, ignored } = admission.classification;
+        const messages: Message[] = [...path, ...newMessages];
+        let snapshotDue = ignored.length > 0; // decision 6
         this.requests.set(key, request);
-        inner = this.runNextWithState(input, next).subscribe({
-          next: ({ event, messages: latest }) => {
-            // Synchronously, so a teardown right after a terminal event still records it.
-            if (!finalised && terminal === null) messages = latest;
-            terminal ??= statusOf(event);
+        inner = this.runNext({ ...input, messages }, next).subscribe({
+          next: (event) => {
+            const status = statusOf(event);
+            if (status !== null) terminal = true; // synchronously: a cancel() right after is a no-op
             step(async () => {
-              const status = statusOf(event);
-              if (finalised || status === null) return pass(event);
-              await end(status, () => pass(event));
+              if (finalised) return;
+              try {
+                await append({ type: "event", run_id: runId, event }, "soon");
+              } catch (failure) {
+                // Decision 8: a record that silently misses events would be worse than a failed run.
+                console.error(`journal: an event of run ${runId} of ${id} could not be appended: ${codeOf(failure)}`);
+                terminal = true;
+                disconnect();
+                await finalise("aborted", NOT_SAVED);
+                fail(NOT_SAVED);
+                return;
+              }
+              if (status === null) {
+                pass(event);
+                if (snapshotDue && event.type === EventType.RUN_STARTED) {
+                  snapshotDue = false;
+                  pass({ type: EventType.MESSAGES_SNAPSHOT, messages } as BaseEvent);
+                }
+                return;
+              }
+              await end(status, errorOf(event), () => pass(event));
             });
           },
           error: (error: unknown) => {
-            step(() => end(isAbort(error) ? "cancelled" : "failed", () => out.error(error)));
+            terminal = true;
+            step(() => end(isAbort(error) ? "cancelled" : "failed", messageOf(error), () => {
+              if (!out.closed) out.error(error);
+            }));
           },
           complete: () => {
-            step(() => end("failed", () => out.complete()));
+            terminal = true;
+            step(() => end("failed", "the stream ended without a terminal event", () => {
+              if (!out.closed) out.complete();
+            }));
           },
         });
       }).catch((error: unknown) => {
-        // Admission or starting the agent threw: fail the run, so the session leaves the running set.
-        console.error(`sessions: starting run ${input.runId} of ${id} failed`);
+        // Admission or starting the agent threw.
+        console.error(`journal: starting run ${runId} of ${id} failed`);
+        terminal = true;
         disconnect();
-        step(() => end("failed", () => { if (!out.closed) out.error(error); }));
+        if (!started) {
+          if (!out.closed) out.error(error);
+          return;
+        }
+        step(() => end("failed", messageOf(error), () => {
+          if (!out.closed) out.error(error);
+        }));
       });
 
-      // Unsubscribed before a terminal event: cancelled, saved after the client has gone.
+      // Unsubscribed (the client left, or the stop before the stream ended): cancelled, journaled after the
+      // client has gone. A terminal event already seen keeps its own status (its step writes run_end).
       return () => {
-        if (admitted && !finalised) {
+        if (started && !finalised) {
           disconnect();
-          void finalise(terminal ?? "cancelled");
+          if (!terminal) {
+            terminal = true;
+            step(async () => {
+              await finalise("cancelled", null);
+            });
+          }
         } else {
           inner?.unsubscribe();
         }
@@ -212,27 +248,61 @@ export class SessionRecorder extends Middleware {
     });
   }
 
-  // Admission: under the session's queue, so it orders with every write to that session.
-  private async admit(id: string, handle: RunHandle): Promise<Admission> {
+  // Admission, under the session's queue so it orders with every append to that session. Refusals before
+  // run_start write no line; a run without a new user message is journaled, then refused (decision 3).
+  private async admit(input: RunAgentInput, handle: RunHandle): Promise<Admission> {
+    const id = input.threadId;
     if (!isSessionId(id)) return { refused: INVALID };
-    const { running } = shared();
     return withSession(id, async () => {
       if (shared().closing) return { refused: CLOSING };
-      if (running.has(id)) return { refused: RUNNING };
-      let record;
+      const journals = this.journals();
+      let conv;
       try {
-        record = await this.store().read(id);
+        if (await journals.isDeleted(id)) return { refused: DELETED };
+        conv = await journals.load(id);
       } catch (error) {
-        console.error(`sessions: reading ${id} failed:`, error instanceof Error ? error.message : error);
-        return { refused: UNREADABLE };
+        console.error(`journal: reading ${id} failed: ${codeOf(error)}`);
+        return { refused: NOT_SAVED };
       }
-      if (record && isDeleted(record)) return { refused: DELETED };
-      // Re-checked: SIGTERM may have landed while the read above was pending. Without this,
-      // a handle registered after shutdown() has taken its snapshot of `running` is never
-      // cancelled, and drain() waits for it to end by itself.
+      if (conv?.runs.some((r) => r.run_id === input.runId)) return { refused: DUPLICATE_RUN };
+      // Re-checked: SIGTERM may have landed while the journal was read. A handle registered after
+      // shutdown() took its snapshot of `running` would never be cancelled.
       if (shared().closing) return { refused: CLOSING };
-      running.set(id, handle);
-      return { refused: null };
+      const classification = classify(conv, input.messages);
+      const { tools, context, state, forwardedProps } = input;
+      // A run journaled but not admitted: its run_end, then the refusal the client sees. A run_end that cannot
+      // be written leaves the run incomplete in the journal; the client is refused either way.
+      const endHere = async (status: RunStatus, error: string): Promise<Admission> => {
+        try {
+          await journals.append(id, { type: "run_end", run_id: input.runId, status, error }, "now");
+        } catch (failure) {
+          console.error(`journal: run_end of run ${input.runId} of ${id} failed: ${codeOf(failure)}`);
+        }
+        return { refused: error };
+      };
+      let runStartTried = false;
+      try {
+        // Inside withSession already: append directly, never through withSession again.
+        if (conv === null) await journals.append(id, { type: "created", version: 1, id }, "soon");
+        runStartTried = true;
+        await journals.append(id, {
+          type: "run_start", run_id: input.runId, anchor: classification.anchor, messages: classification.newMessages,
+          ignored: classification.ignored, request: { tools, context, state, forwardedProps }, source: "chat",
+        }, "now");
+      } catch (error) {
+        console.error(`journal: run_start of run ${input.runId} of ${id} failed: ${codeOf(error)}`);
+        // The line may be in the file although its write or fsync failed: end it, so the run is not left
+        // incomplete (Journals.append dropped the failed writer, so this reopens the journal).
+        return runStartTried ? endHere("aborted", NOT_SAVED) : { refused: NOT_SAVED };
+      }
+      if (classification.newMessages.length === 0) return endHere("refused", NO_NEW_MESSAGE);
+      // Re-checked once run_start is on disk: SIGTERM may have landed during its fsync, after shutdown() took
+      // its snapshot of `running`, so a run admitted now would never be cancelled and drain would time out.
+      // Its run_start already carries the new user message, so it ends cancelled, not refused (a refused run
+      // adds no message, §13).
+      if (shared().closing) return endHere("cancelled", CLOSING);
+      shared().running.set(runKey(id, input.runId), handle);
+      return { refused: null, classification };
     });
   }
 }

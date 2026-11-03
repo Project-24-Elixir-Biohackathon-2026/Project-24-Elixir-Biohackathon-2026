@@ -11,7 +11,7 @@ services:
       - "127.0.0.1:{{ spe_agui_ui_port }}:3000"
     env_file: chat-ui.env
     volumes:
-      # Chat sessions, one JSON file each (/data/sessions); private like agent-runs.
+      # Chat sessions, one append-only journal each (/data/sessions/<id>.jsonl); private like agent-runs.
       - chat-sessions:/data
     networks: [ui]
     read_only: true

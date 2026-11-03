@@ -297,3 +297,19 @@ test("no false alarm: the browser's history after three runs (tool calls, a fail
   assert.deepEqual(ids(c.newMessages), ["u4"]);
   assert.deepEqual(c.ignored, []);
 });
+
+test("an activity message the journal holds is neither in the path nor deleted: no run's input carries one", async () => {
+  // @ag-ui/client's prepareRunAgentInput drops every role "activity" message from a run's input, so the
+  // browser never sends one back and the agent is never sent one.
+  const conv = await journal(run("r1", null, user("u1", "hello"), [
+    ev("r1", { type: EventType.ACTIVITY_SNAPSHOT, messageId: "act1", activityType: "pydantic_ai_compaction",
+      content: { content: "SUMMARY" }, replace: true }),
+    ...text("r1", "a1", "hi"),
+  ]));
+  assert.equal(conv.nodes.get("act1")?.message.role, "activity");
+  const c = classify(conv, [conv.nodes.get("u1")!.message, conv.nodes.get("a1")!.message, user("u2", "next")]);
+  assert.equal(c.anchor, "a1");
+  assert.deepEqual(ids(c.path), ["u1", "a1"]);
+  assert.deepEqual(ids(c.newMessages), ["u2"]);
+  assert.deepEqual(c.ignored, []);
+});

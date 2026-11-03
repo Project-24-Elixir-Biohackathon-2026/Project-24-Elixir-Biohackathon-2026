@@ -5,10 +5,10 @@ fetch, write on the controller (`roles/run_archive`). Each journal is exported a
 the existing Open WebUI renderer turns into the same run layout, so both frontends are saved and exported one
 way. Decisions 15, 16 and 30 of the [README](README.md#decisions-taken).
 
-Until the record is built, the archive is the chat sessions' as built: `agui-sessions/<uuid>.json` copied from
-the volume and rendered by `files/write_agui_run.py` (`index.md` columns `# | Session | Tags | Created | Runs |
-Compactions | State`). A compaction marker is rendered as a `## Compacted` section (clarification 3). Runs
-archived in that form keep the files written for them; the new renderer does not re-render them.
+As built (clarification 11), every archive still runs step 1's barrier, live and final alike, starts the services
+again after the copy, and writes `spe_archive_mode: final`; the live copy below is not built yet. Runs archived
+before the record keep the files written for them (`agui-sessions/<uuid>.json`, rendered by the renderer of that
+time); they are not re-rendered.
 
 ### Export
 
@@ -51,9 +51,7 @@ journals and the run log are copied a moment apart, so a run that started or end
 and not the other; whoever compares them allows for that at the edge of the copy.
 
 Every journal is exported, hidden and deleted included. If any step fails, `archive.yml` fails and
-`destroy.yml` deletes nothing, as for Open WebUI. Until the record is built, the archive keeps the barrier of
-the chat sessions as built for every run (stop, copy, start again), since their `<uuid>.json` files are
-rewritten in place and a live copy of them could be torn.
+`destroy.yml` deletes nothing, as for Open WebUI.
 
 ### The Open WebUI chat
 

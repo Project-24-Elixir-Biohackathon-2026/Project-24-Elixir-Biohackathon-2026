@@ -1,5 +1,5 @@
-// The session store: the record, id and tag validation, atomic writes, the per-session queue,
-// unreadable and leftover files, titles cut by code point.
+// The journal store: ids, tags, titles, the index (one pass, updated on append, on globalThis), the list
+// rules, metadata as meta lines, append-only journals, the earlier JSON format ignored.
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -7,30 +7,42 @@ import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Message } from "@ag-ui/client";
+import type { Clock, JournalFs } from "./journal.ts";
 import {
-  SessionStore, ValidationError, autoTitle, isDeleted, isSessionId, normaliseTags, parsePatch, shared,
+  Journals, ValidationError, autoTitle, isSessionId, normaliseTags, parsePatch, shared,
 } from "./sessions.ts";
-import type { RunEntry, SessionRecord } from "./sessions.ts";
+import { seedRun } from "./test-journals.ts";
 
 const T0 = new Date("2026-10-29T10:00:00.000Z");
 const at = (seconds: number) => new Date(T0.getTime() + seconds * 1000);
+const INDEX = Symbol.for("spe.sessions.index");
 
-async function tmpStore(): Promise<SessionStore> {
-  return new SessionStore(await fs.mkdtemp(path.join(os.tmpdir(), "sessions-")));
+// A store whose clock the test moves: every line it writes is stamped `clock.t`.
+async function tmpJournals(opts: { fs?: JournalFs } = {}) {
+  const clock = { t: at(0) };
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "journals-"));
+  return { journals: new Journals(dir, { ...opts, now: () => clock.t }), clock, dir };
 }
+
+const file = (dir: string, id: string) => path.join(dir, `${id}.jsonl`);
+const restart = () => delete (globalThis as Record<symbol, unknown>)[INDEX];
 
 function user(content: unknown): Message {
   return { id: randomUUID(), role: "user", content } as Message;
 }
 
-function run(status: RunEntry["status"] = "completed"): RunEntry {
-  return { run_id: randomUUID(), started_at: T0.toISOString(), ended_at: at(1).toISOString(), status };
+// A journal written as raw text: an earlier state, a torn line, or one the index never saw.
+function raw(id: string, lines: object[]): string {
+  return lines.map((l) => JSON.stringify(l)).join("\n") + "\n";
 }
 
-async function seeded(store: SessionStore, text = "hello"): Promise<string> {
-  const id = randomUUID();
-  await store.recordRun(id, [user(text)], run(), at(1));
-  return id;
+function runLines(id: string, when: string, text: string, added = true) {
+  const run = randomUUID();
+  return [
+    { type: "run_start", at: when, run_id: run, anchor: null, messages: added ? [user(text)] : [], ignored: [],
+      request: { tools: [], context: [], state: {}, forwardedProps: {} }, source: "chat" },
+    { type: "run_end", at: when, run_id: run, status: added ? "completed" : "refused", error: null },
+  ];
 }
 
 test("isSessionId accepts only canonical lower-case UUID v4", () => {
@@ -38,18 +50,19 @@ test("isSessionId accepts only canonical lower-case UUID v4", () => {
   for (const bad of [
     "../x", "a/b", "", "6F1C0D2E-1234-4ABC-8DEF-0123456789AB", "6f1c0d2e-1234-1abc-8def-0123456789ab",
     "6f1c0d2e-1234-4abc-cdef-0123456789ab", "6f1c0d2e12344abc8def0123456789ab",
-    `${randomUUID()}\n`, `${randomUUID()}.json`, 42, null, undefined,
+    `${randomUUID()}\n`, `${randomUUID()}.jsonl`, 42, null, undefined,
   ]) {
     assert.equal(isSessionId(bad), false, String(bad));
   }
 });
 
 test("the store refuses an invalid id before building a path", async () => {
-  const store = await tmpStore();
-  await assert.rejects(store.read("../x"), ValidationError);
-  await assert.rejects(store.patch("a/b", { pinned: true }, T0), ValidationError);
-  await assert.rejects(store.recordRun("../../etc/x", [], run(), T0), ValidationError);
-  assert.deepEqual(await fs.readdir(store.dir), []);
+  const { journals, dir } = await tmpJournals();
+  await assert.rejects(journals.load("../x"), ValidationError);
+  await assert.rejects(journals.append("a/b", { type: "meta", pinned: true }, "now"), ValidationError);
+  await assert.rejects(journals.patch("../../etc/x", { pinned: true }), ValidationError);
+  await assert.rejects(journals.softDelete("6F1C0D2E-1234-4ABC-8DEF-0123456789AB"), ValidationError);
+  assert.deepEqual(await fs.readdir(dir), []);
 });
 
 test("tags are normalised or refused", () => {
@@ -99,213 +112,322 @@ test("autoTitle keeps an astral character at the cut whole", () => {
   assert.equal(title.isWellFormed(), true);
 });
 
-test("recordRun creates a version-1 file, then merges into the latest record", async () => {
-  const store = await tmpStore();
-  const id = randomUUID();
-  const first = run();
-  await store.recordRun(id, [user("first question")], first, at(1));
-  let record = (await store.read(id)) as SessionRecord;
-  assert.deepEqual(Object.keys(record).sort(), [
-    "created_at", "deleted_at", "hidden", "id", "messages", "pinned", "runs", "tags", "title",
-    "title_source", "updated_at", "version",
+test("a run makes a listed session: auto title, created_at, updated_at and last_run_at from its lines", async () => {
+  const { journals, clock } = await tmpJournals();
+  clock.t = at(1);
+  const { id } = await seedRun(journals, "  List the\nhome directory ");
+  const [meta] = await journals.list();
+  assert.deepEqual(Object.keys(meta).sort(),
+    ["created_at", "hidden", "id", "last_run_at", "pinned", "tags", "title", "updated_at"]);
+  assert.deepEqual(meta, {
+    id, title: "List the home directory", tags: [], pinned: false, hidden: false,
+    created_at: at(1).toISOString(), updated_at: at(1).toISOString(), last_run_at: at(1).toISOString(),
+  });
+});
+
+test("get(): the tip's branch and the metadata without last_run_at; null when missing", async () => {
+  const { journals } = await tmpJournals();
+  const first = await seedRun(journals, "first question");
+  await seedRun(journals, "second question", { id: first.id, anchor: first.replyId });
+  const view = await journals.get(first.id);
+  assert.ok(view);
+  assert.deepEqual(Object.keys(view).sort(),
+    ["created_at", "hidden", "id", "messages", "pinned", "tags", "title", "updated_at"]);
+  assert.deepEqual(view.messages.map((m) => [m.role, m.content]), [
+    ["user", "first question"], ["assistant", "echo: first question"],
+    ["user", "second question"], ["assistant", "echo: second question"],
   ]);
-  assert.equal(record.version, 1);
-  assert.equal(record.title, "first question");
-  assert.equal(record.title_source, "auto");
-  assert.equal(record.created_at, first.started_at);
-  assert.deepEqual(record.runs, [first]);
-  assert.equal((await fs.stat(path.join(store.dir, `${id}.json`))).mode & 0o777, 0o600);
-
-  await store.patch(id, { title: "Mine", tags: ["x"] }, at(2));
-  await store.recordRun(id, [user("other text")], run("failed"), at(3));
-  record = (await store.read(id)) as SessionRecord;
-  assert.equal(record.title, "Mine");
-  assert.equal(record.title_source, "user");
-  assert.deepEqual(record.tags, ["x"]);
-  assert.equal(record.runs.length, 2);
-  assert.equal(record.updated_at, at(3).toISOString());
+  assert.equal(await journals.get(randomUUID()), null);
 });
 
-test("a write interrupted before the rename leaves the previous file intact", async () => {
-  const store = await tmpStore();
-  const id = await seeded(store, "kept");
-  const before = await fs.readFile(path.join(store.dir, `${id}.json`), "utf8");
-  const rename = mock.method(fs, "rename", async () => {
-    throw new Error("crash before rename");
-  });
-  try {
-    await assert.rejects(store.patch(id, { title: "lost" }, at(5)), /crash before rename/);
-  } finally {
-    rename.mock.restore();
-  }
-  assert.equal(await fs.readFile(path.join(store.dir, `${id}.json`), "utf8"), before);
-  assert.deepEqual(await fs.readdir(store.dir), [`${id}.json`]); // the temp file is removed
+test("a title the user set survives later runs (decision 22)", async () => {
+  const { journals } = await tmpJournals();
+  const first = await seedRun(journals, "first question");
+  await journals.patch(first.id, { title: "Mine" });
+  await seedRun(journals, "a later question", { id: first.id, anchor: first.replyId });
+  assert.equal((await journals.list())[0].title, "Mine");
+  assert.equal((await journals.get(first.id))?.title, "Mine");
 });
 
-test("a write syncs the directory after the rename, so the rename survives a power loss", async () => {
-  const store = await tmpStore();
-  const realOpen = fs.open;
-  const synced: string[] = [];
-  const open = mock.method(fs, "open", async (...args: Parameters<typeof fs.open>) => {
-    const handle = await realOpen(...args);
-    const sync = handle.sync.bind(handle);
-    handle.sync = async () => { synced.push(String(args[0])); return sync(); };
-    return handle;
-  });
-  try {
-    await seeded(store);
-  } finally {
-    open.mock.restore();
-  }
-  assert.equal(synced.at(-1), store.dir);
-});
-
-test("a directory that cannot be synced (EINVAL, as on some network mounts) is not a failed save", async () => {
-  const store = await tmpStore();
-  const realOpen = fs.open;
-  const open = mock.method(fs, "open", async (...args: Parameters<typeof fs.open>) => {
-    const handle = await realOpen(...args);
-    if (args[0] === store.dir) {
-      handle.sync = async () => { throw Object.assign(new Error("EINVAL: invalid argument, fsync"), { code: "EINVAL" }); };
-    }
-    return handle;
-  });
-  try {
-    await seeded(store);
-  } finally {
-    open.mock.restore();
-  }
-  assert.equal((await fs.readdir(store.dir)).length, 1);
-});
-
-test("last_run_at is the last run's end; a metadata change moves updated_at, not last_run_at", async () => {
-  const store = await tmpStore();
-  const id = await seeded(store);
-  assert.equal((await store.list())[0].last_run_at, at(1).toISOString());
-  const meta = await store.patch(id, { pinned: true }, at(9));
+test("last_run_at is the last run_end's time; a metadata change moves updated_at only", async () => {
+  const { journals, clock } = await tmpJournals();
+  clock.t = at(1);
+  const { id } = await seedRun(journals, "hello");
+  clock.t = at(9);
+  const meta = await journals.patch(id, { pinned: true });
   assert.deepEqual([meta?.updated_at, meta?.last_run_at], [at(9).toISOString(), at(1).toISOString()]);
 });
 
-test("20 concurrent metadata updates to one session all land", async () => {
-  const store = await tmpStore();
-  const id = await seeded(store);
-  // Each update reads the file, changes one field and writes it back. Unserialised, a writer
-  // that read before another's write puts the other field back: one field's update is lost.
-  const patches = Array.from({ length: 20 }, (_, i) =>
-    [{ title: `t${i}` }, { tags: [`g${i}`] }, { pinned: i % 8 === 2 }, { hidden: i % 8 === 3 }][i % 4],
-  );
-  const results = await Promise.all(patches.map((p, i) => store.patch(id, p, at(10 + i))));
-  assert.equal(results.every((m) => m !== null), true);
-  const record = (await store.read(id)) as SessionRecord;
-  assert.deepEqual(
-    [record.title, record.tags, record.pinned, record.hidden, record.updated_at],
-    ["t16", ["g17"], true, true, at(29).toISOString()],
-  );
-  assert.equal(record.messages.length, 1); // the run recorded before is still there
-  assert.equal(shared().queue.has(id), false); // the chain is dropped once drained
+test("list: newest updated_at first, deleted left out, hidden kept", async () => {
+  const { journals, clock } = await tmpJournals();
+  const a = (await seedRun(journals, "a")).id;
+  const b = (await seedRun(journals, "b")).id;
+  const c = (await seedRun(journals, "c")).id;
+  clock.t = at(30);
+  await journals.patch(a, { hidden: true });
+  clock.t = at(20);
+  await journals.patch(c, { pinned: true });
+  clock.t = at(40);
+  await journals.softDelete(b);
+  const list = await journals.list();
+  assert.deepEqual(list.map((m) => m.id), [a, c]);
+  assert.equal(list[0].hidden, true);
 });
 
-test("list: newest updated_at first, deleted left out, hidden kept, capped at 1000", async () => {
-  const store = await tmpStore();
-  const a = await seeded(store, "a");
-  const b = await seeded(store, "b");
-  const c = await seeded(store, "c");
-  await store.patch(a, { hidden: true }, at(30));
-  await store.patch(c, { pinned: true }, at(20));
-  await store.softDelete(b, at(40));
-  const list = await store.list();
-  assert.deepEqual(list.map((m) => m.id), [a, c]);
-  assert.deepEqual(Object.keys(list[0]).sort(), ["created_at", "hidden", "id", "last_run_at", "pinned", "tags", "title", "updated_at"]);
-  assert.equal(list[0].hidden, true);
-
-  const many = await tmpStore();
+test("list: capped at 1000, built by one pass over journals the index never saw", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "journals-"));
   for (let i = 0; i < 1005; i++) {
     const id = randomUUID();
-    await fs.writeFile(path.join(many.dir, `${id}.json`), JSON.stringify({
-      version: 1, id, title: `s${i}`, title_source: "auto", tags: [], pinned: false, hidden: false,
-      created_at: T0.toISOString(), updated_at: at(i).toISOString(), deleted_at: null, messages: [], runs: [],
-    }));
+    const when = at(i).toISOString();
+    await fs.writeFile(file(dir, id), raw(id, [
+      { type: "created", at: when, version: 1, id }, ...runLines(id, when, `s${i}`),
+    ]));
   }
-  const capped = await many.list();
+  const capped = await new Journals(dir).list();
   assert.equal(capped.length, 1000);
   assert.equal(capped[0].title, "s1004");
 });
 
-test("an unparsable session file is skipped and logged; read throws", async () => {
-  const store = await tmpStore();
-  const good = await seeded(store, "good");
-  const broken = randomUUID();
-  const future = randomUUID();
-  const quoted = randomUUID();
-  await fs.writeFile(path.join(store.dir, `${broken}.json`), "{ not json");
-  await fs.writeFile(path.join(store.dir, `${future}.json`), JSON.stringify({ version: 2, id: future }));
-  // Node's parser error for this quotes the text ("…canary-SECRET-ABC… is not valid JSON")
-  await fs.writeFile(path.join(store.dir, `${quoted}.json`), '{"version":1,"title":canary-SECRET-ABC}');
-  const logged = mock.method(console, "error", () => {});
+test("the index: one read per journal to build it; a rename shows without reading a journal again", async () => {
+  let reads = 0;
+  const counting: JournalFs = {
+    open: async (p, flags) => {
+      if (flags === "r") reads++;
+      return fs.open(p, flags);
+    },
+  };
+  const { dir } = await tmpJournals();
+  const ids = [randomUUID(), randomUUID()];
+  for (const id of ids) {
+    await fs.writeFile(file(dir, id), raw(id, [{ type: "created", at: T0.toISOString(), version: 1, id },
+      ...runLines(id, T0.toISOString(), id)]));
+  }
+  const journals = new Journals(dir, { fs: counting });
+  assert.equal((await journals.list()).length, 2);
+  assert.equal(reads, 2);
+  await journals.patch(ids[0], { title: "Renamed" }); // the writer may read the journal's end once
+  const afterPatch = reads;
+  assert.equal((await journals.list()).find((m) => m.id === ids[0])?.title, "Renamed");
+  assert.equal(reads, afterPatch, "the list came from the index");
+});
+
+test("the index lives on globalThis under Symbol.for('spe.sessions.index'); a restart lists the same", async () => {
+  const { journals, dir } = await tmpJournals();
+  const a = await seedRun(journals, "a");
+  await seedRun(journals, "b");
+  await journals.patch(a.id, { title: "Renamed", tags: ["dns"], pinned: true });
+  const before = await journals.list();
+  assert.ok((globalThis as Record<symbol, unknown>)[INDEX] instanceof Map);
+  restart();
+  assert.deepEqual(await new Journals(dir).list(), before);
+});
+
+test("a <uuid>.json file of the earlier format is neither listed nor read, and nothing fails (decision 14)", async () => {
+  const { journals, dir } = await tmpJournals();
+  const old = randomUUID();
+  await fs.writeFile(path.join(dir, `${old}.json`), JSON.stringify({ version: 1, id: old, title: "old", messages: [] }));
+  await fs.writeFile(path.join(dir, "notes.txt"), "x");
+  assert.deepEqual(await journals.list(), []);
+  assert.equal(await journals.get(old), null);
+  assert.equal(await journals.load(old), null);
+});
+
+test("a session whose only run was refused is journaled but not listed, and get() is null (decision 9)", async () => {
+  const { journals, dir } = await tmpJournals();
+  const id = randomUUID();
+  await fs.writeFile(file(dir, id), raw(id, [{ type: "created", at: T0.toISOString(), version: 1, id },
+    ...runLines(id, T0.toISOString(), "", false)]));
+  restart();
+  const fresh = new Journals(dir);
+  assert.deepEqual(await fresh.list(), []);
+  assert.equal(await fresh.get(id), null);
+  assert.equal(await fresh.patch(id, { pinned: true }), null);
+  assert.ok((await fresh.load(id))?.runs.length === 1);
+});
+
+test("append-only: runs, a rename, a tag, a hide and a delete each add lines, earlier bytes unchanged (decision 10)", async () => {
+  const { journals, dir } = await tmpJournals();
+  const first = await seedRun(journals, "first");
+  const states = [await fs.readFile(file(dir, first.id), "utf8")];
+  const steps: (() => Promise<unknown>)[] = [
+    () => seedRun(journals, "second", { id: first.id, anchor: first.replyId }),
+    () => journals.patch(first.id, { title: "Renamed" }),
+    () => journals.patch(first.id, { tags: ["dns"] }),
+    () => journals.patch(first.id, { hidden: true }),
+    () => journals.softDelete(first.id),
+  ];
+  for (const step of steps) {
+    await step();
+    const now = await fs.readFile(file(dir, first.id), "utf8");
+    assert.ok(now.startsWith(states.at(-1)!) && now.length > states.at(-1)!.length);
+    states.push(now);
+  }
+  const metas = states.at(-1)!.trimEnd().split("\n").map((l) => JSON.parse(l)).filter((l) => l.type === "meta");
+  assert.deepEqual(metas.map(({ at: _at, ...rest }) => Object.keys(rest).sort()),
+    [["title", "type"], ["tags", "type"], ["hidden", "type"], ["deleted_at", "type"]]);
+});
+
+test("a PATCH adds exactly one meta line", async () => {
+  const { journals, dir } = await tmpJournals();
+  const { id } = await seedRun(journals, "hello");
+  const count = async () => (await fs.readFile(file(dir, id), "utf8")).trimEnd().split("\n").length;
+  const before = await count();
+  await journals.patch(id, { title: "x", tags: ["a"], pinned: true, hidden: false });
+  assert.equal(await count(), before + 1);
+});
+
+test("20 concurrent metadata updates to one session all land", async () => {
+  const { journals, clock } = await tmpJournals();
+  const { id } = await seedRun(journals, "hello");
+  const patches = Array.from({ length: 20 }, (_, i) =>
+    [{ title: `t${i}` }, { tags: [`g${i}`] }, { pinned: i % 8 === 2 }, { hidden: i % 8 === 3 }][i % 4],
+  );
+  clock.t = at(30);
+  const results = await Promise.all(patches.map((p) => journals.patch(id, p)));
+  assert.equal(results.every((m) => m !== null), true);
+  const [meta] = await journals.list();
+  assert.deepEqual([meta.title, meta.tags, meta.pinned, meta.hidden], ["t16", ["g17"], true, true]);
+  assert.equal(shared().queue.has(id), false);
+});
+
+test("a torn last line gets \\n before the next append, and the rebuild skips it", async () => {
+  const { dir } = await tmpJournals();
+  const id = randomUUID();
+  const whole = raw(id, [{ type: "created", at: T0.toISOString(), version: 1, id }, ...runLines(id, T0.toISOString(), "kept")]);
+  await fs.writeFile(file(dir, id), whole + '{"type":"event","at":"2026-10-29T10:00:0');
+  // parseJournal (lib/journal.ts) logs a skipped line with console.warn, not console.error.
+  const logged = mock.method(console, "warn", () => {});
   try {
-    assert.deepEqual((await store.list()).map((m) => m.id), [good]);
-    assert.equal(logged.mock.callCount(), 3);
-    const logs = JSON.stringify(logged.mock.calls.map((c) => c.arguments));
-    assert.doesNotMatch(logs, /canary-SECRET-ABC/);
-    assert.match(logs, new RegExp(`${quoted}\\.json does not parse`));
+    const journals = new Journals(dir);
+    assert.equal((await journals.list())[0].title, "kept");
+    await journals.patch(id, { title: "after the tear" });
+    const text = await fs.readFile(file(dir, id), "utf8");
+    assert.ok(text.startsWith(whole + '{"type":"event","at":"2026-10-29T10:00:0\n'), text);
+    assert.equal(JSON.parse(text.trimEnd().split("\n").at(-1)!).title, "after the tear");
+    const conv = await journals.load(id);
+    assert.equal(conv?.skipped, 1);
+    assert.equal((await journals.get(id))?.title, "after the tear");
   } finally {
     logged.mock.restore();
   }
-  await assert.rejects(store.read(broken), /does not parse/);
-  await assert.rejects(store.read(quoted), (error: Error) => !error.message.includes("canary-SECRET-ABC"));
-  await assert.rejects(store.read(future), /not a version-1 session/);
 });
 
-test("leftover .tmp- files are never listed or read as sessions", async () => {
-  const store = await tmpStore();
-  const id = await seeded(store, "real");
-  const record = await fs.readFile(path.join(store.dir, `${id}.json`), "utf8");
-  await fs.writeFile(path.join(store.dir, `${id}.json.tmp-${randomUUID()}`), record.replace("real", "stale"));
-  await fs.writeFile(path.join(store.dir, `${randomUUID()}.json.tmp-x`), record);
-  await fs.writeFile(path.join(store.dir, "notes.txt"), "x");
-  const list = await store.list();
-  assert.deepEqual(list.map((m) => [m.id, m.title]), [[id, "real"]]);
-});
-
-test("softDelete keeps the file with deleted_at; patch and delete then find nothing", async () => {
-  const store = await tmpStore();
-  const id = await seeded(store);
-  assert.equal(await store.softDelete(id, at(5)), true);
-  assert.equal(await store.softDelete(id, at(6)), false);
-  assert.equal(await store.patch(id, { pinned: true }, at(7)), null);
-  const record = (await store.read(id)) as SessionRecord;
-  assert.equal(record.deleted_at, at(5).toISOString());
-  assert.equal(record.pinned, false);
-  assert.equal(await store.softDelete(randomUUID(), at(8)), false);
-  assert.equal(await store.patch(randomUUID(), { pinned: true }, at(8)), null);
-});
-
-test("a missing sessions directory lists as empty", async () => {
-  const store = new SessionStore(path.join(os.tmpdir(), `absent-${randomUUID()}`));
-  assert.deepEqual(await store.list(), []);
-});
-
-test("read refuses a record whose pinned, hidden or deleted_at has the wrong type", async () => {
-  const store = await tmpStore();
-  for (const [key, value] of [
-    ["pinned", "yes"], ["pinned", undefined], ["hidden", 1], ["hidden", undefined],
-    ["deleted_at", false], ["deleted_at", 0], ["deleted_at", undefined],
-  ] as const) {
-    const id = await seeded(store);
-    const file = path.join(store.dir, `${id}.json`);
-    const record = JSON.parse(await fs.readFile(file, "utf8"));
-    if (value === undefined) delete record[key];
-    else record[key] = value;
-    await fs.writeFile(file, JSON.stringify(record));
-    await assert.rejects(store.read(id), /not a version-1 session/, `${key}: ${String(value)}`);
+test("a failed interval fsync does not fail the session's next append: it is written with a fresh writer", async () => {
+  // Every sync fails until the test heals the disk; the interval timer fires only when the test fires it.
+  let healthy = true;
+  const syncs = { failed: 0 };
+  const flaky: JournalFs = {
+    open: async (p, flags) => {
+      const handle = await fs.open(p, flags);
+      return {
+        appendFile: (data: string) => handle.appendFile(data),
+        sync: async () => {
+          if (!healthy) {
+            syncs.failed++;
+            throw Object.assign(new Error("EIO: i/o error, fsync"), { code: "EIO" });
+          }
+          await handle.sync();
+        },
+        close: () => handle.close(),
+        stat: () => handle.stat(),
+        read: (buf: Buffer, off: number, len: number, pos: number) => handle.read(buf, off, len, pos),
+      };
+    },
+    syncDir: async () => {},
+  };
+  const timers: (() => void)[] = [];
+  const clock: Clock = { now: () => 0, setTimeout: (fn) => timers.push(fn), clearTimeout: () => {} };
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "journals-"));
+  const journals = new Journals(dir, { fs: flaky, clock });
+  const { id } = await seedRun(journals, "before the fault");
+  await journals.append(id, { type: "meta", pinned: true }, "soon"); // arms the interval fsync
+  const logged = mock.method(console, "error", () => {});
+  try {
+    healthy = false;
+    for (const fire of timers.splice(0)) fire();
+    for (let i = 0; i < 100 && syncs.failed === 0; i++) await new Promise((r) => setTimeout(r, 5));
+    assert.equal(syncs.failed, 1, "the interval fsync ran and failed");
+    await new Promise((r) => setTimeout(r, 5));
+    healthy = true;
+    await journals.patch(id, { title: "after the fault" });
+    const last = JSON.parse((await fs.readFile(file(dir, id), "utf8")).trimEnd().split("\n").at(-1)!);
+    assert.equal(last.title, "after the fault");
+    assert.equal((await journals.get(id))?.title, "after the fault");
+  } finally {
+    logged.mock.restore();
   }
 });
 
-test("isDeleted: a deleted_at string is deleted, null is not", async () => {
-  const store = await tmpStore();
-  const id = await seeded(store);
-  const record = (await store.read(id)) as SessionRecord;
-  assert.equal(isDeleted(record), false);
-  await store.softDelete(id, at(2));
-  assert.equal(isDeleted((await store.read(id)) as SessionRecord), true);
+test("get() during an append: an unterminated last segment is dropped without a warning", async () => {
+  const { journals, dir } = await tmpJournals();
+  const { id } = await seedRun(journals, "kept");
+  const whole = await fs.readFile(file(dir, id), "utf8");
+  // As a reader outside the session's queue sees a line still being appended.
+  await fs.appendFile(file(dir, id), '{"type":"meta","at":"2026-10-29T10:00:00.000Z","title":"half');
+  const warned = mock.method(console, "warn", () => {});
+  try {
+    const view = await journals.get(id);
+    assert.equal(view?.title, "kept");
+    assert.equal(view?.messages.length, 2);
+    assert.equal(warned.mock.callCount(), 0, JSON.stringify(warned.mock.calls.map((c) => c.arguments)));
+  } finally {
+    warned.mock.restore();
+  }
+  assert.ok((await fs.readFile(file(dir, id), "utf8")).startsWith(whole));
+});
+
+test("a journal without a created line lists with its first line's time", async () => {
+  const { dir } = await tmpJournals();
+  const id = randomUUID();
+  await fs.writeFile(file(dir, id), raw(id, runLines(id, at(5).toISOString(), "no created line")));
+  restart();
+  const [meta] = await new Journals(dir).list();
+  assert.equal(meta.created_at, at(5).toISOString());
+});
+
+test("softDelete appends deleted_at; patch, delete and get then find nothing; the journal stays", async () => {
+  const { journals, clock, dir } = await tmpJournals();
+  const { id } = await seedRun(journals, "hello");
+  clock.t = at(5);
+  assert.equal(await journals.softDelete(id), true);
+  assert.equal(await journals.isDeleted(id), true);
+  assert.equal(await journals.softDelete(id), false);
+  assert.equal(await journals.patch(id, { pinned: true }), null);
+  assert.equal(await journals.get(id), null);
+  const last = JSON.parse((await fs.readFile(file(dir, id), "utf8")).trimEnd().split("\n").at(-1)!);
+  assert.deepEqual(last, { type: "meta", at: at(5).toISOString(), deleted_at: at(5).toISOString() });
+  assert.equal(await journals.softDelete(randomUUID()), false);
+  assert.equal(await journals.isDeleted(randomUUID()), false);
+});
+
+test("a hand-edited meta line with the wrong type for a key is folded without that key; list and get agree", async () => {
+  const { journals, dir } = await tmpJournals();
+  const { id } = await seedRun(journals, "hello");
+  const before = await fs.readFile(file(dir, id), "utf8");
+  await fs.writeFile(file(dir, id), before + raw(id, [{ type: "meta", at: at(2).toISOString(), pinned: "yes" }]));
+  restart();
+  const fresh = new Journals(dir);
+  const [meta] = await fresh.list();
+  assert.equal(meta.pinned, false);
+  assert.equal((await fresh.get(id))?.pinned, false);
+});
+
+test("a missing sessions directory lists as empty", async () => {
+  assert.deepEqual(await new Journals(path.join(os.tmpdir(), `absent-${randomUUID()}`)).list(), []);
+});
+
+test("SPE_SESSIONS_TEST_SAVE_DELAY_MS holds a run_end append, nothing else", async () => {
+  const { journals } = await tmpJournals();
+  const id = randomUUID();
+  process.env.SPE_SESSIONS_TEST_SAVE_DELAY_MS = "200";
+  try {
+    let t = Date.now();
+    await journals.append(id, { type: "created", version: 1, id }, "now");
+    assert.ok(Date.now() - t < 150);
+    t = Date.now();
+    await journals.append(id, { type: "run_end", run_id: "r", status: "refused", error: null }, "now");
+    assert.ok(Date.now() - t >= 180);
+  } finally {
+    delete process.env.SPE_SESSIONS_TEST_SAVE_DELAY_MS;
+  }
 });

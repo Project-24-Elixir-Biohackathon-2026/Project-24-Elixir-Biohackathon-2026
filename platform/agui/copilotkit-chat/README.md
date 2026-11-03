@@ -20,31 +20,40 @@ Telemetry is off in the image: `NEXT_TELEMETRY_DISABLED=1`, `COPILOTKIT_TELEMETR
 
 ## Sessions
 
-Each conversation is a session: one JSON file, `/data/sessions/<id>.json`, on the `chat-sessions`
-volume (mounted at `/data`; the image creates `/data/sessions` owned by `node`). `<id>` is the
-AG-UI thread id, a lower-case UUID v4; nothing else ever names a file. The file holds the AG-UI
-`messages` as the last run ended with them, one `runs[]` entry per run (`completed`, `failed` or
-`cancelled`), and the metadata `title`, `tags`, `pinned`, `hidden` and `deleted_at`.
+Each conversation is a session with one append-only journal, `/data/sessions/<id>.jsonl`, on the
+`chat-sessions` volume (mounted at `/data`; the image creates `/data/sessions` owned by `node`). `<id>` is the
+AG-UI thread id, a lower-case UUID v4; nothing else ever names a file. One JSON line per step: `created`,
+then per run `run_start` (the new user message, what the client sent that was not used, the request's
+`tools`, `context`, `state`, `forwardedProps`), every AG-UI `event` the agent sent, `run_end` with the status
+(`completed`, `failed`, `cancelled`, `aborted`, `refused`); and `meta` lines for `title`, `tags`, `pinned`,
+`hidden`, `deleted_at`. Nothing rewrites or truncates a journal. Files of the earlier format (`<id>.json`) are
+neither read nor migrated.
 
-- `lib/recorder.ts` records every run on the `spe` agent from its AG-UI stream (AG-UI middleware,
-  attached with `agent.use()`), whatever its outcome; one run per session at a time. It stores
-  messages and run metadata only, never request headers or the agent key.
-- `lib/sessions.ts` writes atomically (temporary file, then rename) and one session at a time,
-  through a queue on `globalThis` that every route bundle shares. The chat UI is one Node process;
-  a second one would need a file lock.
+- `lib/recorder.ts` is the run route's hook (AG-UI middleware, attached with `agent.use()`): the chat UI owns
+  the history. From each request it takes only the new user message and sends the agent the journal's
+  history; whatever else the client sent that differs is journaled as ignored (`fabricated`, `edited`,
+  `deleted`, `system`) and, when there is any, the browser gets a `MESSAGES_SNAPSHOT` of what the agent saw.
+  `run_start` is fsynced before the agent is called; a journal that cannot be written ends the run with
+  "this session could not be saved". Runs on one session may overlap and become branches; the chat reopens
+  on the branch of the run that ended last. It never stores request headers or the agent key.
+- `lib/journal.ts` writes and parses the lines, `lib/rebuild.ts` rebuilds a conversation with
+  `@ag-ui/client`'s own event handling, `lib/anchor.ts` compares the client's history with the journal.
+- `lib/sessions.ts` appends one session at a time through a queue on `globalThis` that every route bundle
+  shares, and serves the list from an index in memory (also on `globalThis`), built by one pass over the
+  journals on first use and updated on every append. The chat UI is one Node process.
 - `/api/sessions`: `GET` lists metadata (newest first, at most 1000, deleted ones left out);
-  `GET`/`PATCH`/`DELETE /api/sessions/{id}` read one, change `title`, `tags`, `pinned` or `hidden`
-  (bodies up to 16 KB), or mark it deleted. A deleted session's file is kept. There is no `POST`:
-  a session exists once its first run is recorded. Errors are `{"error": "<message>"}`.
+  `GET`/`PATCH`/`DELETE /api/sessions/{id}` read one (its latest branch), change `title`, `tags`, `pinned` or
+  `hidden` (bodies up to 16 KB; one `meta` line each), or mark it deleted. A deleted session's journal is
+  kept. There is no `POST`: a session is listed once a run has added a message. Errors are `{"error": "<message>"}`.
 
-The files hold whatever participants typed and tools returned, canary values included: treat the
+The journals hold whatever participants typed and tools returned, canary values included: treat the
 volume like the agent's run log.
 
 **Sidebar.** `app/sidebar.tsx`, in Open WebUI's layout and colours (light and dark follow the system): *New chat*,
 the sessions by title only, grouped and filtered by `lib/sidebar-view.ts` (below), and a button that collapses the
 sidebar. Each row has a `⋯` menu (`app/row-menu.tsx`): rename (also a double-click on the
 title; Enter, Tab or a click outside saves, Escape cancels), pin, tags, hide, and delete after a confirmation
-(`app/delete-dialog.tsx`; the file is kept and archived). The menu closes on a click outside, Escape or a choice;
+(`app/delete-dialog.tsx`; the journal is kept and archived). The menu closes on a click outside, Escape or a choice;
 on a touch screen every row shows its `⋯`.
 Tags are shown and edited only in the menu's tag editor (`app/tag-editor.tsx`): it suggests the tags in use (arrow
 keys pick one, Enter adds it or the typed text), and a click on a tag removes it. Titles and tags are rendered as
@@ -67,10 +76,10 @@ thread it has not connected to; the runtime's in-memory runner only knows thread
 unknown or deleted `?session=` starts a new session and drops the parameter.
 
 **Shutdown.** `instrumentation.ts` installs `lib/shutdown.ts` on `SIGTERM`: new runs are refused, every run in
-progress is cancelled and saved as `cancelled`, the session queue drains (at most 25 s) and the process exits. The
+progress is cancelled (its `run_end` says `cancelled`), the session queue drains (at most 25 s) and the process exits. The
 image sets `NEXT_MANUAL_SIG_HANDLE=true` so that Next.js's own handler does not exit first; `node
 scripts/check-shutdown.mjs [--image <tag>]` checks it. `archive.yml` relies on it: it stops `chat-ui`, then `agent`,
-before copying the sessions.
+before copying the journals.
 
 ```bash
 npm ci && npm run build                       # type-checks too

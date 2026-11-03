@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Fetch } from "./client.ts";
 // Node-only: the recorder is never imported by the browser module; the test pins the copies.
-import { REFUSAL_MESSAGES, SAVE_FAILED } from "./recorder.ts";
+import { REFUSAL_MESSAGES } from "./recorder.ts";
 import type { SessionMeta } from "./sessions.ts";
 import {
-  RECONCILE_DELAY_MS, REFUSED_RUN_MESSAGES, SAVE_FAILED_EVENT, SAVE_FAILED_MESSAGE, clockOffset, fetchSessionList,
-  isRefusal, isSaveFailed, reconcile, serverRunStart, showsRun,
+  RECONCILE_DELAY_MS, REFUSED_RUN_MESSAGES, SAVE_FAILED_MESSAGE, clockOffset, fetchSessionList,
+  isRefusal, reconcile, serverRunStart, showsRun,
 } from "./reconcile.ts";
 
 const ID = "6f1c0d2e-4b1a-4c3d-8e9f-0a1b2c3d4e5f";
@@ -102,14 +102,6 @@ test("isRefusal: the recorder's admission errors, nothing else", () => {
 
 test("REFUSED_RUN_MESSAGES are the recorder's refusal messages, all of them", () => {
   assert.deepEqual([...REFUSED_RUN_MESSAGES], [...REFUSAL_MESSAGES]);
-});
-
-test("isSaveFailed: the recorder's save-failed event for this run's session only", () => {
-  assert.equal(SAVE_FAILED_EVENT, SAVE_FAILED);
-  assert.equal(isSaveFailed({ name: SAVE_FAILED_EVENT, value: { session: ID } }, ID), true);
-  assert.equal(isSaveFailed({ name: SAVE_FAILED_EVENT, value: { session: "other" } }, ID), false);
-  assert.equal(isSaveFailed({ name: SAVE_FAILED_EVENT, value: null }, ID), false);
-  assert.equal(isSaveFailed({ name: "something.else", value: { session: ID } }, ID), false);
 });
 
 test("fetchSessionList: list and offset from one GET; a non-200 throws", async () => {

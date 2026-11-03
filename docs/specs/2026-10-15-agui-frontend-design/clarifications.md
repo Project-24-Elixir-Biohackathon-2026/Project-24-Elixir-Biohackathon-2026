@@ -99,3 +99,36 @@ in the parts it amends.
    message. A client-chosen id equal to its own run's message, or to another exported id, could make a message
    its own ancestor and hang the walk along `currentId`. *Amends:* §14 *The Open WebUI chat* and *Write*.
    *Status:* folded.
+
+9. **`GET /api/sessions/{id}` no longer answers `last_run_at`** (2026-11-03; AG-UI conversation record,
+   slice 3/4, task 1). §6's row for that call drops the field; it stays on `GET /api/sessions`'s list rows.
+   *Reason:* `last_run_at` tells a client its run was journaled apart from a metadata change, which a list
+   row needs to reconcile after a run (decision 26); one session's own view does not, and the store's `get()`
+   builds `SessionView` as `SessionMeta` without it rather than carrying a field nothing reads. *Cost if
+   wrong:* a caller that read `last_run_at` off `GET /api/sessions/{id}` gets `undefined`; none does today.
+   *Amends:* §6, the `GET /api/sessions/{id}` row. *Status:* folded.
+
+10. **Activity messages on the journal's path are neither sent to the agent nor counted `deleted`** (2026-11-03;
+    AG-UI conversation record, slice 3/4, task 2). §13 *The run route*, step 2 leaves every `role: "activity"`
+    message out of the path it classifies against, and step 5 sends the agent that path. *Reason:* `@ag-ui/client`
+    1.0.2's `AbstractAgent.prepareRunAgentInput` drops every activity message from a run's input, so the browser
+    never sends one back, and counting it `deleted` would raise a false alarm on every run after one that emitted
+    an `ACTIVITY_SNAPSHOT`; the recorder calls the agent itself, past that filter, so without this the agent would
+    get an activity message no other run's input can carry. *Cost if wrong:* a client that dropped an activity
+    message on purpose is not recorded as having done so, and a `MESSAGES_SNAPSHOT` sent after ignored content
+    lacks activity messages (the browser keeps its own, which the snapshot does not mark authoritative); recording
+    them later is a change to `classify` alone. *Amends:* §13 *The run route*, steps 2 and 5; decision 2.
+    *Status:* folded.
+
+11. **The conversation record is built; the archive exports the journals, and every archive still runs the
+    barrier** (2026-11-03; AG-UI conversation record, slice 3/4). `chat-ui` keeps `/data/sessions/<uuid>.jsonl`
+    (§13) and serves §6's session API from it; `archive.yml` copies the journals and the run log, exports the
+    journals with the chat UI's exporter and renders them with `write_run.py` (§14); `<uuid>.json` and
+    `write_agui_run.py` are gone. Until the live copy is built, every archive stops `chat-ui` and then the agent
+    before the copy and starts them again after it, as the archive of the chat sessions did, and the bundle says
+    `final`. (`GET /api/sessions/{id}` without `last_run_at` is clarification 9.) *Reason:* the record and its
+    archive ship together, so `main` never holds journals the archive cannot render; the live copy (decision 30)
+    follows separately. *Cost if wrong:* until the live copy, an archive taken while participants work pauses
+    their runs for the copy (a run in progress ends `cancelled`), as it did before the record. *Amends:* the
+    README's status line and the note above the decisions table, §14 (the paragraph on the archive as built, the
+    last paragraph of *Why a live copy is consistent*). *Status:* folded.

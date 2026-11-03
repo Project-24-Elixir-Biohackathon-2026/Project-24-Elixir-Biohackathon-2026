@@ -61,14 +61,17 @@ Per run:
      message without a string id;
    - a client message with a known id whose role, content, tool calls or tool call id differ: `edited`;
      other fields CopilotKit may add are not compared;
-   - a message on the journal's path missing from the client: `deleted`;
+   - a message on the journal's path missing from the client: `deleted`, except an activity message
+     (`role: "activity"`), which the client never sends back: `@ag-ui/client`'s `prepareRunAgentInput` drops
+     every activity message from a run's input. Activity messages are left out of the path altogether;
    - a client system message: `system` (the agent replaces it anyway; recorded so it is not mistaken for one
      that reached the model).
 3. Refuse a run with a `runId` the journal already holds, without a journal line (decision 3).
 4. Write `run_start` (decision 4). Then refuse a run with no new user message: `run_end` `refused`, and
    `RUN_STARTED` then `RUN_ERROR` to the client, without calling the agent (decision 3), so what it carried
    is recorded.
-5. Replace `messages` with the path plus the new messages and call `next` (decision 5). If anything was
+5. Replace `messages` with the path plus the new messages and call `next` (decision 5). The path holds no
+   activity message (step 2), as no run's input does once `@ag-ui/client` has prepared it. If anything was
    ignored, emit `MESSAGES_SNAPSHOT` to the client right after the agent's `RUN_STARTED` (decision 6):
    `@ag-ui/client` 1.0.2's event verifier refuses a stream whose first event is not `RUN_STARTED` or
    `RUN_ERROR`.

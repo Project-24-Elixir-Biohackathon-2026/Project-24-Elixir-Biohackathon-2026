@@ -1,37 +1,26 @@
-// Chat sessions on disk: one JSON file per session, /data/sessions/<uuid>.json.
-// The only module that touches the filesystem. Every id is checked by isSessionId() before a
-// path is built from it.
+// Chat sessions on disk: one append-only journal per session, /data/sessions/<uuid>.jsonl (lib/journal.ts
+// writes and parses it, lib/rebuild.ts rebuilds its conversation). The only module that names a journal by
+// session id: every id is checked by isSessionId() before a path is built from it. The session list is served
+// from an index in memory, built by one pass over the journals on first use and updated on every append.
+// Files in the earlier JSON format (<uuid>.json) are neither read nor migrated.
 import fs from "node:fs/promises";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
 import type { Message } from "@ag-ui/client";
+import { EarlierFailure, JournalWriter, idOfJournal, journalPath, parseJournal } from "./journal.ts";
+import type { Clock, Durability, JournalFs, Line, NewLine } from "./journal.ts";
+import { branchOfTip, rebuildText } from "./rebuild.ts";
+import type { Conversation } from "./rebuild.ts";
 import { isSessionId } from "./session-id.ts";
 export { isSessionId };
 
-export type RunStatus = "completed" | "failed" | "cancelled";
-export type RunEntry = { run_id: string; started_at: string; ended_at: string; status: RunStatus };
-export type SessionRecord = {
-  version: 1;
-  id: string;
-  title: string;
-  title_source: "auto" | "user";
-  tags: string[];
-  pinned: boolean;
-  hidden: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at: string | null;
-  messages: Message[];
-  runs: RunEntry[];
+// `last_run_at`: the latest run_end's time (null before the first), so a client can tell its run was
+// journaled apart from a metadata change, which also moves `updated_at` (the journal's last line).
+export type SessionMeta = {
+  id: string; title: string; tags: string[]; pinned: boolean; hidden: boolean;
+  created_at: string; updated_at: string; last_run_at: string | null;
 };
-// `last_run_at`: the latest recorded run's end (null before the first), so a client can tell its
-// run was saved apart from a metadata change, which also moves `updated_at`.
-export type SessionMeta = Pick<SessionRecord, "id" | "title" | "tags" | "pinned" | "hidden" | "created_at" | "updated_at"> &
-  { last_run_at: string | null };
-export type SessionView = Omit<SessionRecord, "deleted_at" | "runs">;
-export type MetaPatch = Partial<Pick<SessionRecord, "title" | "tags" | "pinned" | "hidden">>;
-
-const DIR_SYNC_UNSUPPORTED = new Set(["EINVAL", "ENOTSUP", "EISDIR", "EPERM"]);
+export type SessionView = Omit<SessionMeta, "last_run_at"> & { messages: Message[] };
+export type MetaPatch = Partial<Pick<SessionMeta, "title" | "tags" | "pinned" | "hidden">>;
 
 export class ValidationError extends Error {}
 
@@ -102,17 +91,18 @@ export function autoTitle(messages: Message[]): string {
   return title || "Untitled";
 }
 
-// One queue and one running set per process, shared by every route bundle: Next.js bundles each
-// route separately, so module state would be per bundle, but globalThis is per process. chat-ui
-// is one Node process (`node server.js`); a second process would need a file lock instead.
+// One queue and one running set per process, shared by every route bundle: Next.js bundles each route
+// separately, so module state would be per bundle, but globalThis is per process. chat-ui is one Node
+// process (`node server.js`); a second process would need a file lock instead. `running` is keyed by the
+// recorder's runKey(threadId, runId): runs on one session may overlap (decision 9).
 export type RunHandle = { cancel: () => void };
 export type Shared = { queue: Map<string, Promise<unknown>>; running: Map<string, RunHandle>; closing: boolean };
-const KEY = Symbol.for("spe.sessions.queue");
+const QUEUE = Symbol.for("spe.sessions.queue");
 
 export function shared(): Shared {
-  const g = globalThis as typeof globalThis & { [KEY]?: Shared };
-  g[KEY] ??= { queue: new Map(), running: new Map(), closing: false };
-  return g[KEY];
+  const g = globalThis as typeof globalThis & { [QUEUE]?: Shared };
+  g[QUEUE] ??= { queue: new Map(), running: new Map(), closing: false };
+  return g[QUEUE];
 }
 
 // Runs fn after every earlier fn for the same id has settled. The map holds only the tail of
@@ -132,170 +122,266 @@ export function withSession<T>(id: string, fn: () => Promise<T>): Promise<T> {
   return result;
 }
 
-function toMeta(r: SessionRecord): SessionMeta {
+// The index: per journal, what the list needs. Per directory (tests use many), on globalThis, with the
+// journal writers, so every route bundle appends through the same writer and updates the same entry.
+type Entry = {
+  id: string; created_at: string | null; first_at: string | null; last_line_at: string | null;
+  last_run_at: string | null; first_user: Message | null; added: boolean;
+  title: string | null; tags: string[]; pinned: boolean; hidden: boolean; deleted_at: string | null;
+};
+type DirIndex = { entries: Map<string, Entry>; ready: Promise<void> | null; writers: Map<string, JournalWriter> };
+const INDEX = Symbol.for("spe.sessions.index");
+
+function sessionIndex(): Map<string, DirIndex> {
+  const g = globalThis as typeof globalThis & { [INDEX]?: Map<string, DirIndex> };
+  g[INDEX] ??= new Map();
+  return g[INDEX];
+}
+
+function newEntry(id: string): Entry {
   return {
-    id: r.id, title: r.title, tags: r.tags, pinned: r.pinned, hidden: r.hidden, created_at: r.created_at,
-    updated_at: r.updated_at, last_run_at: r.runs.at(-1)?.ended_at ?? null,
+    id, created_at: null, first_at: null, last_line_at: null, last_run_at: null, first_user: null, added: false,
+    title: null, tags: [], pinned: false, hidden: false, deleted_at: null,
   };
 }
 
-// The one test of a soft-deleted session, for every reader: list, GET and run admission.
-export function isDeleted(record: SessionRecord): boolean {
-  return record.deleted_at !== null;
+// A meta line's value is folded only when its type is the one parsePatch accepts for that key: a hand-edited
+// line with the wrong type is skipped for that key, not fatal, so list() and get() agree with what parsePatch
+// would ever have written.
+function fold(entry: Entry, line: Line): void {
+  entry.first_at ??= line.at;
+  entry.last_line_at = line.at;
+  if (line.type === "created") {
+    entry.created_at ??= line.at;
+  } else if (line.type === "run_start") {
+    // A run with new messages added them; a refused run has none (decision 3).
+    if (line.messages.length > 0) {
+      entry.added = true;
+      entry.first_user ??= line.messages.find((m) => m.role === "user") ?? null;
+    }
+  } else if (line.type === "run_end") {
+    entry.last_run_at = line.at;
+  } else if (line.type === "meta") {
+    if (typeof line.title === "string") entry.title = line.title;
+    if (Array.isArray(line.tags) && line.tags.every((t) => typeof t === "string")) {
+      entry.tags = line.tags;
+    }
+    if (typeof line.pinned === "boolean") entry.pinned = line.pinned;
+    if (typeof line.hidden === "boolean") entry.hidden = line.hidden;
+    if (typeof line.deleted_at === "string") entry.deleted_at = line.deleted_at;
+  }
 }
 
-function checkRecord(value: unknown, id: string): SessionRecord {
-  const r = value as SessionRecord;
-  const ok =
-    typeof r === "object" && r !== null && r.version === 1 && r.id === id &&
-    typeof r.title === "string" && Array.isArray(r.tags) && Array.isArray(r.messages) &&
-    Array.isArray(r.runs) && typeof r.updated_at === "string" && typeof r.pinned === "boolean" &&
-    typeof r.hidden === "boolean" && (r.deleted_at === null || typeof r.deleted_at === "string");
-  if (!ok) throw new Error(`session file ${id}.json is not a version-1 session`);
-  return r;
+// Listed: some run added a message, and not deleted. Hidden sessions are listed (the browser filters).
+function listed(entry: Entry): boolean {
+  return entry.added && entry.deleted_at === null;
 }
 
-// Test-only: SPE_SESSIONS_TEST_SAVE_DELAY_MS holds each recorded run's write that long, under the
-// session's queue, so end-to-end checks can make a save land late. Unset in production.
+function toMeta(e: Entry): SessionMeta {
+  return {
+    id: e.id, title: e.title ?? autoTitle(e.first_user ? [e.first_user] : []), tags: e.tags, pinned: e.pinned,
+    hidden: e.hidden, created_at: e.created_at ?? e.first_at ?? "", updated_at: e.last_line_at ?? "",
+    last_run_at: e.last_run_at,
+  };
+}
+
+const nodeFs: JournalFs = { open: (p, flags) => fs.open(p, flags) };
+
+// The error-code helper, shared by this module and lib/api.ts (and the recorder): a filesystem error's
+// `code`, or an ordinary Error's name, or "error" for anything else. Never the error's message, which may
+// quote file content or a canary.
+export function codeOf(error: unknown): string {
+  return (error as NodeJS.ErrnoException)?.code ?? (error instanceof Error ? error.name : "error");
+}
+
+// A journal's whole text, or null when there is none.
+async function readText(fsx: JournalFs, file: string): Promise<string | null> {
+  let handle;
+  try {
+    handle = await fsx.open(file, "r");
+  } catch (error) {
+    if (codeOf(error) === "ENOENT") return null;
+    throw error;
+  }
+  try {
+    const { size } = await handle.stat();
+    const buffer = Buffer.alloc(size);
+    let offset = 0;
+    while (offset < size) {
+      const { bytesRead } = await handle.read(buffer, offset, size - offset, offset);
+      if (bytesRead === 0) break;
+      offset += bytesRead;
+    }
+    return buffer.subarray(0, offset).toString("utf8");
+  } finally {
+    await handle.close();
+  }
+}
+
+// Test-only: SPE_SESSIONS_TEST_SAVE_DELAY_MS holds each run_end append that long, under the session's queue,
+// so end-to-end checks can make a run's end land late. Unset in production.
 function testSaveDelay(): Promise<void> {
   const ms = Number(process.env.SPE_SESSIONS_TEST_SAVE_DELAY_MS) || 0;
   return ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
 }
 
-export class SessionStore {
+export class Journals {
   readonly dir: string;
+  private readonly fs: JournalFs;
+  private readonly clock: Clock | undefined;
+  private readonly now: () => Date;
 
-  constructor(dir: string) {
-    this.dir = dir;
+  constructor(dir: string, opts: { clock?: Clock; fs?: JournalFs; now?: () => Date } = {}) {
+    this.dir = path.resolve(dir);
+    this.fs = opts.fs ?? nodeFs;
+    this.clock = opts.clock;
+    this.now = opts.now ?? (() => new Date());
   }
 
   private file(id: string): string {
     if (!isSessionId(id)) throw new ValidationError("invalid session id");
-    return path.join(this.dir, `${id}.json`);
+    return journalPath(this.dir, id);
   }
 
-  async read(id: string): Promise<SessionRecord | null> {
-    let text: string;
-    try {
-      text = await fs.readFile(this.file(id), "utf8");
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-      throw error;
+  private state(): DirIndex {
+    const index = sessionIndex();
+    let d = index.get(this.dir);
+    if (!d) {
+      d = { entries: new Map(), ready: null, writers: new Map() };
+      index.set(this.dir, d);
     }
-    let value: unknown;
-    try {
-      value = JSON.parse(text);
-    } catch (error) {
-      // The parser's message quotes the file's content: never pass it on, not even to a log.
-      if (error instanceof SyntaxError) throw new Error(`session file ${id}.json does not parse`);
-      throw error;
-    }
-    return checkRecord(value, id);
+    return d;
   }
 
-  async write(record: SessionRecord): Promise<void> {
-    const target = this.file(record.id);
-    const tmp = `${target}.tmp-${randomUUID()}`;
-    try {
-      const handle = await fs.open(tmp, "wx", 0o600);
-      try {
-        await handle.writeFile(JSON.stringify(record, null, 2) + "\n");
-        await handle.sync();
-      } finally {
-        await handle.close();
-      }
-      await fs.rename(tmp, target);
-    } catch (error) {
-      await fs.rm(tmp, { force: true }).catch(() => {});
+  // The index for this directory, built once; a failed build is retried by the next caller.
+  private async ready(): Promise<DirIndex> {
+    const d = this.state();
+    d.ready ??= this.build(d).catch((error: unknown) => {
+      d.ready = null;
       throw error;
-    }
-    // The rename itself is durable only once the directory is synced. Some filesystems (network, 9p,
-    // virtiofs mounts) refuse to sync a directory; the file is in place then, so that is not a failed save.
-    try {
-      const dir = await fs.open(this.dir, "r");
-      try {
-        await dir.sync();
-      } finally {
-        await dir.close();
-      }
-    } catch (error) {
-      if (!DIR_SYNC_UNSUPPORTED.has((error as NodeJS.ErrnoException).code ?? "")) throw error;
-    }
+    });
+    await d.ready;
+    return d;
   }
 
-  async list(): Promise<SessionMeta[]> {
+  private async build(d: DirIndex): Promise<void> {
     let names: string[];
     try {
       names = await fs.readdir(this.dir);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      if (codeOf(error) === "ENOENT") return;
       throw error;
     }
-    const metas: SessionMeta[] = [];
     for (const name of names) {
-      const id = name.endsWith(".json") ? name.slice(0, -".json".length) : "";
-      if (!isSessionId(id)) continue; // also skips <id>.json.tmp-* leftovers
+      const id = idOfJournal(name);
+      if (id === null || !isSessionId(id)) continue; // <uuid>.json (decision 14) and anything else
       try {
-        const record = await this.read(id);
-        if (record && !isDeleted(record)) metas.push(toMeta(record));
+        const text = await readText(this.fs, this.file(id));
+        if (text === null) continue;
+        const entry = newEntry(id);
+        for (const line of parseJournal(text).lines) fold(entry, line);
+        d.entries.set(id, entry);
       } catch (error) {
-        console.error(`sessions: skipping ${name}:`, error instanceof Error ? error.message : error);
+        console.error(`sessions: skipping ${name}: ${codeOf(error)}`);
       }
     }
-    metas.sort((a, b) => (a.updated_at < b.updated_at ? 1 : a.updated_at > b.updated_at ? -1 : 0));
+  }
+
+  private writerOpts(): { clock?: Clock; fs?: JournalFs; now?: () => Date } {
+    return { fs: this.fs, now: this.now, ...(this.clock ? { clock: this.clock } : {}) };
+  }
+
+  /** The journal's conversation, or null when the session has no journal. With `outsideQueue` (a read not
+   *  under withSession(id), so an append may be in flight), a last segment without its "\n" is a line still
+   *  being written: dropped without a warning. Otherwise it is a torn line, skipped and logged (§13). */
+  async load(id: string, opts: { outsideQueue?: boolean } = {}): Promise<Conversation | null> {
+    const text = await readText(this.fs, this.file(id));
+    if (text === null) return null;
+    return rebuildText(id, opts.outsideQueue ? text.slice(0, text.lastIndexOf("\n") + 1) : text);
+  }
+
+  /** Appends one line (stamped by the writer) and folds it into the index. The caller holds
+   *  withSession(id); a writer that failed is dropped, so the next append opens the journal again, and an
+   *  append that found its writer already failed is retried once on a fresh one. */
+  async append(id: string, line: NewLine, durability: Durability): Promise<void> {
+    const file = this.file(id);
+    const d = await this.ready();
+    if (line.type === "run_end") await testSaveDelay();
+    let written: Line | null = null;
+    // Twice at most: a writer whose earlier call failed (an interval fsync no caller waited on) rejects this
+    // line without writing it, so it is dropped and the line goes to a fresh writer once.
+    for (let attempt = 0; written === null; attempt++) {
+      let writer = d.writers.get(id);
+      if (!writer) {
+        writer = new JournalWriter(file, this.writerOpts());
+        d.writers.set(id, writer);
+      }
+      try {
+        written = await writer.append(line, durability);
+      } catch (error) {
+        if (d.writers.get(id) === writer) d.writers.delete(id);
+        void writer.close().catch(() => {});
+        if (!(error instanceof EarlierFailure) || attempt > 0) throw error;
+      }
+    }
+    let entry = d.entries.get(id);
+    if (!entry) {
+      entry = newEntry(id);
+      d.entries.set(id, entry);
+    }
+    fold(entry, written);
+  }
+
+  async list(): Promise<SessionMeta[]> {
+    const d = await this.ready();
+    const metas = [...d.entries.values()].filter(listed).map(toMeta);
+    // Newest updated_at first; a tie (two lines stamped the same instant) breaks by id, so the order never
+    // depends on the index's build path (an append's insertion order vs. a fresh build's readdir order).
+    metas.sort((a, b) => {
+      if (a.updated_at !== b.updated_at) return a.updated_at < b.updated_at ? 1 : -1;
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    });
     return metas.slice(0, MAX_LIST);
   }
 
-  async patch(id: string, patch: MetaPatch, now: Date): Promise<SessionMeta | null> {
+  /** The tip's branch with the metadata; null when missing, deleted, or no run added a message. */
+  async get(id: string): Promise<SessionView | null> {
+    this.file(id);
+    const d = await this.ready();
+    const entry = d.entries.get(id);
+    if (!entry || !listed(entry)) return null;
+    const conv = await this.load(id, { outsideQueue: true });
+    if (!conv || conv.tip === null) return null;
+    const { last_run_at: _lastRun, ...meta } = toMeta(entry);
+    return { ...meta, messages: branchOfTip(conv) };
+  }
+
+  async patch(id: string, patch: MetaPatch): Promise<SessionMeta | null> {
     this.file(id); // throws ValidationError before anything is queued
     return withSession(id, async () => {
-      const record = await this.read(id);
-      if (!record || isDeleted(record)) return null;
-      if (patch.title !== undefined) {
-        record.title = patch.title;
-        record.title_source = "user";
-      }
-      if (patch.tags !== undefined) record.tags = patch.tags;
-      if (patch.pinned !== undefined) record.pinned = patch.pinned;
-      if (patch.hidden !== undefined) record.hidden = patch.hidden;
-      record.updated_at = now.toISOString();
-      await this.write(record);
-      return toMeta(record);
+      const entry = (await this.ready()).entries.get(id);
+      if (!entry || !listed(entry)) return null;
+      await this.append(id, { type: "meta", ...patch }, "now");
+      return toMeta(entry);
     });
   }
 
-  async softDelete(id: string, now: Date): Promise<boolean> {
+  async softDelete(id: string): Promise<boolean> {
     this.file(id);
     return withSession(id, async () => {
-      const record = await this.read(id);
-      if (!record || isDeleted(record)) return false;
-      record.deleted_at = now.toISOString();
-      record.updated_at = record.deleted_at;
-      await this.write(record);
+      const entry = (await this.ready()).entries.get(id);
+      if (!entry || !listed(entry)) return false;
+      await this.append(id, { type: "meta", deleted_at: this.now().toISOString() }, "now");
       return true;
     });
   }
 
-  // A run's end: re-read under the queue, so metadata changed during the run survives.
-  // Queued synchronously when called (an async function runs up to its first await), so a
-  // drain of shared().queue started right after sees it.
-  async recordRun(id: string, messages: Message[], run: RunEntry, now: Date): Promise<void> {
+  async isDeleted(id: string): Promise<boolean> {
     this.file(id);
-    return withSession(id, async () => {
-      const stamp = now.toISOString();
-      const record: SessionRecord = (await this.read(id)) ?? {
-        version: 1, id, title: autoTitle(messages), title_source: "auto", tags: [], pinned: false,
-        hidden: false, created_at: run.started_at, updated_at: stamp, deleted_at: null, messages: [], runs: [],
-      };
-      await testSaveDelay();
-      record.messages = messages;
-      record.runs.push(run);
-      record.updated_at = stamp;
-      await this.write(record);
-    });
+    return ((await this.ready()).entries.get(id)?.deleted_at ?? null) !== null;
   }
 }
 
-export function defaultStore(): SessionStore {
-  return new SessionStore(process.env.SPE_SESSIONS_DIR || "/data/sessions");
+export function defaultJournals(): Journals {
+  return new Journals(process.env.SPE_SESSIONS_DIR || "/data/sessions");
 }

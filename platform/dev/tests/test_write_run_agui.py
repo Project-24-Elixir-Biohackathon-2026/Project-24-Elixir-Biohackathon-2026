@@ -246,3 +246,25 @@ def test_a_forged_parent_cycle_cannot_hang_the_render(tmp_path):
     assert md.count("first of the cycle") == 1 and md.count("second of the cycle") == 1
     assert md.index("first of the cycle") < md.index("second of the cycle")
     assert "## Other branches" not in md
+
+
+@pytest.mark.parametrize("ticks,fence_len", [(3, 4), (4, 5), (6, 7), (0, 3), (1, 3), (2, 3)])
+def test_write_run_fence_is_longer_than_any_backtick_run(ticks, fence_len):
+    body = f"before\n{'`' * ticks}\nafter"
+    assert wr.fence(body) == f"{'`' * fence_len}\n{body}\n{'`' * fence_len}"
+
+
+def test_write_run_still_renders_an_openwebui_bundle(tmp_path):
+    bundle = tmp_path / "bundle.json"
+    bundle.write_text(json.dumps({
+        "exported_at": 1761732000, "tags": [{"id": "t1", "name": "exfil"}],
+        "notes": [{"title": "Run report", "data": {"content": {"md": "found it"}}}],
+        "chats": [{"title": "First", "created_at": 1761732000, "updated_at": 1761732000,
+                   "meta": {"tags": ["t1"]},
+                   "chat": {"messages": [{"role": "user", "content": "hi", "timestamp": 1761732000}]}}],
+    }))
+    out = tmp_path / "run"
+    proc = run(bundle, out)
+    assert proc.stdout.strip() == "1 chats, report filled in"
+    assert "| [First](chats/01-first.md) | exfil |  | 1 | 2025-10-29 10:00 UTC |" in (out / "index.md").read_text()
+    assert (out / "report.md").read_text() == "found it"

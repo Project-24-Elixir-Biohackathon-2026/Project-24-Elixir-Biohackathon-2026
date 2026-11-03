@@ -15,7 +15,7 @@ message per run, with spe_run and spe_ignored): write_agui() renders it
 instead, escaping or fencing every text, with each run's status, its ignored
 content and compaction markers; it links agui-journals/ and agent-runs.jsonl
 when they are in the run directory. There is no report.
-Stdlib only. write_agui_run.py imports slug() and fence() from here.
+Stdlib only.
 """
 import datetime
 import json

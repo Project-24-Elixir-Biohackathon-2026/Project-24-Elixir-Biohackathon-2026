@@ -2,23 +2,22 @@
 // unsubscribed (the stream dropped before its end) is saved after the client has gone, so its
 // save can land after the first fetch. Pure apart
 // from the injected fetch and sleep, so `node --test` covers it. Browser code: it must not
-// import recorder.ts (Node-only); reconcile.test.ts checks the copies below against it.
+// import recorder.ts (Node-only); reconcile.test.ts checks the copy below against it.
 import type { Fetch } from "./client.ts";
 import type { SessionMeta } from "./sessions.ts";
 
 export const SAVE_FAILED_MESSAGE = "this session could not be saved";
 export const RECONCILE_RETRIES = 5;
 export const RECONCILE_DELAY_MS = 500;
-/** Name of the CUSTOM event the recorder sends, before the run's last event, when the session
- *  file could not be written; its value is `{ session: <id> }`. */
-export const SAVE_FAILED_EVENT = "spe.session_save_failed";
-/** RUN_ERROR messages of a run the recorder refused at admission: such a run writes nothing. */
+/** RUN_ERROR messages the recorder ends a run with by itself: a refusal (nothing more is journaled for it)
+ *  or a journal that could not be written. Nothing to reconcile: the list is fetched once. */
 export const REFUSED_RUN_MESSAGES: readonly string[] = [
   "invalid session",
   "this session was deleted",
-  "this session is already running",
   "the chat UI is shutting down",
-  "this session could not be read",
+  "this session could not be saved",
+  "this run carries no new message",
+  "this run was already recorded",
 ];
 
 export type ListResult = { list: SessionMeta[]; serverOffsetMs: number };
@@ -45,15 +44,10 @@ export function showsRun(list: readonly SessionMeta[], id: string, runStartServe
   return s !== undefined && s.last_run_at !== null && Date.parse(s.last_run_at) >= runStartServerMs;
 }
 
-/** True when a run error is the recorder's refusal at admission (nothing to reconcile). */
+/** True when a run error is a run the recorder refused or ended itself (nothing more is journaled for
+ *  it): nothing to reconcile. */
 export function isRefusal(message: string): boolean {
   return REFUSED_RUN_MESSAGES.some((m) => message.includes(m));
-}
-
-/** True when a CUSTOM event is the recorder's report that session `id` could not be saved. */
-export function isSaveFailed(event: { name: string; value?: unknown }, id: string): boolean {
-  const value = event.value as { session?: unknown } | null | undefined;
-  return event.name === SAVE_FAILED_EVENT && typeof value === "object" && value !== null && value.session === id;
 }
 
 /** GET /api/sessions, as lib/client.ts's fetchSessions, plus the clock offset its `Date` header

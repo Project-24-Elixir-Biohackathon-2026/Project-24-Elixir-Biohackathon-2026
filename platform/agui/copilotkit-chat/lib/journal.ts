@@ -120,6 +120,19 @@ async function syncDirectory(dir: string): Promise<void> {
 }
 const realFs: JournalFs = { open: (file, flags) => fsp.open(file, flags), syncDir: syncDirectory };
 
+// What a JournalWriter's call rejects with when an earlier call had already failed: this call wrote nothing.
+// It carries the earlier failure's message and code, so a log line names the same cause.
+export class EarlierFailure extends Error {
+  readonly code: string | undefined;
+  readonly earlier: unknown;
+  constructor(earlier: unknown) {
+    super(earlier instanceof Error ? earlier.message : String(earlier));
+    this.earlier = earlier;
+    this.name = "EarlierFailure";
+    this.code = (earlier as NodeJS.ErrnoException)?.code;
+  }
+}
+
 // The only writer of a journal. Appends are chained, so lines are written whole and in call order; a caller
 // still serialises appends per session (spec §13, *Concurrency and branches*). "now" resolves after an fsync;
 // "soon" resolves after the write and fsyncs within FSYNC_INTERVAL_MS. A failed write or fsync fails that
@@ -186,10 +199,11 @@ export class JournalWriter {
     }, true);
   }
 
-  // Runs fn after every earlier call; once one has failed, later ones fail with its error (close still runs).
+  // Runs fn after every earlier call; once one has failed, later ones fail with EarlierFailure, writing nothing
+  // (close still runs).
   private enqueue<T>(fn: () => Promise<T>, evenAfterFailure = false): Promise<T> {
     const run = this.chain.then(async () => {
-      if (this.failure !== null && !evenAfterFailure) throw this.failure;
+      if (this.failure !== null && !evenAfterFailure) throw new EarlierFailure(this.failure);
       try {
         return await fn();
       } catch (error) {

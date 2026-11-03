@@ -1,9 +1,11 @@
 ---
 # On the SPE VM: export the frontend's chats and fetch them to the controller.
 # openwebui: chats, notes and tags as {{ spe_output_dir }}/archive-bundle.json.
-# agui: every session file (hidden and deleted included) and the agent's run log
-# as {{ spe_output_dir }}/archive-bundle-agui.tar.gz, after stopping chat-ui and
-# then the agent so that no run is in progress or unsaved; both are started again.
+# agui: every journal (hidden and deleted sessions included), the agent's run log and the
+# journals exported as an Open WebUI bundle by the chat UI's own exporter, as
+# {{ spe_output_dir }}/archive-bundle-agui.tar.gz. Until the live archive is built, every
+# archive first stops chat-ui and then the agent, so no run is in progress or unjournaled,
+# and starts both again after the copy.
 - name: Export OpenWebUI
   when: spe_frontend == 'openwebui'
   block:
@@ -39,7 +41,7 @@
         state: absent
       loop: [/tmp/spe-export-openwebui.py, /tmp/spe-openwebui-export.json]
 
-- name: Export the AG-UI chat sessions and the agent's run log
+- name: Export the AG-UI journals and the agent's run log
   when: spe_frontend == 'agui'
   vars:
     agui_compose: [docker, compose, -p, spe-frontend, -f, "{{ spe_frontend_dir }}/docker-compose.yml"]
@@ -50,6 +52,25 @@
       register: agui_chat_ui
       changed_when: false
       failed_when: agui_chat_ui.rc != 0 or agui_chat_ui.stdout | trim | length == 0
+
+    - name: The chat UI's image, which holds the journal exporter
+      ansible.builtin.command:
+        argv: "{{ agui_compose + ['ps', '-a', '--format', '{{.Image}}', 'chat-ui'] }}"
+      register: agui_ui_image
+      changed_when: false
+      failed_when: agui_ui_image.rc != 0 or agui_ui_image.stdout | trim | length == 0
+
+    - name: The exporter runs as this user, so it reads the copies and writes the bundle beside them
+      ansible.builtin.command:
+        argv: [id, -u]
+      register: agui_uid
+      changed_when: false
+
+    - name: The user's group
+      ansible.builtin.command:
+        argv: [id, -g]
+      register: agui_gid
+      changed_when: false
 
     - name: The services running before the barrier (only their exit code says whether it held)
       ansible.builtin.command:
@@ -67,7 +88,7 @@
 
         - name: Barrier and copy; the containers are started again whatever happens
           block:
-            - name: Stop the chat UI first (on SIGTERM it cancels, saves every run in progress and exits)
+            - name: Stop the chat UI first (on SIGTERM it cancels every run in progress, journals its end and exits)
               ansible.builtin.command:
                 argv: "{{ agui_compose + ['stop', '-t', '30', 'chat-ui'] }}"
               changed_when: true
@@ -90,17 +111,17 @@
                 that: agui_unclean | length == 0
                 fail_msg: >-
                   Stopping did not end cleanly ({{ agui_unclean | join(', ') }}: service and exit code;
-                  1 from chat-ui is a drain timeout, 137 a kill after 30 s), so the sessions may lack
-                  the last run. The containers are started again; see their logs, then run archive.yml again.
+                  1 from chat-ui is a drain timeout, 137 a kill after 30 s), so a journal may lack the
+                  last run's end. The containers are started again; see their logs, then run archive.yml again.
                 quiet: true
               vars:
                 agui_unclean: >-
                   {{ agui_exits.stdout_lines | map('split') | selectattr(0, 'in', agui_running.stdout_lines)
                      | rejectattr(1, 'eq', '0') | map('join', ' ') | list }}
 
-            - name: Copy the session files (hidden and deleted included)
+            - name: Copy the journals (hidden and deleted sessions included)
               ansible.builtin.command:
-                argv: "{{ agui_compose + ['cp', 'chat-ui:/data/sessions', agui_export_dir.path ~ '/sessions'] }}"
+                argv: "{{ agui_compose + ['cp', 'chat-ui:/data/sessions', agui_export_dir.path ~ '/agui-journals'] }}"
               changed_when: false
 
             - name: Copy the agent's run log (absent until a run has reached the agent)
@@ -114,6 +135,39 @@
               ansible.builtin.command:
                 argv: "{{ agui_compose + ['start', 'agent', 'chat-ui'] }}"
               changed_when: true
+
+        # The exporter is the chat UI's own rebuild (lib/rebuild.ts), so the archive and the chat cannot
+        # disagree; run in a one-off container with no network, only the copies mounted. `final`: the copy
+        # was taken with both services stopped, so no run was in progress.
+        - name: Export the journals as an Open WebUI bundle
+          ansible.builtin.command:
+            argv:
+              - docker
+              - run
+              - --rm
+              - --network
+              - none
+              - --read-only
+              - --tmpfs
+              - /tmp
+              - --cap-drop
+              - ALL
+              - --security-opt
+              - no-new-privileges:true
+              - --user
+              - "{{ agui_uid.stdout | trim }}:{{ agui_gid.stdout | trim }}"
+              - --entrypoint
+              - node
+              - -v
+              - "{{ agui_export_dir.path }}/agui-journals:/in:ro"
+              - -v
+              - "{{ agui_export_dir.path }}:/out"
+              - "{{ agui_ui_image.stdout | trim }}"
+              - scripts/export-journals.ts
+              - /in
+              - /out/bundle.json
+              - final
+          changed_when: true
 
         - name: Archive directory on the VM
           ansible.builtin.tempfile:

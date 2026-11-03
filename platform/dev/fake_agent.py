@@ -10,7 +10,9 @@ for stopping, closing or archiving a run in progress; a message containing "comp
 runs a command with a long output, so the history passes the scripted window
 (COMPACT_WINDOW tokens) and the agent compacts it with a scripted summary (once per
 session: in a session that already compacted, "compact" answers "compacted" without
-running the command, as the summary stays in the history). The run log
+running the command, as the summary stays in the history); a message containing "echo-input" makes the model answer, instead of
+running a command, with the JSON list of {role, id} of what it was sent (the system prompt left out), so a
+client can see which history reached the model. The run log
 goes to a temporary directory, or to --run-log PATH; --key defaults to
 $SPE_AGENT_API_KEY, so the key need not sit in argv.
 """
@@ -21,13 +23,15 @@ import asyncio
 import json
 import os
 import tempfile
+import uuid
 from pathlib import Path
 
 import httpx
 import uvicorn
 from pydantic_ai.messages import (
-    ModelRequest, ModelResponse, SystemPromptPart, TextPart, ToolReturnPart, UserPromptPart,
+    ModelRequest, ModelResponse, SystemPromptPart, TextPart, ToolCallPart, ToolReturnPart, UserPromptPart,
 )
+from pydantic_ai.ui._utils import get_ui_message_id
 from pydantic_ai.models.function import DeltaToolCall, FunctionModel
 
 from spe_agent.app import create_app
@@ -77,10 +81,33 @@ def summarise(messages, info) -> ModelResponse:
         f"Scripted summary of {len(text)} characters of conversation. The latest request was: {latest.strip()}")])
 
 
+def received(messages) -> list[dict]:
+    """What the model was sent, as [{role, id}]: one entry per part, the system prompt left out, with the AG-UI id
+    of the message the part came from. pydantic-ai keeps one AG-UI id per model message (the adapter's
+    set_ui_message_id), so AG-UI messages merged into one model message all show the last one's id."""
+    out = []
+    for m in messages:
+        ui_id = get_ui_message_id(m)
+        for p in m.parts:
+            if isinstance(p, UserPromptPart):
+                role = "user"
+            elif isinstance(p, ToolReturnPart):
+                role = "tool"
+            elif isinstance(p, (TextPart, ToolCallPart)):
+                role = "assistant"
+            else:
+                continue
+            out.append({"role": role, "id": ui_id})
+    return out
+
+
 async def scripted(messages, info):
     users = [str(p.content) for m in messages if isinstance(m, ModelRequest)
              for p in m.parts if isinstance(p, UserPromptPart) and not str(p.content).startswith(FRAME)]
     last_user = users[-1] if users else ""
+    if "echo-input" in last_user.lower():
+        yield json.dumps(received(messages))
+        return
     if "fail" in last_user.lower():
         raise RuntimeError("scripted model failure (the message asked for it)")
     last = messages[-1].parts[-1]
@@ -100,8 +127,10 @@ async def scripted(messages, info):
             yield chunk
     else:
         command = f"print-long-output turn {len(users)}" if compacting else f"echo turn {len(users)}"
+        # A unique id: after a compaction the turn count starts again, and an id reused from an earlier run
+        # makes an AG-UI client append this call's arguments and result to that run's call.
         yield {0: DeltaToolCall(name="run_command", json_args=json.dumps({"command": command}),
-                                tool_call_id=f"call-{len(users)}")}
+                                tool_call_id=f"call-{len(users)}-{uuid.uuid4().hex[:8]}")}
 
 
 def main() -> None:

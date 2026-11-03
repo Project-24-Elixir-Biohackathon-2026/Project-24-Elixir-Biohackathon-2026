@@ -46,8 +46,8 @@ expecting the container to exist for `docker compose cp`) fails confusingly inst
 **Fix.** Check `docker compose ps -a -q <service>` is non-empty before relying on the stop, or before trying
 to copy from the container. `docker compose cp` itself does fail clearly on a missing *file* inside a stopped
 container (`Could not find the file … in container`, rc 1) — that part needs no extra check — but a missing
-*container* needs the explicit `ps -a -q` check first. `run_archive`'s `write_agui_run.py` export task does
-this for `chat-ui`.
+*container* needs the explicit `ps -a -q` check first. `run_archive`'s export task (`tasks/export.yml`)
+does this for `chat-ui`.
 
 **It also exits 0 when the container did not stop cleanly.** A process that exits 1 on `SIGTERM`, or one Docker
 kills after `-t` (exit 137), still leaves `docker compose stop` at rc 0. Read the exit code afterwards:
@@ -69,7 +69,7 @@ an async drain, since a detached run holds no HTTP response open for Next.js to 
 
 **Fix.** Set `NEXT_MANUAL_SIG_HANDLE=true` in the image so Next.js installs no handler of its own, and let
 `lib/shutdown.ts`'s `installShutdown()` (registered from `instrumentation.ts`) be the only `SIGTERM` listener:
-it refuses new runs, cancels every run in progress (saved `cancelled`), drains the session queue (at most 25s)
+it refuses new runs, cancels every run in progress (each ends `cancelled` in its journal), drains the session queue (at most 25s)
 and then exits. `node scripts/check-shutdown.mjs` checks this end to end, both standalone and in the built
 image.
 

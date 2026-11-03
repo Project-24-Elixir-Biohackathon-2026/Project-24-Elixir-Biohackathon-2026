@@ -1,5 +1,5 @@
-// SIGTERM drain (`docker stop -t 30`, the archive's barrier): refuse new runs, cancel every run in
-// progress (each is finalised `cancelled` by the recorder), wait for the session queue to drain, exit.
+// SIGTERM drain (`docker stop -t 30`, the archive's barrier): refuse new runs, cancel every run in progress
+// (each ends with a run_end `cancelled` in its journal), wait for the session queue to drain, exit.
 // Next.js's own SIGTERM handler would exit as soon as its HTTP server closed, possibly before the
 // last write, so the image sets NEXT_MANUAL_SIG_HANDLE=true and this handler alone ends the process.
 import { shared } from "./sessions.ts";
@@ -42,7 +42,7 @@ export async function shutdown(state: Shared, exit: (code: number) => void, time
   }
   const drained = await drain(state, timeoutMs);
   if (drained) {
-    console.log(`shutdown: ${runs.length} run(s) cancelled, sessions saved`);
+    console.log(`shutdown: ${runs.length} run(s) cancelled, journals written`);
   } else {
     console.error(`shutdown: sessions did not drain within ${timeoutMs} ms; exiting anyway`);
   }
@@ -54,7 +54,7 @@ export function installShutdown(): void {
   if (g[INSTALLED]) return;
   g[INSTALLED] = true;
   if (!process.env.NEXT_MANUAL_SIG_HANDLE) {
-    console.warn("shutdown: NEXT_MANUAL_SIG_HANDLE is not set; Next.js may exit before the sessions are saved");
+    console.warn("shutdown: NEXT_MANUAL_SIG_HANDLE is not set; Next.js may exit before the last journal write");
   }
   let started = false;
   process.on("SIGTERM", () => {

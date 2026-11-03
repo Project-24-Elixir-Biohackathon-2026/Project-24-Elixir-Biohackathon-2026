@@ -54,7 +54,7 @@ Routes under `app/api/sessions/`, beside `/api/copilotkit`. The browser changes 
 | Call | Answer |
 |---|---|
 | `GET /api/sessions` | `200`, a JSON list of metadata (`id`, `title`, `tags`, `pinned`, `hidden`, `created_at`, `updated_at`, and `last_run_at`: the last run's end, `null` before the first), deleted sessions left out, hidden ones included, newest `updated_at` first, at most 1000 |
-| `GET /api/sessions/{id}` | `200` with `id`, `title`, `tags`, `pinned`, `hidden`, `created_at`, `updated_at`, `last_run_at` and `messages`: the tip's branch (§13); `404` if missing or deleted. `version` and `title_source` are no longer answered: the journal keeps neither |
+| `GET /api/sessions/{id}` | `200` with `id`, `title`, `tags`, `pinned`, `hidden`, `created_at`, `updated_at` and `messages`: the tip's branch (§13); `404` if missing or deleted. `version`, `title_source` and `last_run_at` are no longer answered: the journal keeps neither of the first two, and the third is a list-only field (clarification 9) |
 | `PATCH /api/sessions/{id}` | body: any of `title`, `tags`, `pinned`, `hidden`; `200` with the new metadata; `400` for an unknown key (`messages`, `runs` and `id` included), a wrong type or an invalid value (nothing changed); `404` if missing or deleted |
 | `DELETE /api/sessions/{id}` | sets `deleted_at`; `204`; `404` if missing or already deleted |
 

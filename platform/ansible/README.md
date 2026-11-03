@@ -152,9 +152,10 @@ Created through the Coder portal, the instance also gets the Coder agent
 with the parameters, the canary record and, for the `openwebui` frontend, every
 chat (readable Markdown with tool calls and results, plus raw JSON) with its
 tags, the "Run report" note and any other notes. For the `agui` frontend it stops `chat-ui` (which
-saves every run in progress) and then the agent, copies every session file (hidden and deleted
-included) and the agent's run log, starts both again, and renders the sessions like Open WebUI
-chats (`write_agui_run.py`). If the archive fails,
+ends every run in progress, `cancelled`, in its journal) and then the agent, copies every journal
+(hidden and deleted sessions included) and the agent's run log, starts both again, exports the
+journals as Open WebUI chats with the chat UI's own exporter (a one-off container of its image)
+and renders them with `write_run.py`, as for Open WebUI. If the archive fails,
 nothing is deleted or reset; `-e spe_archive_skip=true` skips it. The file
 layout is described in `../coder/README.md`.
 

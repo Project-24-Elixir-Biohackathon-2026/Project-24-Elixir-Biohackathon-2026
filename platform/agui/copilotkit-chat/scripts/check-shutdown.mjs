@@ -1,6 +1,6 @@
 // The SIGTERM drain against the built server, the barrier the archive export relies on: a slow run in progress, with the
-// browser still reading and with the browser gone, is saved `cancelled` and the server exits by
-// itself well inside `docker stop -t 30`.
+// browser still reading and with the browser gone, ends `cancelled` in its journal and the server exits by itself
+// well inside `docker stop -t 30`.
 //   node scripts/check-shutdown.mjs                     # node .next/standalone/server.js
 //   node scripts/check-shutdown.mjs --image spe-chat-ui:check   # the image, as compose runs it, via docker stop -t 30
 // Needs `npm run build` (or the image) first, and uv for platform/dev/fake_agent.py. No model calls.
@@ -131,15 +131,18 @@ async function phase(name, keepReading) {
   const threadId = randomUUID();
   await startSlowRun(threadId, keepReading);
   const { seconds, code, output } = await stopAndTime(server);
-  const file = join(dataDir, "sessions", `${threadId}.json`);
-  if (!existsSync(file)) fail(`${name}: no session file after SIGTERM`);
-  const record = JSON.parse(readFileSync(file, "utf8"));
-  if (record.runs.length !== 1 || record.runs[0].status !== "cancelled") fail(`${name}: runs = ${JSON.stringify(record.runs)}`);
-  if (!record.messages.some((m) => m.role === "user" && String(m.content).includes("slow"))) fail(`${name}: user message missing`);
+  const file = join(dataDir, "sessions", `${threadId}.jsonl`);
+  if (!existsSync(file)) fail(`${name}: no journal after SIGTERM`);
+  const lines = readFileSync(file, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  const ends = lines.filter((l) => l.type === "run_end");
+  if (ends.length !== 1 || ends[0].status !== "cancelled") fail(`${name}: run_end lines = ${JSON.stringify(ends)}`);
+  const start = lines.find((l) => l.type === "run_start");
+  if (!start?.messages.some((m) => m.role === "user" && String(m.content).includes("slow"))) fail(`${name}: run_start lacks the user message`);
+  if (!lines.some((l) => l.type === "event" && l.event.type === "RUN_STARTED")) fail(`${name}: the run's events are missing`);
   if (seconds >= 30) fail(`${name}: took ${seconds} s, beyond docker stop -t 30`);
   if (code !== 0) fail(`${name}: exit code ${code}`);
-  if (!output.includes("shutdown: 1 run(s) cancelled, sessions saved")) fail(`${name}: no drain log line`);
-  console.log(`ok - ${name}: saved cancelled, exit 0 after ${seconds.toFixed(1)} s`);
+  if (!output.includes("shutdown: 1 run(s) cancelled, journals written")) fail(`${name}: no drain log line`);
+  console.log(`ok - ${name}: run_end cancelled, exit 0 after ${seconds.toFixed(1)} s`);
   rmSync(dataDir, { recursive: true, force: true });
 }
 

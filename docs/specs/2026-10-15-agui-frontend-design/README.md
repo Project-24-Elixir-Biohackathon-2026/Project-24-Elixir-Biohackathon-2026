@@ -2,13 +2,13 @@
 
 **Status:** living spec. §§1–5 and 7–12: implemented 2026-10-15 (branch `agent-agui-frontend-impl`; §12
 records what implementation verified and changed). §6's sessions and sidebar: implemented 2026-10-29 to
-2026-11-02, and restated here for the conversation record: where §6 and decisions 19–30 speak of the journal,
-`meta` lines or `agui-journals/`, they wait for the record to be built, and today's code still keeps one
-`<uuid>.json` per session. The conversation record (§13, §14, decisions 1–18): approved 2026-11-03 (the fork's PR #19,
-`thodkatz/elixir-biohackathon-2026-test`), not built yet; the live archive (§14, decision 30) since
-clarification 2. The history before this directory is that of the single
+2026-11-02, restated here for the conversation record and built on the journal with the record (clarification
+11). The conversation record (§13, §14, decisions 1–18): approved 2026-11-03 (the fork's PR #19,
+`thodkatz/elixir-biohackathon-2026-test`), built (clarification 11) except the live archive (§14, decision 30,
+since clarification 2), the Playwright checks of decisions 6, 13, 24–26, the key check (17) and the threat entry
+(18). The history before this directory is that of the single
 file it replaced: `git log -- docs/specs/2026-10-15-agui-frontend-design.md`.
-**Latest clarification:** 5.
+**Latest clarification:** 11.
 §13 and §14 were read against `@ag-ui/client` 1.0.2 and CopilotKit 1.79.0 (`@copilotkit/runtime`,
 `@copilotkit/react-core`) as pinned in `package-lock.json`, and Open WebUI v0.11.3 (the image
 `spe_frontend_webui_image` pins) as the model to follow, read in its source at tag `v0.11.3` (`2a960a5`).
@@ -42,8 +42,8 @@ edits made through the chat; it assumes the participant holds neither the agent 
 
 ## Decisions taken
 
-Decisions 1–18 are the conversation record's, approved and not built yet; 19–30 are the chat sessions' as built, restated
-for the record (their journal parts are built with it). §§1–5 and
+Decisions 1–18 are the conversation record's, built except where the status above says; 19–30 are the chat sessions'
+as built, restated for the record and built on its journal (clarification 11). §§1–5 and
 7–12 predate the table and state their design in their text.
 
 | # | Decision | Section | Acceptance check |

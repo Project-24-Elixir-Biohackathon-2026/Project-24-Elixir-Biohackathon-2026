@@ -1,5 +1,14 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+import { HttpAgent } from "@ag-ui/client";
+import type { Message } from "@ag-ui/client";
+import { mock, test } from "node:test";
+import { SessionRecorder } from "./recorder.ts";
+import { Journals, shared } from "./sessions.ts";
+import { startTestAgent } from "./test-agent.ts";
 import { drain, installShutdown, shutdown } from "./shutdown.ts";
 import type { RunHandle, Shared } from "./sessions.ts";
 
@@ -83,4 +92,31 @@ test("installShutdown adds one SIGTERM listener however often it is called", () 
   installShutdown();
   installShutdown();
   assert.equal(process.listenerCount("SIGTERM"), before + 1);
+});
+
+test("SIGTERM's shutdown against the recorder: a hanging run ends cancelled in its journal, exit 0", async () => {
+  const journals = new Journals(await fs.mkdtemp(path.join(os.tmpdir(), "shutdown-")));
+  const server = await startTestAgent();
+  const recorder = new SessionRecorder(() => journals);
+  const id = randomUUID();
+  const logged = mock.method(console, "log", () => {});
+  try {
+    const sub = recorder.run({
+      threadId: id, runId: randomUUID(), state: {}, tools: [], context: [], forwardedProps: {},
+      messages: [{ id: randomUUID(), role: "user", content: "hang until shutdown" } as Message],
+    }, new HttpAgent({ url: server.url, fetch: recorder.fetch })).subscribe({ error: () => {} });
+    for (let i = 0; i < 500 && server.requests.length === 0; i++) await new Promise((r) => setTimeout(r, 5));
+    const codes: number[] = [];
+    await shutdown(shared(), (code) => codes.push(code), 5000);
+    sub.unsubscribe();
+    assert.deepEqual(codes, [0]);
+    const text = await fs.readFile(path.join(journals.dir, `${id}.jsonl`), "utf8");
+    const ends = text.trimEnd().split("\n").map((l) => JSON.parse(l)).filter((l) => l.type === "run_end");
+    assert.deepEqual(ends.map((e) => e.status), ["cancelled"]);
+    assert.match(JSON.stringify(logged.mock.calls.map((c) => c.arguments)), /1 run\(s\) cancelled, journals written/);
+  } finally {
+    logged.mock.restore();
+    shared().closing = false;
+    await server.close();
+  }
 });

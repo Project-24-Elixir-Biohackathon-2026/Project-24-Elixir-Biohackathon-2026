@@ -8,8 +8,8 @@
 Run `npm ci && npm run build` in platform/agui/copilotkit-chat first. The script starts
 platform/dev/fake_agent.py (with uv, in platform/agui/pydantic-ai-agent) and the standalone chat UI
 with its own sessions directory, walks the sidebar (list, open, New chat, ?session=, the row menu's
-close and focus rules, the row menu, the open session deleted elsewhere) and checks the session files after each step. It ends with three sessions: one tagged and pinned, one hidden, one
-deleted, and checks that a run whose tab is closed is still saved whole. Needs Python Playwright with Chromium
+close and focus rules, the row menu, the open session deleted elsewhere) and checks the journals after each step. It ends with three sessions: one tagged and pinned, one hidden, one
+deleted, and checks that a run whose tab is closed is still journaled whole, and that no run of any journal holds ignored content. Needs Python Playwright with Chromium
 (`pip install playwright` and `playwright install chromium`). Exits nonzero on the first failed check.
 """
 from __future__ import annotations
@@ -51,9 +51,68 @@ def wait_http(url: str, what: str, seconds: float = 60) -> None:
     sys.exit(f"FAIL: {what} did not come up at {url}")
 
 
+def read_journal(text: str) -> list[dict]:
+    """A journal's lines; a torn last line (a copy taken mid-append) is skipped, as the chat's rebuild does."""
+    lines = []
+    for raw in text.splitlines():
+        try:
+            lines.append(json.loads(raw))
+        except json.JSONDecodeError:
+            pass
+    return lines
+
+
+def auto_title(message: dict | None) -> str:
+    """The chat's auto title: the first user message's text, whitespace collapsed, cut to 60 code points."""
+    content = (message or {}).get("content")
+    if not isinstance(content, str):
+        content = " ".join(p.get("text", "") for p in content or [] if isinstance(p, dict) and p.get("type") == "text")
+    return " ".join(content.split())[:60].strip() or "Untitled"
+
+
+def summary(lines: list[dict]) -> dict:
+    """What the checks read of a session: its metadata as its meta lines set it (title_source "user" once a
+    title was set), each run with its status ("incomplete" until its run_end) and ignored content, and its
+    text messages in order of first appearance (user messages from run_start, the agent's from events)."""
+    rec = {"id": None, "title": None, "title_source": "auto", "tags": [], "pinned": False, "hidden": False,
+           "deleted_at": None, "runs": [], "messages": []}
+    runs, texts, first_user = {}, {}, None
+    for line in lines:
+        kind = line.get("type")
+        if kind == "created":
+            rec["id"] = line["id"]
+        elif kind == "run_start":
+            run = {"run_id": line["run_id"], "status": "incomplete", "ignored": line["ignored"]}
+            runs[line["run_id"]] = run
+            rec["runs"].append(run)
+            for m in line["messages"]:
+                rec["messages"].append({"id": m["id"], "role": m["role"], "content": m.get("content")})
+                if first_user is None and m["role"] == "user":
+                    first_user = m
+        elif kind == "event":
+            event = line["event"]
+            if event.get("type") == "TEXT_MESSAGE_START":
+                texts[event["messageId"]] = {"id": event["messageId"], "role": event.get("role", "assistant"), "content": ""}
+                rec["messages"].append(texts[event["messageId"]])
+            elif event.get("type") == "TEXT_MESSAGE_CONTENT" and event.get("messageId") in texts:
+                texts[event["messageId"]]["content"] += event.get("delta", "")
+        elif kind == "run_end" and line["run_id"] in runs:
+            runs[line["run_id"]]["status"] = line["status"]
+        elif kind == "meta":
+            for key in ("tags", "pinned", "hidden", "deleted_at"):
+                if key in line:
+                    rec[key] = line[key]
+            if "title" in line:
+                rec["title"], rec["title_source"] = line["title"], "user"
+    if rec["title"] is None:
+        rec["title"] = auto_title(first_user)
+    return rec
+
+
 class Run:
     def __init__(self, page: Page, sessions: Path, shots: Path | None):
         self.page, self.sessions, self.shots, self.n = page, sessions, shots, 0
+        self.restart_ui = None
 
     def shot(self, name: str) -> None:
         if self.shots:
@@ -66,16 +125,18 @@ class Run:
         print(f"ok - {what}", flush=True)
 
     def files(self) -> dict[str, dict]:
-        return {p.stem: json.loads(p.read_text()) for p in self.sessions.glob("*.json")}
+        """Every journal, summarised; files of the earlier format (<uuid>.json) are not read."""
+        return {p.name[:-len(".jsonl")]: summary(read_journal(p.read_text())) for p in self.sessions.glob("*.jsonl")}
 
     def wait_runs(self, sid: str, n: int, seconds: float = 5) -> dict:
-        """The session's record once it has n runs: the recorder writes after the answer is shown."""
+        """The session's summary once n of its runs have ended: a run whose stream dropped ends later."""
         until = time.time() + seconds
         while True:
-            path = self.sessions / f"{sid}.json"
-            rec = json.loads(path.read_text()) if path.exists() else {"runs": []}
-            if len(rec["runs"]) >= n or time.time() > until:
-                assert len(rec["runs"]) == n, (sid, n, rec["runs"])
+            path = self.sessions / f"{sid}.jsonl"
+            rec = summary(read_journal(path.read_text())) if path.exists() else {"runs": []}
+            ended = [x for x in rec["runs"] if x["status"] != "incomplete"]
+            if len(ended) >= n or time.time() > until:
+                assert len(ended) == n, (sid, n, rec["runs"])
                 return rec
             time.sleep(0.2)
 
@@ -113,7 +174,7 @@ def check_list(r: Run) -> dict[str, str]:
     assert first and first in r.files(), (first, list(r.files()))
     rec = r.files()[first]
     assert [x["status"] for x in rec["runs"]] == ["completed"] and rec["title"] == "List the home directory"
-    r.ok("first run: the row appears, the URL names the session, the file has one completed run")
+    r.ok("first run: the row appears, the URL names the session, the journal has one completed run")
 
     page.reload()
     expect(page.get_by_text("Turn 1: the command ran.")).to_be_visible(timeout=10_000)
@@ -397,7 +458,7 @@ def check_menu(r: Run, ids: dict[str, str]) -> None:
     page.goto(f"{BASE}/?session={ids['third']}")
     expect(page.get_by_test_id("copilot-chat-textarea")).to_be_visible(timeout=10_000)
     assert r.url_session() is None and page.locator(".spe-error").count() == 0
-    r.ok("delete: Cancel keeps it; Delete removes the row, keeps the file; its URL opens a new session")
+    r.ok("delete: Cancel keeps it; Delete removes the row, keeps the journal; its URL opens a new session")
 
     page.goto(f"{BASE}/?session={ids['first']}")
     expect(page.get_by_text("Turn 2: the command ran.")).to_be_visible(timeout=10_000)
@@ -426,14 +487,15 @@ def check_close_tab(r: Run, ids: dict[str, str]) -> None:
     box.press("Enter")
     expect(page.get_by_text("Slow step 1 of 10.")).to_be_visible(timeout=20_000)
     page.close()
-    assert len(r.files()[ids["second"]]["runs"]) == 1, "the slow run was saved before it could have ended"
+    statuses = [x["status"] for x in r.files()[ids["second"]]["runs"]]
+    assert statuses == ["completed", "incomplete"], statuses  # journaled while it runs, ended by nobody yet
     rec = r.wait_runs(ids["second"], 2, seconds=15)
     assert rec["runs"][-1]["status"] == "completed", rec["runs"]
-    answer = [m for m in rec["messages"] if m["role"] == "assistant" and isinstance(m.get("content"), str)][-1]
+    answer = [m for m in rec["messages"] if m["role"] == "assistant"][-1]
     assert "Slow step 10 of 10." in answer["content"], answer["content"]
     assert "Turn 2: the command ran." in answer["content"], answer["content"]
     assert rec["hidden"] is True and rec["title"] == "Read the dataset", rec
-    r.ok("closing the tab mid-run: the whole run is on disk, completed")
+    r.ok("closing the tab mid-run: the whole run is journaled, completed")
 
 
 # --- search with tag: terms, date groups, Show hidden, header, a stopped run, a failed save --
@@ -445,14 +507,22 @@ def iso_days_ago(days: float) -> str:
     return (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
 
-def seed(r: Run, title: str, days_ago: float, **extra) -> str:
-    """A session file written directly (local run only): old timestamps cannot come from a run."""
-    sid = str(uuid.uuid4())
-    when = iso_days_ago(days_ago)
-    record = {"version": 1, "id": sid, "title": title, "title_source": "user", "tags": [], "pinned": False,
-              "hidden": False, "created_at": when, "updated_at": when, "deleted_at": None,
-              "messages": [], "runs": [], **extra}
-    (r.sessions / f"{sid}.json").write_text(json.dumps(record))
+def seed(r: Run, title: str, days_ago: float, tags: list[str] | None = None) -> str:
+    """A journal written directly (local run only): old timestamps cannot come from a run. The chat UI's index
+    is built once, so it lists a seeded journal only after a restart (Run.restart_ui)."""
+    sid, run, when = str(uuid.uuid4()), str(uuid.uuid4()), iso_days_ago(days_ago)
+    ids = {"threadId": sid, "runId": run}
+    lines = [
+        {"type": "created", "at": when, "version": 1, "id": sid},
+        {"type": "run_start", "at": when, "run_id": run, "anchor": None,
+         "messages": [{"id": str(uuid.uuid4()), "role": "user", "content": title}], "ignored": [],
+         "request": {"tools": [], "context": [], "state": {}, "forwardedProps": {}}, "source": "chat"},
+        {"type": "event", "at": when, "run_id": run, "event": {"type": "RUN_STARTED", **ids}},
+        {"type": "event", "at": when, "run_id": run, "event": {"type": "RUN_FINISHED", **ids}},
+        {"type": "run_end", "at": when, "run_id": run, "status": "completed", "error": None},
+        {"type": "meta", "at": when, "title": title, "tags": tags or []},
+    ]
+    (r.sessions / f"{sid}.jsonl").write_text("".join(json.dumps(line) + "\n" for line in lines))
     return sid
 
 
@@ -463,10 +533,13 @@ def groups(r: Run) -> list[str]:
 def check_view(r: Run) -> None:
     """After check_close_tab: one pinned session updated today, one hidden, one deleted."""
     page = r.page
-    seed(r, "Seeded yesterday", 1, tags=["alpha", "beta"])
-    seed(r, "Seeded five days ago", 5, tags=["beta"])
-    seed(r, "Seeded long ago", 40)
-    seed(r, XSS, 41)
+    api_list = lambda: json.load(urllib.request.urlopen(BASE + "/api/sessions"))  # noqa: E731
+    before = api_list()
+    seeded = [seed(r, "Seeded yesterday", 1, tags=["alpha", "beta"]), seed(r, "Seeded five days ago", 5, tags=["beta"]),
+              seed(r, "Seeded long ago", 40), seed(r, XSS, 41)]
+    r.restart_ui()
+    assert [s for s in api_list() if s["id"] not in seeded] == before, "the list after a restart is the list before it"
+    r.ok("restart: the index is built again from the journals; the list is the same, plus the seeded journals")
     page.goto(BASE + "/")
     expect(r.row("Seeded long ago")).to_have_count(1, timeout=10_000)
     assert groups(r) == ["Pinned", "Yesterday", "Previous 7 days", "Older"], groups(r)
@@ -627,13 +700,13 @@ def check_stop(r: Run) -> str:
     until = time.time() + 15
     while time.time() < until:
         found = [(sid, f) for sid, f in r.files().items() if f["title"] == title]
-        if found and found[0][1]["runs"]:
+        if found and found[0][1]["runs"] and found[0][1]["runs"][-1]["status"] != "incomplete":
             sid, rec = found[0]
             assert rec["runs"][-1]["status"] == "cancelled", rec["runs"]
             r.ok("stopped run: controls disabled then enabled, recorded cancelled (row shown)")
             return sid
         time.sleep(0.5)
-    sys.exit(f"FAIL: no session file titled {title!r} with a run")
+    sys.exit(f"FAIL: no journal titled {title!r} with an ended run")
 
 
 DELETED = "this session was deleted"
@@ -660,6 +733,27 @@ def check_deleted_open(r: Run) -> None:
     r.shot("deleted-open")
     page.locator(".spe-error").get_by_role("button", name="Dismiss").click()
     r.ok("open session deleted elsewhere: a message says it was deleted, never that it could not be saved")
+
+
+def check_no_false_alarm(r: Run) -> None:
+    """Decision 2's no false alarm with the real browser: after runs with tool calls, a failed run and a run
+    after it in one session (and every session above: reopened, renamed, compacted), no run_start of any
+    journal holds ignored content."""
+    page = r.page
+    page.get_by_role("button", name="New chat").click()
+    expect(page.locator(".spe-header-title")).to_have_text("New chat")
+    r.send("Count the files", 1)
+    box = page.get_by_test_id("copilot-chat-textarea")
+    box.fill("Now fail on purpose")
+    box.press("Enter")
+    expect(page.locator(".spe-error")).to_contain_text("scripted model failure", timeout=20_000)
+    page.locator(".spe-error").get_by_role("button", name="Dismiss").click()
+    r.send("And once more", 3)  # the failed run's message is in the history: the third user message
+    rec = r.wait_runs(r.url_session(), 3)
+    assert [x["status"] for x in rec["runs"]] == ["completed", "failed", "completed"], rec["runs"]
+    offending = {sid: [x["ignored"] for x in f["runs"] if x["ignored"]] for sid, f in r.files().items()}
+    assert not any(offending.values()), offending
+    r.ok("no false alarm: no journal holds ignored content after the browser's own runs, a failed one included")
 
 
 COMPACTED = "Earlier conversation compacted"
@@ -713,9 +807,9 @@ def check_compaction(r: Run) -> None:
 
 
 def check_save_failed(r: Run) -> None:
-    """The chat UI cannot write the session (its directory made read-only for the run): the
-    server's save-failed event puts the error bar up, and the list is not fetched again and again
-    (a retrying reconciliation would fetch it 6 times). Local run only, as a normal user."""
+    """The chat UI cannot write the journal (its directory made read-only): the run is refused before the agent
+    is called, the error bar says "this session could not be saved", the list is fetched once, not retried, and
+    no journal is created. Local run only, as a normal user."""
     if os.geteuid() == 0:
         sys.exit("FAIL: check_save_failed needs a normal user (root writes to a read-only directory)")
     page = r.page
@@ -729,7 +823,9 @@ def check_save_failed(r: Run) -> None:
     r.sessions.chmod(0o500)
     try:
         lists.clear()
-        r.send(title, 1)
+        box = page.get_by_test_id("copilot-chat-textarea")
+        box.fill(title)
+        box.press("Enter")
         expect(page.locator(".spe-error")).to_contain_text(SAVE_FAILED, timeout=5_000)
         expect(page.get_by_role("button", name="New chat")).to_be_enabled(timeout=5_000)
         time.sleep(3.5)  # longer than five retries 500 ms apart
@@ -738,12 +834,11 @@ def check_save_failed(r: Run) -> None:
         r.sessions.chmod(mode)
     assert not any(f["title"] == title for f in r.files().values())
     r.shot("save-failed")
-    r.ok("failed save: the server's event shows the error bar; the list is fetched once, not retried")
+    r.ok("a journal that cannot be written: the run is refused, the error bar says so, the list is fetched once")
 
 
 def slow_loop(r: Run) -> None:
-    """Archive check during a run: slow runs back to back, each in a new session (a second run of
-    one thread right after the first can be refused while the server finishes it), until the chat
+    """Archive check during a run: slow runs back to back, each in a new session, until the chat
     UI goes away under the archive's barrier or 12 runs have passed. Prints each run's title; the
     last one printed is the run the barrier stopped."""
     page = r.page
@@ -792,7 +887,7 @@ def two_turn(r: Run) -> None:
 
 
 class InstanceRun(Run):
-    """Against an instance's chat UI: the session files are read in the chat-ui container."""
+    """Against an instance's chat UI: the journals are read in the chat-ui container."""
 
     def __init__(self, page: Page, compose_file: str, shots: Path | None):
         super().__init__(page, Path("/nonexistent"), shots)
@@ -800,12 +895,12 @@ class InstanceRun(Run):
 
     def files(self) -> dict[str, dict]:
         script = ("const fs=require('fs');const d='/data/sessions';const o={};"
-                  "for(const f of fs.readdirSync(d))if(f.endsWith('.json'))"
-                  "o[f.slice(0,-5)]=JSON.parse(fs.readFileSync(d+'/'+f,'utf8'));"
+                  "for(const f of fs.readdirSync(d))if(f.endsWith('.jsonl'))"
+                  "o[f.slice(0,-6)]=fs.readFileSync(d+'/'+f,'utf8');"
                   "process.stdout.write(JSON.stringify(o))")
         out = subprocess.run(["docker", "compose", "-p", "spe-frontend", "-f", self.compose_file, "exec", "-T",
                               "chat-ui", "node", "-e", script], check=True, capture_output=True, text=True)
-        return json.loads(out.stdout)
+        return {sid: summary(read_journal(text)) for sid, text in json.loads(out.stdout).items()}
 
 
 def compaction_live(r: Run, turns: int = 8) -> None:
@@ -888,12 +983,24 @@ def main() -> None:
         env = {**os.environ, "AGENT_URL": f"http://127.0.0.1:{AGENT_PORT}/agent", "AGENT_API_KEY": KEY,
                "PORT": str(UI_PORT), "HOSTNAME": "127.0.0.1", "SPE_SESSIONS_DIR": str(data),
                "NEXT_MANUAL_SIG_HANDLE": "true", "SPE_SESSIONS_TEST_SAVE_DELAY_MS": str(args.save_delay_ms)}
-        procs.append(subprocess.Popen(["node", "server.js"], cwd=standalone, env=env))
+
+        def start_ui() -> subprocess.Popen:
+            return subprocess.Popen(["node", "server.js"], cwd=standalone, env=env)
+
+        def restart_ui() -> None:
+            """SIGTERM (the drain), then a fresh process: its index is built again from the journals."""
+            procs[-1].terminate()
+            procs[-1].wait(timeout=35)
+            procs[-1] = start_ui()
+            wait_http(BASE + "/api/sessions", "the chat UI after a restart")
+
+        procs.append(start_ui())
         wait_http(BASE + "/api/sessions", "the chat UI")
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
             page = browser.new_page(viewport={"width": 1280, "height": 800}, color_scheme=args.color_scheme)
             r = Run(page, data, args.shots)
+            r.restart_ui = restart_ui
             if args.scenario == "all":
                 ids = check_list(r)
                 check_focus(r, ids)
@@ -903,6 +1010,7 @@ def main() -> None:
                 check_header(r, ids)
                 check_deleted_open(r)
                 check_compaction(r)
+                check_no_false_alarm(r)
                 check_stop(r)
                 check_save_failed(r)
             elif args.scenario == "stop":
