@@ -558,3 +558,44 @@ test("the test agent answers a body that is not JSON with 400", async () => {
     await server.close();
   }
 });
+
+test("a compaction marker survives the round trip: recorded, reopened, sent back to the agent", async () => {
+  const { store, server } = await setup();
+  try {
+    const recorder = new SessionRecorder(() => store);
+    const spe = new HttpAgent({ url: server.url, fetch: recorder.fetch });
+    spe.use(recorder);
+    const handler = createCopilotRuntimeHandler({
+      runtime: new CopilotRuntime({ agents: { spe } }),
+      basePath: "/api/copilotkit",
+    });
+    const run = async (body: RunAgentInput) => {
+      const response = await handler(new Request("http://chat-ui/api/copilotkit/agent/spe/run", {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+      }));
+      assert.equal(response.status, 200);
+      await response.text();
+      await settled(body.threadId);
+    };
+    const id = randomUUID();
+    await run(input(id, "compact and activity"));
+    const first = (await store.read(id)) as SessionRecord;
+    const marker = first.messages.find((m) => m.id.startsWith("spe-compaction-"));
+    assert.deepEqual(
+      { role: marker?.role, content: marker?.content },
+      { role: "assistant", content: "SUMMARY of the earlier turns" },
+    );
+    // As the page reopens the session: the stored messages, then a new user message.
+    await run(input(id, "next", first.messages));
+    const sent = server.requests[1].body.messages as Message[];
+    const back = sent.find((m) => m.id === marker?.id);
+    assert.equal(back?.role, "assistant");
+    assert.equal(back?.content, "SUMMARY of the earlier turns");
+    // The ruling: an activity message never reaches the agent again.
+    assert.equal(sent.some((m) => m.role === ("activity" as Message["role"])), false);
+    const second = (await store.read(id)) as SessionRecord;
+    assert.equal(second.messages.filter((m) => m.id === marker?.id).length, 1);
+  } finally {
+    await server.close();
+  }
+});

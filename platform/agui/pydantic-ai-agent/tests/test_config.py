@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from spe_agent.config import ConfigError, load_config, load_secrets
+from spe_agent.config import CompactionCfg, ConfigError, load_config, load_secrets
 
 VALID = {
     "model": {"provider": "openai_compatible", "name": "qwen3.8-27b", "base_url": "https://llm.example/v1"},
@@ -98,3 +98,24 @@ def test_caps_must_be_positive(tmp_path, section, key, value):
     data = {**VALID, section: {**VALID.get(section, {}), key: value}}
     with pytest.raises(ConfigError, match=key):
         load_config(write(tmp_path, data))
+
+
+def test_compaction_defaults(tmp_path):
+    cfg = load_config(write(tmp_path, VALID))
+    assert cfg.compaction == CompactionCfg(enabled=True, context_window_tokens=None, trigger_ratio=0.8,
+                                           summary_max_tokens=4096)
+
+
+def test_compaction_values(tmp_path):
+    data = {**VALID, "compaction": {"enabled": False, "context_window_tokens": 20000, "trigger_ratio": 0.5,
+                                    "summary_max_tokens": 1000}}
+    cfg = load_config(write(tmp_path, data))
+    assert (cfg.compaction.enabled, cfg.compaction.context_window_tokens, cfg.compaction.trigger_ratio,
+            cfg.compaction.summary_max_tokens) == (False, 20000, 0.5, 1000)
+
+
+@pytest.mark.parametrize("bad", [{"trigger_ratio": 0}, {"trigger_ratio": 1}, {"trigger_ratio": 1.5},
+                                 {"context_window_tokens": 0}, {"summary_max_tokens": 0}, {"window": 1000}])
+def test_compaction_refused(tmp_path, bad):
+    with pytest.raises(ConfigError):
+        load_config(write(tmp_path, {**VALID, "compaction": bad}))

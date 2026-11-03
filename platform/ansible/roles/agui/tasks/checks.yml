@@ -40,6 +40,18 @@
       expected 200 and a list
     quiet: true
 
+- name: Read the agent configuration
+  ansible.builtin.slurp:
+    src: "{{ spe_frontend_dir }}/agent.yaml"
+  register: agui_agent_yaml
+
+- name: Agent compaction settings
+  # Shows the rendered block; fails if the agent would run without one.
+  ansible.builtin.assert:
+    that: (agui_agent_yaml.content | b64decode | from_yaml).compaction is mapping
+    success_msg: "compaction: {{ (agui_agent_yaml.content | b64decode | from_yaml).compaction | to_json }}"
+    fail_msg: agent.yaml has no compaction block
+
 - name: chat-ui container
   ansible.builtin.command:
     argv: [docker, compose, -p, spe-frontend, -f, "{{ spe_frontend_dir }}/docker-compose.yml", ps, -q, chat-ui]

@@ -8,7 +8,7 @@ history with the same model, sends the model the summary instead, and marks the 
 the chat shows it, the session record keeps it and later runs cut there.
 
 **Spec:** [`docs/superpowers/specs/2026-11-03-agui-compaction-design.md`](../../specs/2026-11-03-agui-compaction-design.md)
-(decisions 1–13; latest clarification: none; slice 1 folds 1–4, slice 3 folds 5). Each slice file links the
+(decisions 1–13; latest clarification: 7; slice 1 folds 1–4, 6 and 7, slice 3 folds 5). Each slice file links the
 sections it implements.
 
 **Architecture.** One new module, `platform/agui/pydantic-ai-agent/src/spe_agent/compaction.py`: the token
@@ -114,18 +114,19 @@ class CompactionRecord:                                   # one run-log entry (s
 
 @dataclass
 class CompactionRun:                                      # one per run, in RunDeps
-    records: list[CompactionRecord]
-    pending: list[str]                                    # summaries not yet emitted as markers
+    records: list[CompactionRecord] = field(default_factory=list)
+    pending: list[str] = field(default_factory=list)       # summaries not yet emitted as markers
     def take_pending(self) -> list[str]: ...
 
 def frame(summary: str) -> str: ...
-def is_ours(part: ModelResponsePart | ModelRequestPart) -> bool: ...
+def is_ours(part: Any) -> bool: ...                       # True for a CompactionPart of ours
 def is_overflow(error: BaseException) -> bool: ...
 def over_trigger(tokens: int, cfg: CompactionCfg) -> bool: ...   # False when context_window_tokens is None
 def estimate_tokens(messages: list[ModelMessage], extra_chars: int = 0) -> int: ...
 def build_sent(messages: list[ModelMessage]) -> list[ModelMessage]: ...
 def compacted(history: list[ModelMessage], summary: str) -> list[ModelMessage]: ...
 def transcript(messages: list[ModelMessage], *, max_chars: int | None = None, drop: int = 0) -> str: ...
+def transcript_budget(cfg: CompactionCfg) -> int | None: ...  # transcript chars that fit beside summary_max_tokens
 def markers_to_activities(run_input: RunAgentInput) -> RunAgentInput: ...
 def marker_events(summary: str) -> list[BaseEvent]: ...   # TEXT_MESSAGE_START/CONTENT/END, role assistant
 
@@ -171,7 +172,7 @@ marker as `## Compacted`; `index.md`'s columns become `| # | Session | Tags | Cr
 | Path | Slice | What |
 |---|---|---|
 | `copilotkit-chat/lib/test-agent.ts`, `lib/recorder.test.ts` | 1 | the round-trip test (`compact`, `activity` keywords) |
-| `docs/superpowers/specs/2026-11-03-agui-compaction-design.md` | 1 | clarifications 1–4 (the plan's proposed ones) |
+| `docs/superpowers/specs/2026-11-03-agui-compaction-design.md` | 1 | clarifications 1–4 and 6 (the plan's proposed ones), and 7 |
 | `pydantic-ai-agent/src/spe_agent/config.py`, `tests/test_config.py` | 1 | `CompactionCfg` |
 | `ansible/inventory/group_vars/all.yml`, `ansible/roles/agui/tasks/main.yml`, `roles/agui/tasks/checks.yml` | 1 | `spe_agent_compaction_*`, the rendered block, the check that shows it |
 | `pydantic-ai-agent/src/spe_agent/compaction.py`, `compaction_prompt.md`, `tests/test_compaction.py` | 1 | the module, the prompt, unit tests |
@@ -195,7 +196,7 @@ the checks in `AGENTS.md`, *Overrides*, pass.
 
 | n/N | Branch | Tasks | Delivers | Est. LOC | Reviewer checks | File | Status |
 |---|---|---|---|---|---|---|---|
-| 1/3 | `impl/agui-compaction-1-agent` | 7 | the agent compacts (both triggers, limits, usage), marker events, input cut, run log, configuration and Ansible; the Haiku summary sample in the handoff | ~1,000 | agent pytest; `npm test` (round trip); `--syntax-check` | [slice-1-agent.md](slice-1-agent.md) | planned |
+| 1/3 | `impl/agui-compaction-1-agent` | 7 | the agent compacts (both triggers, limits, usage), marker events, input cut, run log, configuration and Ansible; the Haiku summary sample in the handoff | ~1,000 | agent pytest; `npm test` (round trip); `--syntax-check` | [slice-1-agent.md](slice-1-agent.md) | merged #17 |
 | 2/3 | `impl/agui-compaction-2-chat-archive` | 5 | **early output**: divider in the chat, fake agent `compact`, archive `## Compacted` + column, Playwright with screenshots, dev VM session on Haiku at window 20000 | ~600 | `npm test`; `npm run build`; pytest `-k agui_run`; Playwright run with screenshots | [slice-2-chat-archive.md](slice-2-chat-archive.md) | planned |
 | 3/3 | `impl/agui-compaction-3-denbi-docs` | 3 | de.NBI window, docs, decision 13's check | ~150 | `--syntax-check`; `verify.yml` on the dev VM; decision 13's run log lines | [slice-3-denbi-docs.md](slice-3-denbi-docs.md) | planned |
 
@@ -219,9 +220,10 @@ Inputs the spec implies but its acceptance checks do not exercise; each line's t
 1. **A marker whose summary is empty or whitespace** (a model that returns nothing): the marker still has a
    non-empty `TEXT_MESSAGE_CONTENT` delta (AG-UI rejects an empty one) and the run continues. Slice 1, task 4
    (`test_empty_summary_gets_placeholder`) and task 6.
-2. **A forged marker message with tool calls or non-string content** (`spe-compaction-x` with `toolCalls`, or
-   content a list): it is left as an ordinary assistant message, not rewritten, and the run does not fail.
-   Slice 1, task 6 (`test_only_plain_text_markers_are_rewritten`).
+2. **A forged marker message with tool calls** (`spe-compaction-x` with `toolCalls`): it is left as an ordinary
+   assistant message, not rewritten, and the run does not fail. (Content that is a list never reaches the agent:
+   ag-ui 0.1.22's `AssistantMessage.content` is a string, so `/agent` answers 422.) Slice 1, task 6
+   (`test_only_plain_text_markers_are_rewritten`).
 3. **Two markers in one history** (two compactions, or a forged one before a real one): only the latest of ours
    cuts; the earlier one is stripped and never sent. Slice 1, task 3 (`test_latest_marker_cuts_and_all_are_stripped`).
 4. **A compacting run the participant stops** (stop button after the marker went out): the run log still has the
@@ -257,6 +259,9 @@ Each is added by the slice that verifies it, with status `folded`, and the spec 
    slice 2's early output. Decision 13's acceptance check is rewritten: **an approved acceptance check changes, so
    the user is pointed at this clarification** in this plan's PR and in slice 3's PR, and slice 3 reads the
    user's answer on this plan's PR before its paid run (task 3, step 0). Slice 3, task 3.
+6. **The reactive retry goes through the streamed request**, inside a wrapper model that `wrap_model_request`
+   sets: in 2.56.0 a streamed request's error surfaces in the task that reads the stream, never in the hook.
+   Rewrites decision 3's row, §1 and §2. Slice 1, task 5.
 
 ## Handoffs
 

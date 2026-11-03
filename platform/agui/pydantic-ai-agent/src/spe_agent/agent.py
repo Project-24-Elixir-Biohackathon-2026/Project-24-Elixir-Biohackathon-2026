@@ -1,20 +1,22 @@
 """The Pydantic AI agent: model from config, prompt, sandbox tools."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from pydantic_ai import Agent, Tool
 from pydantic_ai.models import Model
 
-from .config import ModelCfg
+from .compaction import Compaction, CompactionRun
+from .config import CompactionCfg, ModelCfg
 
 
 @dataclass(frozen=True)
 class RunDeps:
     """Per-run dependencies. `session_id` (the AG-UI thread id) becomes the sandbox's X-Session-Id,
-    as Open WebUI sends its chat id."""
+    as Open WebUI sends its chat id. `compaction` collects the run's compactions (mutable inside)."""
 
     session_id: str | None = None
+    compaction: CompactionRun = field(default_factory=CompactionRun)
 
 
 def compose_prompt(base: str, sandbox_prompt: str | None) -> str:
@@ -37,5 +39,8 @@ def build_model(cfg: ModelCfg, api_key: str) -> Model:
     return OpenAIChatModel(cfg.name, provider=OpenAIProvider(base_url=cfg.base_url, api_key=api_key))
 
 
-def build_agent(model: Model, prompt: str, tools: list[Tool]) -> Agent[RunDeps, str]:
-    return Agent(model, system_prompt=prompt, tools=tools, deps_type=RunDeps, name="spe-agent")
+def build_agent(model: Model, prompt: str, tools: list[Tool],
+                compaction: CompactionCfg | None = None) -> Agent[RunDeps, str]:
+    capabilities = [Compaction(compaction, prompt)] if compaction is not None and compaction.enabled else []
+    return Agent(model, system_prompt=prompt, tools=tools, deps_type=RunDeps, name="spe-agent",
+                 capabilities=capabilities)

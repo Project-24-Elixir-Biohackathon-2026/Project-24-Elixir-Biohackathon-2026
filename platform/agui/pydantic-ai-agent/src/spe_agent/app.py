@@ -15,7 +15,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
-from ag_ui.core import BaseEvent, RunAgentInput, RunErrorEvent, RunFinishedEvent
+from ag_ui.core import BaseEvent, EventType, RunAgentInput, RunErrorEvent, RunFinishedEvent
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
@@ -25,6 +25,7 @@ from pydantic_ai.messages import ToolCallPart
 from pydantic_ai.ui.ag_ui import AGUIAdapter, AGUIEventStream
 
 from .agent import RunDeps, build_agent, build_model, compose_prompt
+from .compaction import marker_events, markers_to_activities
 from .config import Config, ConfigError, Secrets
 from .runlog import RunLog, RunRecorder, redact
 from .sandbox import SandboxClient, SandboxUnavailable, build_tools, operations_from_openapi, select_operations
@@ -32,6 +33,11 @@ from .sandbox import SandboxClient, SandboxUnavailable, build_tools, operations_
 log = logging.getLogger("spe_agent")
 
 MAX_ERROR_CHARS = 500
+
+# The marker goes out before the next event that opens a response or ends the run, never before a tool
+# result: the run is one event ahead of this loop, so the step's last tool result may still be on its way.
+_MARKER_BEFORE = {EventType.TEXT_MESSAGE_START, EventType.TOOL_CALL_START, EventType.THINKING_START,
+                  EventType.REASONING_START, EventType.RUN_FINISHED, EventType.RUN_ERROR}
 
 
 class _EventStream(AGUIEventStream):
@@ -82,7 +88,15 @@ class _EventStream(AGUIEventStream):
             yield event
 
 
+@dataclass
 class _Adapter(AGUIAdapter):
+    # A dataclass, so that the generated __init__ calls __post_init__ (AGUIAdapter's own __init__ does not).
+
+    def __post_init__(self) -> None:
+        # Before anything reads `messages` (a cached property over run_input): our compaction markers,
+        # assistant messages in the chat's history, become the activity pydantic-ai reads as a cut point.
+        self.run_input = markers_to_activities(self.run_input)
+
     def build_event_stream(self) -> _EventStream:
         return _EventStream(self.run_input, accept=self.accept, ag_ui_version=self.ag_ui_version)
 
@@ -132,7 +146,9 @@ class Service:
         cwd = await self._client.cwd()
         sandbox_prompt = await self._client.system_prompt() if self.config.prompt.include_sandbox_prompt else None
         tools = build_tools(self._client, ops, self.config.tools.max_output_bytes, cwd=cwd)
-        return Ready(build_agent(self._model, compose_prompt(self._base_prompt, sandbox_prompt), tools), len(tools))
+        prompt = compose_prompt(self._base_prompt, sandbox_prompt)
+        agent = build_agent(self._model, prompt, tools, self.config.compaction)
+        return Ready(agent, len(tools))
 
     async def _watch(self) -> None:
         delay = self._retry_delay
@@ -184,11 +200,16 @@ class Service:
         async def on_complete(result) -> None:
             recorder.usage(result.usage)
 
-        stream = adapter.run_stream(deps=RunDeps(session_id=run_input.thread_id),
-                                    usage_limits=self.config.limits.usage_limits(), on_complete=on_complete)
+        deps = RunDeps(session_id=run_input.thread_id)
+        stream = adapter.run_stream(deps=deps, usage_limits=self.config.limits.usage_limits(), on_complete=on_complete)
         status = "cancelled"  # unless a terminal event arrives: client gone or task cancelled
         try:
             async for event in stream:
+                if event.type in _MARKER_BEFORE:
+                    for summary in deps.compaction.take_pending():
+                        for marker in marker_events(summary):
+                            recorder.observe(marker)
+                            yield marker
                 if isinstance(event, RunErrorEvent):
                     event = event.model_copy(update={"message": self.sanitize(event.message)})
                     status = "failed"
@@ -200,6 +221,7 @@ class Service:
             # Closing the adapter stream ends the agent run (and its model request) if it is
             # still going. Commands the sandbox started in the background keep running there.
             await stream.aclose()
+            recorder.compactions(deps.compaction.records)
             try:
                 self.runlog.write(recorder.finish(status))
             except OSError:

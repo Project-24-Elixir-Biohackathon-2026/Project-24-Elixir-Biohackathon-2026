@@ -199,4 +199,11 @@ spe_agent_max_output_bytes: 16384
 spe_agent_request_limit: 50          # per run, not an aggregate budget
 spe_agent_tool_calls_limit: 100
 spe_agent_total_tokens_limit: null   # a number caps a run's summed tokens; null: no cap, as in Open WebUI
+# Compaction: when the conversation nears the model's context window, the agent replaces the
+# older part, for the model only, with a summary the same model writes. The window is the
+# model's, in tokens; null leaves only the reactive trigger (a provider's "too long" error).
+spe_agent_compaction_enabled: true
+spe_agent_context_window_tokens: null
+spe_agent_compaction_trigger_ratio: 0.8      # compact at this share of the window, in (0, 1)
+spe_agent_compaction_summary_max_tokens: 4096
 spe_agent_api_key: "{{ (spe_seed | string ~ ':agent-api') | hash('sha256') }}"

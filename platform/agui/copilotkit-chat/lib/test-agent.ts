@@ -4,6 +4,8 @@
 //   contains "error": RUN_STARTED then RUN_ERROR
 //   contains "eof": RUN_STARTED and a text message, then the stream ends without a terminal event
 //   contains "crash": RUN_STARTED and one text chunk, then the connection is destroyed
+//   contains "compact": also sends a compaction marker (an assistant message, id `spe-compaction-<runId>`)
+//   contains "activity": also sends an ACTIVITY_SNAPSHOT (the form the spec first chose; pinned as dropped)
 //   a body that is not JSON: HTTP 400, not kept in `requests`
 //   anything else: a text message echoing it, then RUN_FINISHED (after `delayMs`, default 0)
 // Each request is kept in `requests`; `closed` turns true when its connection closes.
@@ -48,6 +50,18 @@ export async function startTestAgent(delayMs = 0, headerDelayMs = 0): Promise<Te
       const ids = { threadId: body.threadId, runId: body.runId };
       const messageId = `reply-${body.runId}`;
       send({ type: "RUN_STARTED", ...ids });
+      if (text.includes("compact")) {
+        // As the agent sends a compaction marker: an assistant message whose id has the marker prefix.
+        const markerId = `spe-compaction-${body.runId}`;
+        send({ type: "TEXT_MESSAGE_START", messageId: markerId, role: "assistant" });
+        send({ type: "TEXT_MESSAGE_CONTENT", messageId: markerId, delta: "SUMMARY of the earlier turns" });
+        send({ type: "TEXT_MESSAGE_END", messageId: markerId });
+      }
+      if (text.includes("activity")) {
+        // The form the spec first chose; pinned as dropped by CopilotKit's input path.
+        send({ type: "ACTIVITY_SNAPSHOT", messageId: `act-${body.runId}`, activityType: "pydantic_ai_compaction",
+               content: { content: "SUMMARY as activity", provider_name: "spe-agent" }, replace: true });
+      }
       if (text.includes("error")) {
         send({ type: "RUN_ERROR", message: "scripted failure" });
         res.end();
