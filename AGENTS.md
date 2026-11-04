@@ -189,9 +189,9 @@ is open (`docs/guides/contributing-upstream.md`, step 6).
 
 - **Canary evaluation ladder** (biohackathon 0013): spec (#1) and plan (#2) merged. **Next: slice 1/9**
   `impl/canary-eval-ladder-1-scoring`. Handoff: `ls docs/superpowers/plans/2026-10-22-canary-eval-ladder/handoffs | tail -1`.
-- **Upstream AG-UI package** (`BACKLOG.md`): `contrib/agui-package` cut and pushed (`bf152a8`, tests green).
-  **Next:** the reviewer-path smoke test, screenshots, the PR text as a fork issue. Handoff:
-  `docs/handoffs/2026-11-04T1233Z-upstream-package-cut.md`.
+- **Upstream AG-UI package** (`BACKLOG.md`): `contrib/agui-package` (`bf152a8`), the PR text in fork issue #42.
+  **Next: waits on the user** to open the PR on kraatz and close #9; then the tracking steps. Handoff:
+  `docs/handoffs/2026-11-04T1258Z-upstream-package-pr-text.md`.
 - **Upstream PR kraatz #9** (`contrib/agui-token-cap-optional`): the AG-UI agent's token cap optional, off by
   default (fork #4); waits on upstream's review (`docs/guides/contributing-upstream.md`, step 6).
 - **Not scheduled**: `BACKLOG.md` holds every deferred item without a slice; its *Next*, the ones due soon or

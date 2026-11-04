@@ -35,7 +35,7 @@ start reads this section; keep it short.
   *AG-UI via Coder* checks (#36, #38, #40) are not re-run: the branch's code is `bdb93a6`'s byte for byte (it
   differs only in six Markdown files), so they hold for it (the user, 2026-11-04); a cheap smoke test of the
   reviewer's path (a workspace's `~/sperange` on the branch, `spe-apply all`, one AG-UI chat, `archive.yml`) runs
-  instead. **Cut and pushed 2026-11-04** (`contrib/agui-package`, `bf152a8`, every test command green); the existing-host reset fix (#41, `spe_preflight.py`, the same bug upstream) is part of it; the compaction plan's upstream doc rewrite (PR #16 review, finding 10) is part of it. `gh` cannot
+  instead. **Cut and pushed 2026-11-04** (`contrib/agui-package`, `bf152a8`, every test command green); the PR text in fork issue #42 (2026-11-04, screenshots on `pr-assets`, the reviewer's path checked in a workspace): **waits on the user** to open the PR; the existing-host reset fix (#41, `spe_preflight.py`, the same bug upstream) is part of it; the compaction plan's upstream doc rewrite (PR #16 review, finding 10) is part of it. `gh` cannot
   create the PR on kraatz (403 createPullRequest, 2026-11-03, `docs/knowledge/gh-pr-create-token.md`): the session
   pushes the `contrib/<slug>` branch to `origin` ready to compare and stops there; **the user opens the PR on
   kraatz**; no fork PR tracks this unit. Supersedes kraatz #9 (the user,
