@@ -90,6 +90,25 @@ The message is the fork commit's, rewritten for a reader who has never seen the 
 fork commit's subject `AG-UI chat sessions: the store (1/3) (#9)` becomes `AG-UI chat sessions: the store`. No
 fork hash goes upstream: the link from fork commit to upstream PR lives in the ledger (step 6).
 
+#### Or port a package: the final state of an area
+
+When upstream should get a feature as its final state rather than commit by commit (the user's choice for the
+AG-UI package, 2026-11-03), and `upstream/main` is an ancestor of `origin/main` (merged in, below), take the
+files instead of the commits. The branch is then `origin/main`'s project files as they are now:
+
+```bash
+git merge-base --is-ancestor upstream/main origin/main && echo ancestor   # else merge upstream in first
+git diff --name-only --no-renames upstream/main origin/main -- . "${X[@]}" > /tmp/package-paths
+# keep only the paths of the package; deleted ones go with `git rm`
+git checkout origin/main -- $(git ls-tree -r --name-only origin/main | grep -Fxf /tmp/package-paths)
+git commit -s -F <message file>
+```
+
+Then edit by hand, one commit each: fork-only references the grep in step 4 finds, and upstream's own
+`AGENTS.md`, whose project rules (paths, test commands, features) are written in on this branch, never copied
+from ours. A package's code is `origin/main`'s byte for byte, so live checks that ran on that commit hold for
+it; say which commit they ran on in the PR body. `contrib/agui-package` (2026-11-04) was cut this way.
+
 ### 4. Clean the text and check
 
 Docs and code upstream also reads must not point at fork-only files. Grep what was added:
