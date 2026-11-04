@@ -15,6 +15,13 @@ The list below is for creating VMs in OpenStack.
 - Python 3 with `ansible-core`, `openstacksdk` (the venv `~/.venv-openstack`
   on spe-ga4gh-api-2 has both; `source ~/.venv-openstack/bin/activate`).
 - Collections: `ansible-galaxy collection install -r requirements.yml -p collections`.
+
+Local re-apply: on an instance, role `repo` leaves the clone with the collections
+installed and `instances/local.yml` (the vars the controller passed, the seed and
+the LLM key, 0600, git-ignored), so `spe-apply stack|all|ansible` can run this
+playbook on the VM against itself (`spe_local_apply: true`: no clone update, no
+data copy, no hand-off or verify). `spe_manifest_provision` keeps the manifest's
+provision mode for destroy.yml. See `platform/instance/README.md`.
 - `~/.config/openstack/clouds.yaml` (or `OS_CLIENT_CONFIG_FILE`) with an
   application credential for the project; cloud name `openstack`.
 - The base dataset readable at `spe_source_data_root` (default `/data-share`):
@@ -110,8 +117,14 @@ the job it needs right before it needs it (the `wait` task files).
    `openwebui` frontend, the OpenWebUI image in the background.
 5. **tls**: self-signed certificate with the instance IPs as SANs in
    `spe_cert_dir`, installed as a trust anchor.
-6. **sandbox** (a frontend is set): starts the build of the `open-terminal`
-   image carrying this instance's own CA and the WES/DRS/TRS runbook.
+6. **repo**: clones this repository to `spe_repo_dir` (`/home/ubuntu/sperange`) at
+   `spe_repo_ref`, the controller checkout's commit unless set (it must be pushed).
+   The chat frontend runs from it: `platform/instance/compose.yml` is the compose
+   file, the sandbox mounts `roles/sandbox/files/agent` as `/opt/agent`, the agent
+   mounts its prompt and Python source. `spe-apply` (linked on the PATH) rebuilds
+   the images from it; the frontend roles end with `spe-apply up`.
+   **sandbox** (a frontend is set): starts the build of the `open-terminal`
+   image carrying this instance's own CA, from the clone's `Dockerfile.terminal`.
 7. **workflow_stack** (`build.yml`): clones the four repositories at the
    configured revisions and starts the image builds (`weskit-api:<commit>`,
    drs-filer, trs-filer).
@@ -263,10 +276,10 @@ replaces one frontend with the other (its volumes, `open-webui-data` included, s
   (true), rendered as `agent.yaml`'s `title.enabled`, which `verify.yml` shows.
 - **sandbox** — the open-terminal image from role `sandbox`; publishes nothing.
 
-The role copies only the files git tracks under `platform/agui/pydantic-ai-agent/` and `platform/agui/copilotkit-chat/` to
-`spe_frontend_dir/build/` and builds `spe-agent:<hash>` and `spe-chat-ui:<hash>`
-from them (the hash covers the build context, so unchanged sources do not
-rebuild). Model: `spe_agent_model_provider: openai_compatible` with
+The role builds `spe-agent:local` and `spe-chat-ui:local` on the instance from
+the repository clone (`spe-apply build`; Docker's layer cache makes a build with
+unchanged sources take seconds, and the chat UI is not built with
+`spe_agui_ui_dev`). Model: `spe_agent_model_provider: openai_compatible` with
 `spe_agent_base_url` (default: the de.NBI endpoint, as Open WebUI), which works with any
 OpenAI-compatible API; or `anthropic`. The key comes from `SPE_LLM_API_KEY` on the
 controller (or, as before, `DENBI_LLM_API_KEY` / `ANTHROPIC_API_KEY`). Optionally,

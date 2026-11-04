@@ -137,14 +137,25 @@ class Service:
         self._retry_delay = retry_delay
         self._max_retry_delay = max_retry_delay
         self._probe_interval = probe_interval
-        try:
-            self._base_prompt = config.prompt.file.read_text()
-        except OSError as e:
-            raise ConfigError(f"prompt.file {config.prompt.file}: {e.strerror or e}") from e
+        self._base_prompt = self._read_prompt(fail=True)
         self.runlog = RunLog(config.run_log, self._secrets)
         self.ready: Ready | None = None
         self.reason = "starting"
         self.discovery_task: asyncio.Task | None = None
+
+    def _read_prompt(self, *, fail: bool = False) -> str:
+        """The prompt file, read now. At startup an unreadable file is a configuration error; later
+        (the file is a bind mount that may be edited live) the last good text is kept and the
+        problem logged, so a half-written edit never takes the agent down."""
+        try:
+            text = self.config.prompt.file.read_text()
+        except OSError as e:
+            if fail:
+                raise ConfigError(f"prompt.file {self.config.prompt.file}: {e.strerror or e}") from e
+            log.warning("prompt.file %s unreadable (%s); keeping the previous prompt", self.config.prompt.file, e)
+            return self._base_prompt
+        self._base_prompt = text
+        return text
 
     # --- lifecycle --------------------------------------------------------------------------
 
@@ -164,9 +175,10 @@ class Service:
         cwd = await self._client.cwd()
         sandbox_prompt = await self._client.system_prompt() if self.config.prompt.include_sandbox_prompt else None
         tools = build_tools(self._client, ops, self.config.tools.max_output_bytes, cwd=cwd)
-        prompt = compose_prompt(self._base_prompt, sandbox_prompt)
-        agent = build_agent(self._model, prompt, tools, self.config.compaction)
-        return Ready(agent, len(tools))
+        # Read per run: the prompt file follows edits without a restart. The sandbox's part comes
+        # from discovery (it changes only with the sandbox image or its restart).
+        prompt = lambda: compose_prompt(self._read_prompt(), sandbox_prompt)  # noqa: E731
+        return Ready(build_agent(self._model, prompt, tools, self.config.compaction), len(tools))
 
     async def _watch(self) -> None:
         delay = self._retry_delay

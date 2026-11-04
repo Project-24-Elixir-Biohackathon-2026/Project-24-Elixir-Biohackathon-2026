@@ -14,11 +14,14 @@ Ansible playbooks in `../ansible`; the Coder template only wraps them.
 
 ```
  participant browser
-        │ https://sperange.<zone>            (dashboard)
+        │ https://sperange.<zone>/           (landing page, static)
+        │ https://sperange.<zone>/threats/   (threat catalog, static)
+        │ https://sperange.<zone>/workspaces (dashboard, Coder)
         │ https://openwebui--main--<ws>--<user>.sperange.<zone>   (app; chat--… for agui)
         ▼
  ┌──────────────── portal VM (public FIP) ────────────────────────────┐
- │ Caddy :443 (TLS, Charité PKI) ──▶ Coder :7080                      │
+ │ Caddy :443 (TLS, Charité PKI) ──▶ platform/site/dist (/, /threats/) │
+ │                               ──▶ Coder :7080 (everything else)    │
  │                                    │  workspace build = Terraform  │
  │                                    ▼                               │
  │                     coder/template/main.tf                         │
@@ -43,10 +46,55 @@ Ansible playbooks in `../ansible`; the Coder template only wraps them.
 | `platform/coder/template/testbeds/*.yml` | **Testbed presets.** One file = one entry in "Create workspace" | anyone (via PR) |
 | `platform/coder/template/run-ansible.sh` | Runs a playbook with the vars Terraform passes | maintainers |
 | `platform/coder/deploy/` | Files for the portal VM: systemd units, env examples, Caddyfiles, template sync script | maintainers |
+| `platform/site/` | The landing page and the threat catalog page, built from `threats/` (see `platform/site/README.md`) | maintainers |
 | `platform/ansible/` | Builds and tears down one instance (see `platform/ansible/README.md`) | maintainers |
 | `platform/agui/` | The AG-UI frontend: `pydantic-ai-agent/` and `copilotkit-chat/`, built into images by the `agui` role | maintainers |
 | `platform/ansible/reports/run_report.md.j2` | **Run report template**, becomes the pinned "Run report" note in OpenWebUI | anyone (via PR) |
 | `platform/ansible/roles/run_archive/` | Exports the frontend's chats (Open WebUI, or the AG-UI chat sessions and the agent's run log) and writes the run directory | maintainers |
+
+### Working in a workspace
+
+A workspace is for changing the setup, trying the change in its chat right
+away, and turning it into a template when it works, with Coder Agents (the
+portal's chat agent, Admin settings > AI) or by hand over the web terminal. The
+VM holds a clone of this repository at `~/sperange`, checked out at the commit the
+workspace was built from, and the chat frontend runs from it:
+
+| Change | What it needs |
+|---|---|
+| the SPE agent's runbook or a helper script (`platform/ansible/roles/sandbox/files/agent/`, mounted at `/opt/agent` in the sandbox) | nothing: live on the next message |
+| the SPE agent's system prompt (`platform/ansible/roles/sandbox/files/system_prompt.txt`, AG-UI frontend) | nothing: read on every run |
+| the agent's Python source (`platform/agui/pydantic-ai-agent/src/`) | nothing: the agent restarts itself on a saved file |
+| the chat UI's source, with `spe_agui_ui_dev: true` (compose profile `ui-dev`) | nothing: hot reload. The first start installs the packages from the npm registry, about two minutes |
+| the compose file (`platform/instance/compose.yml`) or `~/spe-frontend/agent.yaml` | `spe-apply up` |
+| the agent's dependencies, the chat UI (built mode), `Dockerfile.terminal` | `spe-apply` (build, then up): the **Rebuild** button on the workspace page runs it once and leaves a shell open |
+| the GA4GH stack: roles `workflow_stack`, `tls`, `drs_register`, `trs_install`, the installers in `roles/*/files`, the catalog, service configs, image versions | `spe-apply stack`: runs those roles on the VM against itself, from the clone, with `instances/local.yml` written at creation (minutes). `spe-apply all` adds the frontend roles, `spe-apply ansible --tags <tag>` one stage |
+| the dataset seeding, hand-off and verify, the Coder template | a fresh workspace from a branch template (below) |
+
+The loop, as the Coder agent is instructed to follow it (`platform/instance/workspace/AGENTS.md`,
+reached from the repository's `AGENTS.md`, which it reads at the start of every chat):
+
+1. The agent edits the clone and applies the change as the table says, or says
+   that the change only applies at creation. The VM carries `ansible-core`, the
+   collections in the clone and the instance's vars file for that (role `repo`;
+   the vars file holds the seed and the LLM key, 0600, git-ignored).
+2. The person tests the change in the workspace's chat; the agent verifies what
+   it can on the VM (container logs, the GA4GH APIs, the SPE agent's run log).
+3. On "make a template of it": the agent commits on a branch `template/<name>`
+   and pushes it. The sync timer (step 7) turns every such branch into the
+   template `spe-<name>` within five minutes, built from that branch's Ansible
+   code with the clone on the VM at that branch's commit. A later push updates
+   the template; deleting the branch deletes the template once no workspace uses
+   it. Workspaces from the main template are not affected.
+4. On "put it into the main template": the person opens the pull request from
+   that branch (the agent gives the link; it cannot open one); merging updates
+   the main template within minutes, existing workspaces pick it up on their
+   next start.
+
+Commits in the clone carry the workspace owner's name and email (set by the
+template), and pushes use the owner's Coder git key over SSH: see "GitHub access
+from workspaces" under step 7. The VM is destroyed when the workspace stops; only
+what is pushed survives.
 
 ### Adding a testbed
 
@@ -216,11 +264,20 @@ OpenWebUI uses; it reaches Ansible through the workspace build environment.
 
 ```bash
 sudo apt install -y caddy        # or the official Caddy apt repo for a current version
+sudo apt install -y python3-yaml mkdocs-material          # for the static site
+sudo mkdir -p /srv/sperange-site && sudo chown ubuntu:ubuntu /srv/sperange-site
+python3 platform/site/build.py --out /srv/sperange-site    # the sync timer repeats this (SPE_SITE_DIR)
 sudo cp platform/coder/deploy/Caddyfile.example /etc/caddy/Caddyfile
 sudo $EDITOR /etc/caddy/Caddyfile           # zone, ACME directory, EAB
 sudo systemctl reload caddy
 journalctl -u caddy -f                      # certificate obtained?
 ```
+
+On the apex, Caddy serves `/` and `/threats/` from `/srv/sperange-site` (the
+landing page with the Workspaces and Threats entrances, and the threat catalog)
+and proxies every other path to Coder, whose dashboard lives at `/workspaces`.
+Coder's access URL stays `https://<zone>`. The sync timer (step 7) rebuilds the
+site on every run.
 
 The Charité PKI issues wildcard certificates over HTTP-01 for accounts with
 wildcard permission. If Caddy refuses to request `*.<zone>` without a DNS
@@ -254,16 +311,16 @@ First push by hand, then let the timer keep it in sync with `main`:
 ```bash
 coder tokens create --name sync --lifetime 8760h       # copy the token
 sudo install -m 600 -o ubuntu platform/coder/deploy/sync.env.example /etc/sperange/sync.env
-sudo $EDITOR /etc/sperange/sync.env         # token, <private-ip>
+sudo $EDITOR /etc/sperange/sync.env         # token, <private-ip>, SPE_SITE_DIR
 sudo cp platform/coder/deploy/sperange-sync.{service,timer} /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl start sperange-sync.service  # first push
 sudo systemctl enable --now sperange-sync.timer
 ```
 
-`sync-template.sh` fast-forwards the checkout to `origin/main` and pushes the
-template when `HEAD` changed (`--force` pushes anyway). It passes two template
-variables:
+`sync-template.sh` fast-forwards the checkout to `origin/main`, rebuilds the
+static site (`platform/site/build.py`, every run) and pushes the template when
+`HEAD` changed (`--force` pushes anyway). It passes two template variables:
 
 - `spe_ansible_dir`: the checkout's `platform/ansible/` directory.
 - `coder_agent_url`: `http://<private-ip>:7080`, the address the agents in the
@@ -273,7 +330,63 @@ variables:
 Workspace builds always run the Ansible code currently checked out, including
 for stopping workspaces that were created from an older version.
 
-### 8. Template settings (optional)
+**Branch templates.** The same run keeps one template per branch named
+`template/<name>`: a worktree of the branch under `SPE_BRANCH_DIR` (default
+`sperange-branches` next to the checkout, with the checkout's `collections/` and
+`output/` linked in), the template `spe-<name>` (prefix
+`SPE_BRANCH_TEMPLATE_PREFIX`) pushed from it with the same two variables, display
+name `template/<name>`. A push to the branch updates the template; deleting the
+branch deletes the template and the worktree, unless workspaces still use it,
+then the script says so and keeps it until they are gone (delete the workspaces,
+or delete the template in the dashboard once they are). `<name>` must be lowercase
+letters, digits and hyphens, 28 characters at most (template names are limited to
+32). This is how a change made in a workspace is tried on a fresh workspace
+before it is merged ("Working in a workspace").
+
+**GitHub access from workspaces.** The clone's push URL is the SSH form of
+`spe_repo_url` (role `repo`, which also installs GitHub's host keys); fetches stay
+anonymous over https. Coder keeps one git SSH key per person and the agent sets
+`GIT_SSH_COMMAND` to `coder gitssh`, so a push authenticates as that person once
+they have added their key to GitHub: Account settings > SSH keys in the portal
+shows it, GitHub's Settings > SSH and GPG keys takes it. They also need push
+rights to the repository. Until then a push fails at once with "Permission
+denied (publickey)" and prints the key to add; the Coder agent is instructed to
+relay that and stop. Nothing is set up on the portal for this. (Coder's external
+authentication with a GitHub OAuth app would make https pushes work instead, but
+without a linked account such a push waits for a login in the browser rather than
+failing, which is worse for an agent.)
+
+### 8. Coder Agents on the de.NBI endpoint (optional)
+
+Coder Agents is Coder's built-in chat agent (Admin settings > AI). It runs in
+the control plane and can read templates, create workspaces and run commands
+in them on the user's behalf, so the portal VM, not the SPE VMs, needs to reach
+the LLM. `coder-agents-setup.sh` configures it against our OpenAI-compatible
+endpoint without touching the dashboard:
+
+```bash
+platform/coder/deploy/coder-agents-setup.sh      # on the portal VM, as ubuntu
+```
+
+It creates (or updates) the provider `denbi` with the base URL and the key from
+`coder.env`, and the model `gemma-4-31b` as the organization's default; it is
+safe to rerun. Not every model on the endpoint works: Coder Agents sends a
+system message in the middle of the conversation, which the chat templates of
+`qwen3.8-27b` and `mistral-medium-3.5` reject ("System message must be at the
+beginning"); `gpt-oss-120b`, `gemma-4-31b` and `glm-5.3` accept it. Everything is a variable (`SPE_LLM_BASE_URL`, `SPE_LLM_MODELS`
+as `model:context_limit:display name` separated by commas, …), see the header
+of the script. The API details it relies on, found in Coder 2.38's dashboard
+client since the docs only show the UI: `POST /api/v2/ai/providers` with type
+`openai-compat` and `api_keys: ["<key>"]`, `PATCH .../providers/<id>` with
+`api_keys: [{"api_key": "<key>"}]`, and
+`POST /api/v2/organizations/<org>/chats/models`.
+
+Once a model exists, every portal user can open a chat with the agent, and the
+agent can build workspaces. To keep it away from the testbed template, block
+the template for the agent in the dashboard, or create the model with
+`"enabled": false` (edit the script) until it has been tried.
+
+### 9. Template settings (optional)
 
 ```bash
 coder templates edit spe-testbed --default-ttl 12h     # auto-stop after 12 h idle

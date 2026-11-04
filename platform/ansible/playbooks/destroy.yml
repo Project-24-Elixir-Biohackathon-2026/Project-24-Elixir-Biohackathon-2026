@@ -139,6 +139,7 @@
             stack_dir: "{{ spe_stack_dir }}"
             frontend_dir: "{{ spe_frontend_dir }}"
             data_root: "{{ spe_data_root }}"
+            repo_dir: "{{ spe_repo_dir }}"
           projects:
             workflow-stack: "{{ spe_stack_dir }}/deployment/compose.install.yaml"
             spe-frontend: "{{ spe_frontend_dir }}/docker-compose.yml"

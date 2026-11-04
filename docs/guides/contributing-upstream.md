@@ -172,6 +172,10 @@ Resolving conflicts:
 Run the test commands for every area the merge touched, then the review round as for any PR; the methodology
 focus checks the `AGENTS.md` resolution.
 
+DCO stays red on such a PR: upstream does not sign off, and its commits are not ours to rewrite. Merge anyway
+when every commit DCO flags is upstream's (`git merge-base --is-ancestor <sha> upstream/main`), and say so in the
+PR body (the user, 2026-11-04, #35).
+
 Merge it with a merge commit, not a squash (`AGENTS.md`, *Overrides*):
 
 ```bash

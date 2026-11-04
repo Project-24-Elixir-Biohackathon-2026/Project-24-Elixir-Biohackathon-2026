@@ -1,6 +1,8 @@
-# Managed by spe-ansible (role: sandbox). Build context: the frontend dir.
-# Adds the SPE instance's own self-signed CA so the agent's HTTPS calls to
-# WES/DRS/TRS verify against it (never --insecure), and bakes in the runbook.
+# Managed by spe-ansible (role: sandbox). Build context: the frontend dir
+# (this file and spe-ca.crt). Adds the SPE instance's own self-signed CA so the
+# agent's HTTPS calls to WES/DRS/TRS verify against it (never --insecure). The
+# runbook and helper scripts are not baked in: files/agent/ is mounted at
+# /opt/agent (platform/instance/compose.yml), so an edit there is live.
 FROM ghcr.io/open-webui/open-terminal:0.12.4
 USER root
 COPY spe-ca.crt /usr/local/share/ca-certificates/spe-ca.crt
@@ -8,6 +10,4 @@ RUN chmod 644 /usr/local/share/ca-certificates/spe-ca.crt && update-ca-certifica
 # requests/httpx read certifi's bundle, not the system store; point them at it.
 ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
     SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
-COPY AGENTS.md /opt/agent/AGENTS.md
-RUN chown root:root /opt/agent/AGENTS.md && chmod 0444 /opt/agent/AGENTS.md
 USER 1000:1000
