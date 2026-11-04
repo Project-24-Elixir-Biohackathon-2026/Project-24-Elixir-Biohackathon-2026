@@ -6,7 +6,7 @@ catalog these instances exist for is in `../threats/`.
 | Directory | What | Read |
 |---|---|---|
 | `ansible/` | Builds one instance (VM, data with canaries, WES/DRS/TRS stack, chat frontend), verifies it, archives its run, tears it down | `ansible/README.md` |
-| `coder/` | The portal: participants pick a testbed preset, get an instance with the frontend one click away, and every stop archives the run | `coder/README.md` |
+| `coder/` | The portal: participants pick a testbed preset, get an instance with both chat frontends one click away, and every stop archives the run | `coder/README.md` |
 | `agui/` | The AG-UI frontend: `pydantic-ai-agent/`, our Pydantic AI agent served over AG-UI, and `copilotkit-chat/`, its Next.js + CopilotKit chat | each one's `README.md` |
 | `promptfoo-evals/` | promptfoo suite that drives an instance's agent directly and checks answers and tool calls | `promptfoo-evals/README.md` |
 | `dev/` | Dummy dataset generator, a scripted agent for offline runs, tests for the host-side scripts | `../AGENTS.md`, "Running things" |
