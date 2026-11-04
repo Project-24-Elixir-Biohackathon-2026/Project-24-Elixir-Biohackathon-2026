@@ -42,7 +42,8 @@ the earlier format (`<id>.json`) are neither read nor migrated.
   only new message is `/compact` or `/compact <focus>` is a command (`lib/command.ts`): journaled as
   `run_start.command` with no message, sent the history with `forwardedProps.spe_command`, refused when there
   is nothing to compact or the focus is over 1000 characters; an admitted one always sends the browser the
-  snapshot.
+  snapshot. In the browser, `app/command-input.tsx` offers `/compact` in CopilotKit's slash menu and marks the
+  composer while its text is a command.
 - `lib/journal.ts` writes and parses the lines, `lib/rebuild.ts` rebuilds a conversation with
   `@ag-ui/client`'s own event handling, `lib/anchor.ts` compares the client's history with the journal.
 - `lib/sessions.ts` appends one session at a time through a queue on `globalThis` that every route bundle

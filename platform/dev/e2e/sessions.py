@@ -988,15 +988,29 @@ def check_compaction(r: Run) -> None:
 
 def check_compact_command(r: Run) -> None:
     """/compact with a focus (spec §15): the bubble is replaced by the divider, live and after a reload; the
-    journal's run_start carries the command and no message."""
+    journal's run_start carries the command and no message. The slash menu offers /compact and sends a bare one;
+    the composer is marked while its text is a command."""
     page = r.page
     page.get_by_role("button", name="New chat").click()
-    expect(page.locator(".spe-header-title")).to_have_text("New chat")
+    expect(page.locator(".spe-header h1")).to_have_text("New chat")
     r.send("first question", 1)
     r.send("second question", 2)
     box = page.get_by_test_id("copilot-chat-textarea")
+    # The input (§15, *In the chat input*): the slash menu offers /compact while the text is a prefix of it, and
+    # hides once a focus follows; the composer is marked a command only while the text parses as one.
+    menu = page.get_by_test_id("copilot-slash-menu")
+    marked = page.locator("[data-command] [data-testid='copilot-chat-input']")
+    box.fill("/co")
+    expect(menu.get_by_role("option", name=re.compile(r"^compact"))).to_be_visible()
+    expect(marked).to_have_count(0)
+    expect(page.get_by_test_id("copilot-add-menu-button")).to_be_disabled()
+    r.shot("compact-menu")
     box.fill("/compact keep the canary paths")
+    expect(menu).to_have_count(0)
+    expect(marked).to_have_count(1)
+    r.shot("compact-marked")
     box.press("Enter")
+    expect(marked).to_have_count(0)
     divider = page.locator(".spe-compaction")
     expect(divider).to_have_count(1, timeout=20_000)
     expect(page.get_by_text("/compact keep the canary paths", exact=True)).to_have_count(0)
@@ -1025,7 +1039,17 @@ def check_compact_command(r: Run) -> None:
     expect(turn1).to_have_count(before + 1, timeout=20_000)
     expect(page.locator(".spe-compaction")).to_have_count(1)
     r.wait_runs(sid, 4)
-    r.ok("compact-command: bubble gone, divider in place live and after a reload, run_start holds the command")
+    # Enter on the highlighted menu entry sends a bare /compact: a second divider, a command with no focus.
+    box.fill("/comp")
+    expect(menu.get_by_role("option", name=re.compile(r"^compact"))).to_be_visible()
+    box.press("Enter")
+    expect(page.locator(".spe-compaction")).to_have_count(2, timeout=20_000)
+    expect(box).to_have_value("")
+    r.wait_runs(sid, 5)
+    starts = [x for x in read_journal((r.sessions / f"{sid}.jsonl").read_text()) if x["type"] == "run_start"]
+    assert starts[-1]["command"] == {**starts[-1]["command"], "name": "compact", "focus": None}, starts[-1]
+    r.ok("compact-command: bubble gone, divider in place live and after a reload, run_start holds the command; "
+         "the slash menu offers /compact and sends it, the composer marks a command")
 
 
 def check_save_failed(r: Run) -> None:

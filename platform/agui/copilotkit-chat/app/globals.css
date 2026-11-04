@@ -480,6 +480,13 @@ body {
   color: var(--button-strong-text); }
 [data-testid="copilot-send-button"]:disabled { background: var(--button-off-bg); color: var(--button-off-text);
   opacity: 1; }
+/* While the text is a /compact command (app/command-input.tsx): a stronger border, the text in mono, and a
+   "command" badge on the border, since a textarea cannot colour the word alone. */
+[data-command] [data-testid="copilot-chat-input"] { position: relative; border-color: var(--text-muted); }
+[data-command] [data-testid="copilot-chat-input"]::before { content: "command"; position: absolute; top: -9px;
+  left: 22px; padding: 0 6px; background: var(--bg); color: var(--text-muted); font-size: 11px; line-height: 16px;
+  pointer-events: none; }
+[data-command] [data-testid="copilot-chat-textarea"] { font-family: var(--font-mono); font-size: 14px; }
 
 /* ---------- Tool cards ---------- */
 

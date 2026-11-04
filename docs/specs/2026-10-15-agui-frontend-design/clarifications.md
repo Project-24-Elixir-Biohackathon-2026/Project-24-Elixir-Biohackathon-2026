@@ -238,3 +238,11 @@ in the parts it amends.
     measured in UTF-16 units instead of characters, cutting a focus with emoji short of 1000; and the two
     refusals could report the wrong reason on a path that triggers both. *Amends:* §15 *The run route*, steps 2,
     4 and 5. *Status:* folded.
+
+19. **`/compact` gets a slash-menu entry and a marked composer** (2026-11-04; the fork's PR #32). §15 gains *In the
+    chat input*: CopilotKit's built-in slash menu offers a `compact` entry while the input's whole text is a
+    prefix of `/compact`, and picking it sends a bare `/compact`; the composer is marked (border, monospace, a
+    "command" badge) while the text parses as a command. The out-of-scope list no longer names a command menu.
+    *Reason:* asked for by the user on #30 (2026-11-04): the command was undiscoverable and looked like a
+    message until sent. *Cost if wrong:* the menu's entry sends `/compact` with no focus, so a participant who
+    wanted one has to type it after the command. *Amends:* §15, out-of-scope. *Status:* folded.

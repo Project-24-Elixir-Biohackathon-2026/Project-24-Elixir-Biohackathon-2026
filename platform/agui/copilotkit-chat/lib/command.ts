@@ -25,3 +25,12 @@ export function commandOf(newMessages: Message[]): CommandField | null {
 export function sameCommand(a: Command, b: Command): boolean {
   return a.name === b.name && a.focus === b.focus;
 }
+
+// The chat input's slash menu (spec §15, *In the chat input*): the `/compact` entry is offered while the input's
+// whole text is still a prefix of `/compact` (`/`, `/co`, `/compact`), and hidden once it is anything else, a focus
+// included, since CopilotKit's menu would then say "No commands found" over a valid command. The whole text, not
+// CopilotKit's first line: Enter picks a highlighted entry instead of sending, so a focus or a message on later
+// lines would be lost.
+export function offersCompact(value: string): boolean {
+  return value.startsWith("/") && "/compact".startsWith(value);
+}

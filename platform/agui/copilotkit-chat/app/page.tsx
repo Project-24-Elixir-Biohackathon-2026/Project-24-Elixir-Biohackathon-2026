@@ -19,6 +19,7 @@ import { searchWith, sessionFromSearch } from "../lib/session-url.ts";
 import type { MetaPatch, SessionMeta } from "../lib/sessions.ts";
 import { effectiveTheme, parseTheme } from "../lib/theme.ts";
 import { ChatHeader } from "./chat-header";
+import { CommandInput } from "./command-input";
 import { AssistantOrCompaction } from "./compaction-divider";
 import { ToolCard } from "./tool-calls";
 import { Sidebar } from "./sidebar";
@@ -235,6 +236,7 @@ function Chat() {
               agentId="spe"
               className="spe-chat"
               messageView={MESSAGE_VIEW}
+              input={CommandInput}
               onError={(event) => {
                 // The prop's type also admits a DOM error event; only CopilotKit's carries `error`.
                 if ("error" in event && event.error instanceof Error) {

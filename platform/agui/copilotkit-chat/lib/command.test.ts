@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Message } from "@ag-ui/client";
-import { commandOf, parseCommand, sameCommand } from "./command.ts";
+import { commandOf, offersCompact, parseCommand, sameCommand } from "./command.ts";
 
 const user = (id: string, content: unknown) => ({ id, role: "user", content }) as Message;
 
@@ -33,4 +33,12 @@ test("commandOf: exactly one new message, a user message that parses", () => {
 test("sameCommand compares name and focus", () => {
   assert.ok(sameCommand({ name: "compact", focus: null }, { name: "compact", focus: null }));
   assert.ok(!sameCommand({ name: "compact", focus: "a" }, { name: "compact", focus: null }));
+});
+
+test("offersCompact: while the whole text is a prefix of /compact, and only then", () => {
+  for (const value of ["/", "/c", "/comp", "/compact"]) assert.equal(offersCompact(value), true, value);
+  for (const value of ["", "c", " /compact", "/compact ", "/compact keep x", "/compact\n", "/compact\nkeep x", "/\nhello",
+    "/compacted", "/x", "/COMPACT", "hi\n/compact"]) {
+    assert.equal(offersCompact(value), false, value);
+  }
 });

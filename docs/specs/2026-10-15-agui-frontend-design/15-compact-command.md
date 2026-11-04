@@ -75,6 +75,28 @@ a `/compact` from a second tab while the first tab's run streams compacts the pa
 message, and if the other run ends later the tip is its reply, on a branch without the marker, so the
 compaction has no effect on what the chat reopens on; the archive keeps both branches.
 
+### In the chat input
+
+The command is discoverable and marked, without changing what counts as one:
+
+- **The slash menu.** CopilotKit's input opens a menu from its `toolsMenu` when the text starts with `/`. The chat
+  passes one entry, `compact`, while the input's whole text is a prefix of `/compact` (`/`, `/co`, `/compact`),
+  and none otherwise, so a `/compact <focus>` (or any other text starting with `/`) shows no menu rather than
+  "No commands found". Picking the entry, by a click or Enter while it is highlighted, clears the input and sends
+  a bare `/compact`: with the menu open, Enter picks the entry instead of sending, which is why the whole text
+  counts and not only its first line (a focus on a second line would be lost). The "+" button, which would show
+  the entry too, stays as it is without it.
+- **The marking.** While the input's text parses as a command (*What counts as a command*), the composer is
+  marked: a stronger border, the text in monospace, and a "command" badge on its border. A textarea cannot
+  colour one word, so the whole composer is marked.
+
+Acceptance: `npm test` (`offersCompact`: `/`, `/c`, `/compact` offer the entry; `/compact `, `/compact keep x`,
+`/compact` then a newline and `keep x`, `/` then a newline and `hello`, `/compacted`, ` /compact`, `/COMPACT` do
+not); Playwright against `fake_agent.py` (`sessions.py --scenario
+compact-command`): `/co` shows the entry and leaves the composer unmarked, `/compact keep the canary paths` shows
+no menu and marks it, and Enter on `/comp` with the entry highlighted adds a second divider and journals a
+command with no focus.
+
 ### The agent
 
 When the run input's `forwardedProps.spe_command.name` is `"compact"`, `app.py` does not start the model loop:
