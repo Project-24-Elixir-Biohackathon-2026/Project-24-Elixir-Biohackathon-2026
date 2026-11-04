@@ -96,7 +96,7 @@
   changed_when: false
   no_log: true
 
-- name: Attach the agent system prompt to the model (applies to every chat)
+- name: Attach the agent system prompt and the terminal to the model (apply to every chat)
   ansible.builtin.uri:
     url: "http://127.0.0.1:{{ spe_webui_local_port }}/api/v1/models/import"
     method: POST
@@ -108,7 +108,8 @@
         - id: "{{ spe_webui_model_id }}"
           base_model_id: null
           name: "{{ spe_webui_model_id }}"
-          meta: {}
+          meta:
+            terminalId: spe-open-terminal   # the terminal server from TERMINAL_SERVER_CONNECTIONS: on in every new chat
           params:
             system: "{{ lookup('ansible.builtin.file', role_path ~ '/../sandbox/files/system_prompt.txt') }}"
           is_active: true
