@@ -12,7 +12,7 @@ platform/dev/fake_agent.py (with uv, in platform/agui/pydantic-ai-agent) and the
 with its own sessions directory, walks the sidebar (list, open, New chat, ?session=, the row menu's
 close and focus rules, the row menu, the open session deleted elsewhere) and checks the journals after each step. It ends with three sessions: one tagged and pinned, one hidden, one
 deleted, and checks that a run whose tab is closed is still journaled whole, and that no run of any journal holds ignored content. It also edits a reply in the page's copy of a session and checks the server undoes
-it, and makes two branches from two tabs and checks a reopened session lands on the newer one. Needs Python Playwright with Chromium
+it, groups two tool calls of one response under one header that shows a failure, and makes two branches from two tabs and checks a reopened session lands on the newer one. Needs Python Playwright with Chromium
 (`pip install playwright` and `playwright install chromium`). Exits nonzero on the first failed check.
 """
 from __future__ import annotations
@@ -190,7 +190,7 @@ def check_list(r: Run) -> dict[str, str]:
 
     page.reload()
     expect(page.get_by_text("Turn 1: the command ran.")).to_be_visible(timeout=10_000)
-    expect(page.locator(".spe-tool .spe-tool-name", has_text="run_command")).to_have_count(1)
+    expect(page.locator(".spe-tool .spe-tool-title code", has_text="run_command")).to_have_count(1)
     expect(r.row("List the home directory")).to_have_class("spe-row spe-row-active")
     r.ok("reload reopens the session with its tool card")
 
@@ -673,7 +673,7 @@ def check_header(r: Run, ids: dict[str, str]) -> None:
     assert r.url_session() == ids["first"]
     page.get_by_role("button", name="New chat").click()
     # A New chat has no visible title: its heading is for screen readers only.
-    expect(header.get_by_role("heading", name="New chat")).to_have_class("spe-sr-only")
+    expect(header.get_by_role("heading", name="New chat", exact=True)).to_have_class("spe-sr-only")
     expect(header.locator(".spe-header-title")).to_have_count(0)
     expect(header.get_by_role("button", name="Chat actions")).to_have_count(0)
     r.ok("header: rename by its menu (Enter saves) and double-click (Esc cancels), tags in the menu's tag editor, "
@@ -727,7 +727,7 @@ def check_deleted_open(r: Run) -> None:
     "this session was deleted", and no "could not be saved" follows once the reconciliation is over."""
     page = r.page
     page.get_by_role("button", name="New chat").click()
-    expect(page.locator(".spe-header-title")).to_have_text("New chat")
+    expect(page.get_by_role("heading", name="New chat", exact=True)).to_have_count(1)
     title = f"deleted while open {uuid.uuid4().hex[:8]}"
     r.send(title, 1)
     expect(r.row(title)).to_have_count(1, timeout=5_000)
@@ -743,6 +743,28 @@ def check_deleted_open(r: Run) -> None:
     r.shot("deleted-open")
     page.locator(".spe-error").get_by_role("button", name="Dismiss").click()
     r.ok("open session deleted elsewhere: a message says it was deleted, never that it could not be saved")
+
+
+def check_tool_group(r: Run) -> None:
+    """Two calls in one model response (fake agent: "multi-tool", the second exiting 1) sit under one group
+    header that says one failed, with both cards inside it, the failed one titled so; again after a reload.
+    Its own New chat, after the checks that count sessions."""
+    page = r.page
+    page.get_by_role("button", name="New chat").click()
+    expect(page.get_by_role("heading", name="New chat", exact=True)).to_have_count(1)
+    r.send(f"multi-tool {uuid.uuid4().hex[:8]}", 1)
+    for when in ("live", "reloaded"):
+        group = page.locator(".spe-tool-group.spe-tool-failed")
+        expect(group).to_have_count(1, timeout=10_000)
+        expect(group.locator("> summary .spe-tool-title")).to_have_text("View Results from 2 tools · 1 failed")
+        expect(group.locator(".spe-tool")).to_have_count(2)
+        expect(group.locator(".spe-tool.spe-tool-done")).to_have_count(1)
+        expect(group.locator(".spe-tool.spe-tool-failed .spe-tool-title")).to_have_text("run_command failed")
+        if when == "live":
+            group.locator("> summary").click()
+            r.shot("tool-group")
+            page.reload()
+    r.ok("two calls in one response: one group header, \"1 failed\", both cards inside it; also after a reload")
 
 
 # --- devtools-edit (decision 6) and restore-tip (decisions 9, 13): helpers the checks below read through,
@@ -784,7 +806,7 @@ def check_devtools_edit(r: Run) -> None:
     original reply again once the run starts, and the journal records the edit as ignored content."""
     page = r.page
     page.get_by_role("button", name="New chat").click()
-    expect(page.locator(".spe-header-title")).to_have_text("New chat")
+    expect(page.get_by_role("heading", name="New chat", exact=True)).to_have_count(1)
     title = f"devtools edit {uuid.uuid4().hex[:8]}"
     r.send(title, 1)
     expect(r.row(title)).to_have_count(1, timeout=5_000)
@@ -842,7 +864,7 @@ def check_restore_tip(r: Run) -> None:
     """
     page = r.page
     page.get_by_role("button", name="New chat").click()
-    expect(page.locator(".spe-header-title")).to_have_text("New chat")
+    expect(page.get_by_role("heading", name="New chat", exact=True)).to_have_count(1)
     title = f"branches {uuid.uuid4().hex[:8]}"
     r.send(title, 1)
     expect(r.row(title)).to_have_count(1, timeout=5_000)
@@ -899,7 +921,7 @@ def check_no_false_alarm(r: Run) -> None:
     journal holds ignored content."""
     page = r.page
     page.get_by_role("button", name="New chat").click()
-    expect(page.locator(".spe-header-title")).to_have_text("New chat")
+    expect(page.get_by_role("heading", name="New chat", exact=True)).to_have_count(1)
     r.send("Count the files", 1)
     box = page.get_by_test_id("copilot-chat-textarea")
     box.fill("Now fail on purpose")
@@ -924,7 +946,7 @@ def check_compaction(r: Run) -> None:
     live and after a reload; the summary is collapsed, and expanded shows its markup as text."""
     page = r.page
     page.get_by_role("button", name="New chat").click()
-    expect(page.locator(".spe-header-title")).to_have_text("New chat")
+    expect(page.get_by_role("heading", name="New chat", exact=True)).to_have_count(1)
     box = page.get_by_test_id("copilot-chat-textarea")
     box.fill(COMPACTION_XSS)
     box.press("Enter")
@@ -975,7 +997,7 @@ def check_save_failed(r: Run) -> None:
     page.on("request", lambda req: lists.append(req.url)
             if req.method == "GET" and req.url.split("?")[0].endswith("/api/sessions") else None)
     page.get_by_role("button", name="New chat").click()
-    expect(page.locator(".spe-header-title")).to_have_text("New chat")
+    expect(page.get_by_role("heading", name="New chat", exact=True)).to_have_count(1)
     title = f"run that cannot be saved {uuid.uuid4().hex[:8]}"
     mode = r.sessions.stat().st_mode & 0o7777
     r.sessions.chmod(0o500)
@@ -1206,6 +1228,7 @@ def main() -> None:
                 check_view(r)
                 check_header(r, ids)
                 check_deleted_open(r)
+                check_tool_group(r)
                 check_compaction(r)
                 check_no_false_alarm(r)
                 check_stop(r)

@@ -8,8 +8,15 @@
     (`@ag-ui/client`), and the run route's hook that keeps the conversation record (§13).
 - **Tool calls are rendered** with `useDefaultRenderTool`
   (`@copilotkit/react-core/v2`, verified in CopilotKit docs 2026-10-15): one
-  collapsible card per call showing the tool name, its arguments (for
-  `run_command`, the command), status, and the first lines of the result.
+  collapsible card per call, after Open WebUI's `ToolCallDisplay`. Its title line is a status icon (a
+  spinner while the call runs, a check once done, a cross when it failed) and "Executing `<name>`…"
+  (shimmering) while it runs, "View Result from `<name>`" once done, or "`<name>` failed". Unfolded, it shows
+  the arguments as key/value rows (`run_command`'s command as a `$ <command>` line instead) and the first
+  lines of the result in a code block (`run_command`'s output parts joined, not its JSON envelope). A call
+  failed when its result is a JSON object with a string `error` or a nonzero `exit_code`; a failed card and
+  its result are tinted with the danger colour. The calls of one assistant message (one model response)
+  sit under one group header, "Executing N tools…" or "View Results from N tools" with the number that
+  failed, set through the assistant message's `toolCallsView` slot. All of it is React text, never HTML.
 - No secrets in the browser. The conversation is kept on the server, in `chat-ui`, which owns it (§13);
   the browser changes only a session's metadata.
 - Exact package versions are pinned in `package-lock.json`; the image runs

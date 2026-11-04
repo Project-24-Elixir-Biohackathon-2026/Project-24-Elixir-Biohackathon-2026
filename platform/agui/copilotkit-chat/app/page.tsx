@@ -1,6 +1,7 @@
 "use client";
-// Chat with agent `spe`, and a sidebar of sessions. Each tool call is a collapsible card: name,
-// status, arguments and the first lines of the result. Everything is rendered as text, never HTML.
+// Chat with agent `spe`, and a sidebar of sessions. Each tool call is a collapsible card: a status icon and
+// title, the arguments as rows (run_command's as a `$ <command>` line) and the first lines of the result;
+// the calls of one model response are grouped (./tool-calls.tsx). Everything is rendered as text, never HTML.
 // Sessions are recorded on the server (lib/recorder.ts); this page only reads them and changes
 // their metadata. The open session is in the URL (`?session=<id>`), so a reload reopens it.
 import type { Message } from "@ag-ui/client";
@@ -19,7 +20,7 @@ import type { MetaPatch, SessionMeta } from "../lib/sessions.ts";
 import { effectiveTheme, parseTheme } from "../lib/theme.ts";
 import { ChatHeader } from "./chat-header";
 import { AssistantOrCompaction } from "./compaction-divider";
-import { ChevronRight } from "./icons";
+import { ToolCard } from "./tool-calls";
 import { Sidebar } from "./sidebar";
 import { useHydrated } from "./use-hydrated";
 import { useRunReconcile } from "./use-run-reconcile";
@@ -27,71 +28,11 @@ import { useRunReconcile } from "./use-run-reconcile";
 // A stable object: CopilotChat re-renders its message view when the slot value changes identity.
 const MESSAGE_VIEW = { assistantMessage: AssistantOrCompaction };
 
-const MAX_RESULT_LINES = 40;
-const MAX_RESULT_CHARS = 4000;
-
-type ToolProps = {
-  name: string;
-  parameters: unknown;
-  status: "inProgress" | "executing" | "complete";
-  result: string | undefined;
-};
-
-function preview(result: string): string {
-  let text = result;
-  try {
-    text = JSON.stringify(JSON.parse(result), null, 2);
-  } catch {
-    // not JSON: show as is
-  }
-  const lines = text.split("\n");
-  let shown = lines.slice(0, MAX_RESULT_LINES).join("\n");
-  if (shown.length > MAX_RESULT_CHARS) shown = shown.slice(0, MAX_RESULT_CHARS);
-  return shown.length < text.length ? `${shown}\n… (${text.length - shown.length} more characters)` : shown;
-}
-
-function brief(name: string, parameters: unknown): string {
-  if (parameters && typeof parameters === "object") {
-    const p = parameters as Record<string, unknown>;
-    for (const key of ["command", "path", "pattern", "query", "process_id"]) {
-      if (typeof p[key] === "string" || typeof p[key] === "number") return String(p[key]);
-    }
-  }
-  return "";
-}
-
 // Under the composer, where claude.ai and chatgpt.com keep their notice; the header holds the title only.
 const LABELS = {
   chatDisclaimerText: "SPE agent · runs inside the secure processing environment · every tool call is shown",
   chatInputPlaceholder: "Message the SPE agent",
 };
-
-const STATUS: Record<ToolProps["status"], string> = {
-  inProgress: "preparing…",
-  executing: "running…",
-  complete: "done",
-};
-
-function ToolCard({ name, parameters, status, result }: ToolProps) {
-  return (
-    <details className="spe-tool">
-      <summary>
-        <ChevronRight className="spe-tool-chevron" />
-        <span className="spe-tool-name">{name}</span>
-        <span className="spe-tool-brief">{brief(name, parameters)}</span>
-        <span className="spe-tool-status">{STATUS[status]}</span>
-      </summary>
-      <div className="spe-tool-label">arguments</div>
-      <pre>{JSON.stringify(parameters ?? {}, null, 2)}</pre>
-      {result !== undefined && (
-        <>
-          <div className="spe-tool-label">result</div>
-          <pre>{preview(result)}</pre>
-        </>
-      )}
-    </details>
-  );
-}
 
 function messageOf(error: unknown): string {
   return error instanceof Error && error.message ? error.message : "The request failed.";

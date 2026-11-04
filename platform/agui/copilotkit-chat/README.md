@@ -9,8 +9,11 @@ Next.js 16.4.1 + CopilotKit 1.79.0 (v2 API), a thin client for the SPE agent.
   $AGENT_API_KEY`. Both variables are server-side only (not `NEXT_PUBLIC_*`) and read on the
   first request, so the build needs neither.
 - `app/page.tsx`: `CopilotChat` (`@copilotkit/react-core/v2`) beside the sidebar; every tool call is
-  a collapsible card (`useDefaultRenderTool`) with name, status, arguments and the first 40 lines
-  or 4000 characters of the result, rendered as text. Run errors appear in a bar above the chat. A
+  a collapsible card (`useDefaultRenderTool`, `app/tool-calls.tsx`, after Open WebUI's `ToolCallDisplay`):
+  a status icon and "Executing `<name>`…" / "View Result from `<name>`" / "`<name>` failed", then the
+  arguments as rows (`run_command`'s as a `$ <command>` line) and the first 40 lines or 4000 characters
+  of the result, rendered as text (`lib/tool-card.ts`). Several calls in one assistant message share a
+  group header. Run errors appear in a bar above the chat. A
   sidebar (`app/sidebar.tsx`) lists the sessions; the open one is in the URL (`?session=<id>`).
 - `lib/`: chat sessions on the server, plain TypeScript that `node --test` runs without Next.js
   (see *Sessions*). `app/api/sessions/` wraps `lib/api.ts`.

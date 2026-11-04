@@ -3,6 +3,7 @@
 import { CopilotChatAssistantMessage } from "@copilotkit/react-core/v2";
 import type { ComponentProps } from "react";
 import { isCompactionMarker } from "../lib/compaction.ts";
+import { ToolCallsView } from "./tool-calls";
 
 // The summary is React text, never Markdown or HTML: it is model output over tool output.
 export function CompactionDivider({ summary }: { summary: string }) {
@@ -23,7 +24,7 @@ function render(props: ComponentProps<typeof CopilotChatAssistantMessage>) {
   if (isCompactionMarker(props.message)) {
     return <CompactionDivider summary={props.message.content} />;
   }
-  return <CopilotChatAssistantMessage {...props} />;
+  return <CopilotChatAssistantMessage {...props} toolCallsView={ToolCallsView} />;
 }
 
 // The slot is typed as CopilotKit's component with its static parts, so ours carries them too.

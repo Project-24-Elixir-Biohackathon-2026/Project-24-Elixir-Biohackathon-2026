@@ -13,7 +13,9 @@ runs a command with a long output, so the history passes the scripted window
 every time it is sent, not once per session (the request right after a fresh compaction,
 within the same run, is answered "compacted" without running the command again, as the
 summary is already the latest thing in the history); a command (`spe_command`) is
-answered with a fixed summary that quotes its focus; a message containing "echo-input"
+answered with a fixed summary that quotes its focus; a message containing "multi-tool" makes the
+model run two commands in one response, the second exiting 1 (the chat groups them and shows the failure);
+a message containing "echo-input"
 makes the model answer, instead of running a command, with the JSON list of {role, id}
 of what it was sent (the system prompt left out), so a
 client can see which history reached the model. `/title` is off (the e2e finds rows by
@@ -68,6 +70,9 @@ def fake_sandbox(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"features": {"system": False}})
     if path == "/execute":
         cmd = json.loads(request.content).get("command", "")
+        if cmd.startswith("exit-1"):
+            return httpx.Response(200, json={"id": "p2", "status": "done", "exit_code": 1,
+                                             "output": f"$ {cmd}\nscripted failure"})
         if cmd.startswith("print-long-output"):
             return httpx.Response(200, json={"id": "p1", "status": "done", "exit_code": 0,
                                              "output": f"$ {cmd}\n" + "x" * LONG_OUTPUT_CHARS})
@@ -148,6 +153,12 @@ async def scripted(messages, info):
                 yield f"Slow step {step} of {SLOW_STEPS}. "
         for chunk in (f"Turn {len(users)}: ", "the command ran. ", "Its output was:\n\n", str(last.content)):
             yield chunk
+    elif "multi-tool" in last_user.lower():
+        tag = uuid.uuid4().hex[:8]
+        yield {0: DeltaToolCall(name="run_command", json_args=json.dumps({"command": f"echo turn {len(users)}"}),
+                                tool_call_id=f"call-{len(users)}a-{tag}"),
+               1: DeltaToolCall(name="run_command", json_args=json.dumps({"command": f"exit-1 turn {len(users)}"}),
+                                tool_call_id=f"call-{len(users)}b-{tag}")}
     else:
         command = f"print-long-output turn {len(users)}" if compacting else f"echo turn {len(users)}"
         # A unique id: after a compaction the turn count starts again, and an id reused from an earlier run

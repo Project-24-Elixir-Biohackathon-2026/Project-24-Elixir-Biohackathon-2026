@@ -96,3 +96,23 @@ export const XMark = ({ className }: P) => (
     <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
   </svg>
 );
+
+// The tool-call card's status: done, failed, and a spinner (a quarter arc over a faint ring) while running.
+export const Check = ({ className }: P) => (
+  <Icon className={className} strokeWidth={2}>
+    <path d="m4.5 12.75 6 6 9-13.5" />
+  </Icon>
+);
+
+export const Cross = ({ className }: P) => (
+  <Icon className={className} strokeWidth={2}>
+    <path d="M6 18 18 6M6 6l12 12" />
+  </Icon>
+);
+
+export const Spinner = ({ className }: P) => (
+  <Icon className={className} strokeWidth={2}>
+    <circle cx="12" cy="12" r="9" opacity="0.25" />
+    <path d="M21 12a9 9 0 0 0-9-9" />
+  </Icon>
+);

@@ -39,14 +39,6 @@ start reads this section; keep it short.
   reasoning), a rename sticks, the sidebar drags, the theme toggles without a flash on reload. From #29's *Checks*;
   waits on the user: an OK for the redeploy and its paid calls (#29's handoff said it was approved here, but no
   approval was recorded).
-- AG-UI chat: tool-call cards like Open WebUI's `ToolCallDisplay` — chat UI only (`ToolCard`,
-  `app/page.tsx:73`, and its CSS): a status icon (spinner + shimmer while running, check when done, ✕ on
-  error) instead of the "preparing…/running…/done" text; "Executing `<name>`…" while running and "View
-  Result from `<name>`" once done, in place of the brief/status spans; the arguments shown as key/value
-  rows instead of a raw JSON dump; the result in a code block; consecutive tool calls grouped under one
-  header; `run_command` shown as a `$ <command>` line; and a distinct error state for a failed call. Asked
-  for by the user (2026-11-03), alongside the model-written titles, resizable sidebar and theme toggle built
-  in PR #29. Due: the next Change after #29.
 - Upstream PR for the AG-UI package (sessions, conversation record, compaction, `/compact`, chat minors) as its
   final state, not each fork commit replayed — needs a *package port* path in `docs/guides/contributing-upstream.md`
   (the user's choice of one coherent upstream package, 2026-11-03, PR #19). Prepared by a session as one
@@ -65,6 +57,7 @@ start reads this section; keep it short.
 - AG-UI archive: the `## Compacted` line "From here the model saw this summary instead of the messages above." omits that the model also kept the latest request from before the marker (`compaction.py`, `_head`); reword it in `write_run.py` and `test_write_run_agui.py` with a clarification to the compaction spec (decision text, §archive) — from PR #18's local review, waits because the line is the approved spec's wording and changing it needs a spec clarification.
 - AG-UI archive Markdown: bare URLs in titles and tags become links under GFM autolinks: `write_run.py`'s `md_inline` (slice 2 of the conversation record plan, `docs/superpowers/plans/2026-11-03-agui-conversation-record/slice-2-export.md`) escapes table and Markdown syntax in a session's title and tags but leaves a bare `https://…` or `www.…`, which GitHub-flavoured Markdown renders as a link in `index.md` — from PR #20's local review (finding 7), waits because a link forges no structure of the run directory (Review Focus 5 holds) and the plan's slices come first.
 - AG-UI chat: branching, editing or regenerating messages in the chat, plus export from the UI, full-text search over messages and folders (Open WebUI features not asked for) — from the living AG-UI spec's `docs/specs/2026-10-15-agui-frontend-design/out-of-scope.md` (PR #19); waits until someone asks for them.
+- AG-UI chat: group tool calls across successive assistant messages (model steps, with reasoning between them on qwen) under one header; #31 groups the calls of one model response only (clarification 17 of `docs/specs/2026-10-15-agui-frontend-design/clarifications.md`) — from PR #31's local review (finding 8), waits because it needs CopilotKit's message list replaced, and until someone asks for it.
 - AG-UI `/compact`: other slash commands or a command menu, a compact button, an escape for sending the literal text `/compact …` to the model, and manual compaction while automatic compaction is off — from the living AG-UI spec's `docs/specs/2026-10-15-agui-frontend-design/out-of-scope.md` (PR #26); waits until someone asks for them.
 - AG-UI `/compact`: the agent backstops no focus length: a client that reaches the agent directly can send a focus of any size, which shrinks the transcript to its pinned entries without an error (`chat-ui` refuses more than 1000 characters, §15 *The run route*); a `RUN_ERROR` as for "Nothing to compact yet." would match — from PR #28's local review (correctness, finding 3), waits because only `chat-ui` reaches the agent and the spec names no agent-side limit.
 - AG-UI record: recording runs sent straight to the agent (not through `chat-ui`) beyond its run log — from `docs/specs/2026-10-15-agui-frontend-design/out-of-scope.md` (PR #19); waits until a frontend other than `chat-ui` reaches the agent.
