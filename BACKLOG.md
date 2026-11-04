@@ -54,7 +54,8 @@ start reads this section; keep it short.
   functional; the compaction plan's upstream doc rewrite (PR #16 review, finding 10) is part of it. `gh` cannot
   create the PR on kraatz (403 createPullRequest, 2026-11-03, `docs/knowledge/gh-pr-create-token.md`): the session
   pushes the `contrib/<slug>` branch to `origin` ready to compare and stops there; **the user opens the PR on
-  kraatz**; no fork PR tracks this unit. Waits on the *AG-UI via Coder* item.
+  kraatz**; no fork PR tracks this unit. Waits on the *AG-UI via Coder* item. Supersedes kraatz #9 (the user,
+  2026-11-04); the cut, the PR text draft and the #9 steps: `docs/handoffs/2026-11-04T1800Z-upstream-package-start.md`.
 
 ## Unscheduled
 
