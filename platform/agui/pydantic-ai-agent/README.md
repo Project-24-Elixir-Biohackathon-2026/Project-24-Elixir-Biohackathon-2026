@@ -1,169 +1,91 @@
 # SPE agent
 
-A Pydantic AI pentest agent for one SPE instance, served over AG-UI. It holds the
-LLM key and calls the open-terminal sandbox, where model-chosen commands run; it
-runs no commands itself. Deployed by the `agui` Ansible role next to the sandbox and
-the chat UI (`docs/specs/2026-10-15-agui-frontend-design/`).
+A Pydantic AI agent for one SPE instance, served over AG-UI. It holds the LLM key
+and calls the open-terminal sandbox, where model-chosen commands run; it runs no
+commands itself. Deployed by the `agui` Ansible role next to the sandbox and the chat
+UI. Design: `docs/specs/2026-10-15-agui-frontend-design/`.
 
 ```bash
-uv run --group dev pytest -q                   # offline tests: no LLM, no network
-docker build -t spe-agent:dev .                # runs the same tests in its `test` stage
-SPE_AGENT_CONFIG=agent.yaml SPE_AGENT_API_KEY=… SANDBOX_API_KEY=… ANTHROPIC_API_KEY=… \
+uv run --group dev pytest -q                   # offline: no LLM, no network
+docker build -t spe-agent:dev .                # runs the same tests in its test stage
+SPE_AGENT_CONFIG=agent.yaml SPE_AGENT_API_KEY=… SANDBOX_API_KEY=… OPENAI_API_KEY=… \
   uv run python -m spe_agent                   # serves :8100
 ```
 
-## Service
+## Endpoints
 
-- `POST /agent`: AG-UI `RunAgentInput` in, server-sent events out, through
-  `AGUIAdapter` (pydantic-ai-slim 2.66.0, `pydantic_ai/ui/_adapter.py`). Requires
-  `Authorization: Bearer <SPE_AGENT_API_KEY>`; the key is checked before readiness, so
-  an unauthenticated request always gets 401. A malformed body gets 422 without the
-  input echoed back.
-- `GET /healthz`: no auth, no LLM call. 200 `{"status": "ok", "tools": N}` once the
-  sandbox's tools are discovered, else 503 with a reason.
+| Route | What |
+|---|---|
+| `POST /agent` | AG-UI `RunAgentInput` in, server-sent events out. `Authorization: Bearer <SPE_AGENT_API_KEY>`, checked before readiness: 401 without it, 422 on a malformed body, 503 until the sandbox's tools are discovered |
+| `POST /title` | A 2-4 word title for a session's first exchange; same key; 404 when `title.enabled` is false |
+| `GET /healthz` | No auth, no model call. 200 `{"status": "ok", "tools": N}` once ready, else 503 with a reason |
 
-**Readiness.** uvicorn starts at once. A background task fetches the sandbox's
-`/openapi.json`, `/files/cwd`, `/api/config` and `/system` with backoff (1 s doubling
-to 30 s) and builds the agent; until then authenticated `/agent` requests get 503.
-When ready it probes `/openapi.json` every 30 s; if the sandbox stops answering the
-service returns to 503 and rediscovers, so a sandbox restart needs no agent restart.
-A run in progress keeps the agent it started with. An allowlisted operation the
-sandbox does not offer keeps the service at 503 with that reason.
+**Readiness.** A background task discovers the sandbox (`/openapi.json`,
+`/files/cwd`, `/api/config`, `/system`) with backoff and builds the agent; it probes
+every 30 s and rediscovers after a sandbox restart. A run in progress keeps the agent
+it started with.
 
-**Configuration.** `agent.yaml` (`SPE_AGENT_CONFIG`, default
-`/etc/spe-agent/agent.yaml`), validated at startup; unknown keys, `surface: typed`,
-non-positive limits or caps, a missing prompt file and a model outside
-`model.allowed_models` (when set) stop the process with exit 2. Keys come from the environment
+## Configuration
+
+`agent.yaml` (`SPE_AGENT_CONFIG`, default `/etc/spe-agent/agent.yaml`), validated at
+startup; an unknown key, a bad limit, a missing prompt file or a model outside
+`model.allowed_models` stops the process with exit 2. Keys come from the environment
 only: `SPE_AGENT_API_KEY`, `SANDBOX_API_KEY`, and `OPENAI_API_KEY` or
 `ANTHROPIC_API_KEY` by provider.
 
-**Providers.** `model.provider` is `openai_compatible` (any OpenAI-compatible API:
-`model.base_url` plus `model.name`, key in `OPENAI_API_KEY`) or `anthropic` (key in
-`ANTHROPIC_API_KEY`). Any model name is accepted unless `model.allowed_models` lists the
-permitted ones (Ansible: `spe_agent_allowed_models`): an optional spend guard, used by
-this repository's development VM to pin `claude-haiku-5-5`. To add a vendor Pydantic AI supports natively
-(Google, Bedrock, Mistral, Groq, …): add it to `ModelCfg.provider` and its key variable
-in `load_secrets` (`config.py`), build its model in `build_model` (`agent.py`), add the
-extra to `pydantic-ai-slim[...]` in `pyproject.toml`, and allow it in the role's check and
-in `platform/ansible/roles/agui/templates/agent.env.j2`.
+- `model.provider`: `openai_compatible` (`model.base_url`, `model.name`) or
+  `anthropic`. Another vendor Pydantic AI supports: add it to `ModelCfg.provider`
+  and `load_secrets` (`config.py`), `build_model` (`agent.py`), the extra in
+  `pyproject.toml`, the role's check and `agent.env.j2`.
+- `prompt.file`, then the sandbox's `/system` prompt when
+  `prompt.include_sandbox_prompt` (Open WebUI's order). System messages sent by the
+  client are stripped.
+- `tools.sandbox_url`, `tools.sandbox_operations` (`all` or an allowlist of
+  operation ids), `tools.max_output_bytes`.
+- `limits.request_limit` (50), `limits.tool_calls_limit` (100),
+  `limits.total_tokens_limit` (unset: no cap). Per run, not a spend budget.
+- `compaction.enabled` (true), `compaction.context_window_tokens` (null: only the
+  reactive trigger), `compaction.trigger_ratio` (0.8), `compaction.summary_max_tokens`
+  (4096). Before a request at or past the trigger, or after a provider rejects a
+  request as too long, the agent asks the same model for a summary of the history
+  (`compaction_prompt.md`) and sends the system prompt, the summary, the latest
+  request and what follows. The summary enters the stream as an assistant message
+  with id prefix `spe-compaction-`, so the chat keeps it and later runs cut there.
+  At most one compaction per request and three per run. `/compact [focus]` from the
+  chat compacts on demand.
+- `title.enabled` (true), `title.max_tokens` (1024).
+- `run_log` (`/var/lib/spe-agent/runs.jsonl`).
 
-**Compaction.** The `compaction` block (all keys optional):
+## Runs
 
-    compaction:
-      enabled: true                 # false: neither trigger acts, as before compaction existed
-      context_window_tokens: null   # the model's context window; null: only the reactive trigger
-      trigger_ratio: 0.8            # compact at this share of the window, in (0, 1)
-      summary_max_tokens: 4096      # the summary request's output cap
+Each request's history comes from the request alone. The AG-UI thread id is sent to
+the sandbox as `X-Session-Id`. A run ends with one terminal event: `RUN_FINISHED`, or
+`RUN_ERROR` with the key values replaced by `[redacted]` and the message cut to 500
+characters. A client that disconnects cancels the run and its model request;
+commands started in the sandbox keep running there (`kill_process`, or restart the
+sandbox container).
 
-Before each model request the agent estimates what it would send (the latest
-response's usage plus three characters a token for what came after it); at
-`trigger_ratio` × `context_window_tokens` or more it compacts first. Whatever the
-window, a request the provider rejects as too long (Anthropic's, OpenAI's, vLLM's or a
-LiteLLM proxy's wording) is compacted and sent once more. Compacting asks the same model, without
-tools, for a summary of the history (`compaction_prompt.md`; tool results cut to their
-first and last 1000 characters), then sends the system prompt, the summary framed as a
-record rather than the participant's words, the latest user request and what follows.
-The summary request counts towards the run's usage and limits. At most one compaction
-per model request and three per run; past that the run fails with "The conversation is
-still too long after compacting it. Start a new chat." Set `context_window_tokens` to
-the window the server enforces: too high and only the reactive trigger acts, too low
-and it compacts early.
+**Run log**: one JSON line per run: ids, times, status, the last user message, each
+tool call with its result and duration, the answer, usage, the error, compactions;
+keys redacted, fields cut to 16384 bytes, file 0600. It holds participant input and
+canaries: never publish it.
 
-**Prompt.** `prompt.file`, then a newline, then the sandbox's `/system` prompt (when
-`prompt.include_sandbox_prompt` and `/api/config` lists `features.system`). That is
-Open WebUI v0.11.3's order (commit `2a960a5`): `utils/middleware.py` appends the
-terminal prompt to the system message (`add_or_update_system_message(...,
-append=True)`), and `routers/openai.py` later prepends the model's prompt
-(`apply_system_prompt_to_body`), both joined with `\n`
-(`utils/misc.py`, `update_message_content`). System messages sent by the client are
-stripped (`manage_system_prompt='server'`); the agent's prompt is reinjected.
+## Image
 
-**Runs.** Each request builds its history from the request alone (AG-UI
-`RunAgentInput.messages`, including earlier tool calls and results); nothing is
-shared between requests. When that history nears the model's context window
-(`compaction.context_window_tokens` × `trigger_ratio`), or the provider rejects a
-request as too long, the agent asks the same model for a summary and sends it in
-place of the older messages; the summary goes into the stream as an assistant message
-whose id starts with `spe-compaction-`, so the chat keeps it, and later runs cut the
-history there. The run log's `compactions` lists each one. The AG-UI thread id is
-sent to the sandbox as `X-Session-Id`, as Open WebUI sends its chat id. Per run,
-`UsageLimits` caps model requests (`limits.request_limit`, 50) and tool calls
-(`tool_calls_limit`, 100). These are per-run caps, not a spend budget: the provider
-account's spend limit is the aggregate cap. `total_tokens_limit` can also cap a run's
-tokens, but is unset (no cap) by default: it sums the tokens of every model request
-in the run, and each request resends the whole conversation, so a long chat hit
-400000 where Open WebUI, which has no such cap, went on.
-
-A run ends with exactly one terminal event: `RUN_FINISHED`, or `RUN_ERROR` for a
-provider error, an exceeded limit or any other failure. The error message has the
-three key values replaced by `[redacted]` and is cut to 500 characters. When the
-client disconnects, the agent run and its model request are cancelled. Commands the
-model started in the sandbox in the background keep running there; stop them with
-the sandbox's `kill_process` operation (the agent's own tool) or by restarting the
-sandbox container (`docker compose -p spe-frontend restart sandbox`).
-
-**Run log.** One JSON line per completed, failed or cancelled run in `run_log`
-(default `/var/lib/spe-agent/runs.jsonl`, a named volume): run and thread ids, start
-and end times, status, the last user message, each tool call (name, arguments,
-result, seconds from the end of the call's arguments to its result), the answer,
-usage (requests, tool calls, input and output tokens; absent for failed runs) and
-the error. Every string, keys of mappings included, has the three key values
-redacted, and each field is cut to 16384 bytes. The file is created 0600 in a 0700
-directory; records are written whole under a lock. **The log holds player input and
-tool results, which include scenario canaries: keep it out of git and do not
-publish it.**
-
-**Image.** `Dockerfile`: `python:3.13-slim`, dependencies from the frozen `uv.lock`
-(uv 0.13.7), the offline suite run in the `test` stage (the final stage depends on
-it), user `spe` (uid 10001), port 8100, `HEALTHCHECK` on `/healthz`. Verified to run
-with a read-only root filesystem, a `/tmp` tmpfs, `cap_drop: ALL` and
-`no-new-privileges`, with `/var/lib/spe-agent` as a writable volume owned by uid
-10001. `.dockerignore` admits only `pyproject.toml`, `uv.lock`, `src/` and `tests/`.
+`Dockerfile`: `python:3.14-slim`, dependencies from the frozen `uv.lock`, the test
+suite in the `test` stage, user `spe` (uid 10001), port 8100, a health check on
+`/healthz`. Runs with a read-only root, a `/tmp` tmpfs, `cap_drop: ALL` and
+`no-new-privileges`; `/var/lib/spe-agent` is a volume owned by uid 10001.
 
 ## Sandbox tools
 
-`operations_from_openapi` generates the 16 operations in the pinned fixture;
-`select_operations` validates an allowlist, and `build_tools` binds each operation
-using `Tool.from_schema` (verified in installed pydantic-ai 2.56.0 source, tests pass on 2.66.0).
-`SandboxClient` supports discovery, optional cwd/system prompt, and authenticated
-calls. Its owner must call `aclose()` at shutdown; injected HTTP clients remain
-owned by their caller. Discovery failures raise `SandboxUnavailable` for later
-readiness/retry handling. Optional metadata failures return `None`.
+`operations_from_openapi` turns the sandbox's OpenAPI into tools (16 operations in
+the fixture, captured from `ghcr.io/open-webui/open-terminal:0.16.1` with its browser
+and desktop tools off, as the sandbox runs it), `select_operations` applies the
+allowlist, `build_tools` binds them with `Tool.from_schema`. Limits:
 
-Fixture provenance: `/openapi.json` captured from `ghcr.io/open-webui/open-terminal:0.16.1`,
-digest `sha256:e273ef75af3524f057a7164fbb4fdc22b5fa323bc8f66f73b03960d5438545ec`, started with
-`OPEN_TERMINAL_ENABLE_BROWSER=false` and `OPEN_TERMINAL_ENABLE_DESKTOP=false` as the sandbox
-runs it (role sandbox's `terminal.env`): the same 16 operations as 0.12.4, only descriptions
-changed. The fixture reports source version 0.16.1. It contains no runtime credentials.
-The reference is Open WebUI v0.11.3 `backend/open_webui/utils/tools.py`.
-
-Parity: local schema references are resolved without network access; path/query
-parameters follow the baseline string fallback and enum descriptions. Body
-properties are merged and nullable singleton schemas cleaned. Mutating requests
-send all arguments when a body is defined, otherwise `{}`. Optional empty query
-values are omitted; missing/null required values produce errors. The cwd suffix
-is added to `run_command`, and a supplied session id becomes `X-Session-Id`.
-
-Differences and limits:
-
-- No Open WebUI-only `display_file` inline/page parameters or base64 binary data
-  URIs. Non-JSON and malformed JSON are returned as UTF-8 text with replacement.
-- Remote/unresolvable/cyclic schema references resolve to empty schemas. The
-  pinned fixture requires no recursive schema support.
-- Redirects are errors; the configured HTTP(S) origin alone receives the bearer
-  header. Model arguments cannot set headers or origin. Path values are encoded
-  as single segments; empty values and literal dot segments are rejected.
-  Encoded traversal values remain escaped at the HTTP transport boundary. This
-  does not promise confinement through a proxy that repeatedly decodes paths.
-- Calls have a 30-second total deadline and HTTP timeout. Responses are streamed
-  in 64 KiB chunks, retaining at most 1 MiB while counting the full decoded HTTP
-  body for the truncation marker. Counting stops at the deadline, returning a
-  timeout error for a never-ending stream. Oversized discovery is rejected.
-- Tool results, including the truncation marker, fit `max_output_bytes`. The
-  marker's total is the original response byte count; shown bytes count UTF-8
-  output after replacement/redaction. For caps too small to fit a marker, only
-  its leading bytes are returned. A truncated result is not necessarily JSON.
-- Sandbox credentials are redacted from responses; transport exception details
-  are not exposed. Owned clients disable environment proxy settings.
-
-Tests: 50 sandbox, 15 configuration and 25 service tests, all offline.
+- Only the configured origin receives the bearer header; redirects are errors;
+  model arguments cannot set headers, origin or path traversal.
+- 30 s deadline per call; responses stream in 64 KiB chunks, at most 1 MiB kept;
+  results are cut to `max_output_bytes` with a marker giving the original size.
+- Sandbox credentials are redacted from responses; transport errors are not exposed.
