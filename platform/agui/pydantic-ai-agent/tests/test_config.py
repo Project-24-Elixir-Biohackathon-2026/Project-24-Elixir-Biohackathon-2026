@@ -123,7 +123,7 @@ def test_compaction_refused(tmp_path, bad):
 
 def test_title_defaults(tmp_path):
     cfg = load_config(write(tmp_path, VALID))
-    assert cfg.title == TitleCfg(enabled=True, max_tokens=64)
+    assert cfg.title == TitleCfg(enabled=True, max_tokens=1024)
 
 
 def test_title_values(tmp_path):

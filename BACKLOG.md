@@ -16,8 +16,6 @@ start reads this section; keep it short.
   and plan as 0014's findings were (clarifications, tasks rewritten) — from the user's comment on #3
   (2026-10-23, "check 0015 review point as well"); waits on the user: 0015 is `proposed`, accept it first;
   due: before the ladder's slice 5 (agent suite), whose plan 0015 reviews.
-- Dev VM: redeploy `dev-local` (`create.yml -e @instances/dev-local.yml`, no model call) and run `verify.yml`, so the agent there compacts at Haiku's window: the private instance file already says `spe_agent_context_window_tokens: 1000000`, but `/` had 4.5 GB free on 2026-11-03, under the preflight's 5 — from the compaction plan, slice 3/3, task 4, step 5; waits on the user, who decides whether to prune the dev VM's Docker build cache (12 GB, `docker builder prune -af`, see `docs/knowledge/denbi-disk-full.md`).
-- AG-UI `/compact`: plan merged (#27, `docs/superpowers/plans/2026-11-03-agui-compact-command/`) — asked for by the user (2026-11-03, PR #21); due: slice 2/2 (`impl/agui-compact-command-2-chat`), next (slice 1/2 merged, #28).
 - AG-UI via Coder, before any upstream PR: (1) merge `upstream/main` into our `main`, moving our AG-UI work onto
   its clone-on-VM layout (`platform/instance/compose.yml`, `spe-apply`; `roles/agui/templates/docker-compose.yml.j2`
   is gone upstream); (2) test end to end in a workspace from the portal's main template: `~/sperange` fetches our
@@ -34,11 +32,6 @@ start reads this section; keep it short.
   workspace counts; stop it before step 3's `create.yml`), destroyed when done. Fixes are part of the test: an
   issue found here (or in the thorough chat-minors test) is fixed by the session of the unit that owns the failing
   piece, in its own PR, which merges before this item completes and before the upstream PR opens.
-- de.NBI: redeploy `denbi-agui-01` from `main` with #29 and try it: a new session gets a model title (one qwen
-  call; also check its `type: "title"` run-log line, i.e. whether `title.max_tokens: 64` is enough for qwen's
-  reasoning), a rename sticks, the sidebar drags, the theme toggles without a flash on reload. From #29's *Checks*;
-  waits on the user: an OK for the redeploy and its paid calls (#29's handoff said it was approved here, but no
-  approval was recorded).
 - Upstream PR for the AG-UI package (sessions, conversation record, compaction, `/compact`, chat minors) as its
   final state, not each fork commit replayed — needs a *package port* path in `docs/guides/contributing-upstream.md`
   (the user's choice of one coherent upstream package, 2026-11-03, PR #19). Prepared by a session as one

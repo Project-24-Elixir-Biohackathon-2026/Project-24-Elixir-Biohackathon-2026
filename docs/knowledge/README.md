@@ -2,6 +2,7 @@
 
 <!-- One line per entry: [topic.md](topic.md) — the symptom or question, and the answer in brief. See
      AGENTS.md, "Project knowledge", for what belongs here. -->
+- [reasoning-model-max-tokens.md](reasoning-model-max-tokens.md) — `POST /title` 422, run log "the model returned an empty title" with `output_tokens` equal to the cap, on qwen: the reasoning spends `max_tokens` first (124 tokens for a title); `title.max_tokens` defaults to 1024.
 - [agent-session-monitoring.md](agent-session-monitoring.md) — `supervise.sh --install`: "Failed to connect to user scope bus": no systemd user manager and no cron on this VM; the ticks run from the two daemons `~/.local/bin/agent-watchdog.sh` (tick every 10 min) and `agent-selfmonitor.sh` (cross-check, restarts a run dead across two checks with `next-session.sh --resume`, forces a tick at > 25 min idle).
 - [gh-pr-create-token.md](gh-pr-create-token.md) — `gh pr create`: "Resource not accessible by personal access token (createPullRequest)": the fine-grained token lacked *Pull requests: write* on the fork (granted 2026-10-22). It has no access to upstream kraatz: open upstream PRs from the compare page.
 - [node-test-directory.md](node-test-directory.md) — `node --test lib/` on Node 24: "Cannot find module '…/copilotkit-chat/lib'", `ℹ tests 1` and no test file run: pass the quoted glob, `node --test 'lib/*.test.ts'` (what `npm test` runs).

@@ -122,7 +122,7 @@ tools:
   sandbox_operations: all   # or a list of operationIds
   max_output_bytes: 16384
 limits: { request_limit: 50, tool_calls_limit: 100 }   # total_tokens_limit: optional, no cap when unset
-title: { enabled: true, max_tokens: 64 }   # POST /title; enabled off answers 404
+title: { enabled: true, max_tokens: 1024 }   # POST /title; enabled off answers 404; room for reasoning
 ```
 
 Keys (LLM, agent, sandbox) come from `agent.env`, never from `agent.yaml`.

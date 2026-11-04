@@ -78,7 +78,8 @@ class CompactionCfg(_Strict):
 
 class TitleCfg(_Strict):
     enabled: bool = True
-    max_tokens: PositiveInt = 64
+    # Room for a reasoning model to think first: qwen3.8-27b spends ~120 tokens before a ~13-token title.
+    max_tokens: PositiveInt = 1024
 
 
 class Config(_Strict):
