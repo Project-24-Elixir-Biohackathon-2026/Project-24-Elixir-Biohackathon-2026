@@ -48,12 +48,13 @@ needed port is taken, or if disk is short. Nothing on a refused VM is changed.
 | What | What it is for | Where it comes from | Where it lives | Share? |
 |---|---|---|---|---|
 | **Seed** (`spe_seed`) | Derives every canary token, the agent's bearer key, the sandbox key and the Open WebUI admin password. Anyone with it can reproduce all canaries | You generate it (step 4) | Your instance file `platform/ansible/instances/<name>.yml` (git-ignored, mode 0600) | **No.** Never commit it |
-| **LLM key** | Lets the agent call the model | Your LLM provider. For the de.NBI endpoint: the project's key (ask the project; on de.NBI VMs Open WebUI already uses it in `~/agent-stack/webui.env` as `OPENAI_API_KEY`). For another OpenAI-compatible API or Anthropic: your own key | Exported in your shell at run time: `SPE_LLM_API_KEY` (or `DENBI_LLM_API_KEY` / `ANTHROPIC_API_KEY`). On the VM only in `spe-frontend/agent.env` (0600), read by the agent container alone | **No** |
+| **LLM key** | Lets the agent call the model | Your LLM provider. For the de.NBI endpoint: the project's key (ask the project; the portal's Coder workspaces carry the working one, which Open WebUI there uses; the copy in `~/agent-stack/webui.env` on agent-service-1 is blocked). For another OpenAI-compatible API or Anthropic: your own key | Exported in your shell at run time: `SPE_LLM_API_KEY` (or `DENBI_LLM_API_KEY` / `ANTHROPIC_API_KEY`). On the VM only in `spe-frontend/agent.env` (0600), read by the agent container alone | **No** |
 | **SSH key and config** for de.NBI | Reaching VMs on the private network through the jump host | Your de.NBI account (key registered with de.NBI and on the VMs) | `~/.ssh/config` and your key, outside any repository | **No** |
 | **Agent bearer key** | Required by the agent's AG-UI endpoint; the chat UI and promptfoo send it | Derived from the seed by the playbook | `platform/ansible/output/<instance>/agent_api_key` (0600); on the VM in `agent.env` and `chat-ui.env` (0600) | Only with people who may use the agent |
 | **Canary record** | The answer key: every planted token and where it is | Written by the playbook | `platform/ansible/output/<instance>/canaries.json` (0600; encrypted to `canaries.json.age` if `spe_age_recipient` is set) | **No.** Never copy it to a VM or to a player. `canaries.manifest.sha256` (hashes only) may go to detection tooling |
 | **Hand-off** | Addresses, tunnel command, Open WebUI admin password (with `spe_webui_auth`) | Written by the playbook | `platform/ansible/output/<instance>/hosts.yml`, `summary.md` | Operators only |
 | **Run log** | Every agent run: player input, tool calls and results, answers, usage | Written by the agent | On the VM, volume `spe-frontend_agent-runs` | **No**: contains canaries |
+| **Chat sessions** | Every AG-UI conversation: messages, tool calls and results, titles and tags | Written by the chat UI | On the VM, volume `spe-frontend_chat-sessions` (one journal per session); in the run directory `agui/` (`agui-journals/`, `chats/`, `agent-runs.jsonl`) | **No**: contain canaries |
 | **Evaluation reports** | promptfoo results | `npm run eval` | `platform/promptfoo-evals/reports/`, `.promptfoo/` (git-ignored) | **No**: contain canaries. Delete after use |
 
 Everything in `platform/ansible/output/` and every real instance file is git-ignored.
@@ -130,6 +131,7 @@ and `VM` with the VM's SSH host.
    | `spe_manage_docker` | `false` if Docker on the VM already runs other things (the playbook then leaves its packages, config and service alone); `true` to let it install and configure Docker |
    | `spe_data_root` | leave the default `/data-share` only if that path does not exist on the VM. On de.NBI VMs `/data-share` may be the mounted shared dataset: use e.g. `/srv/spe-data` |
    | `spe_agent_model_provider`, `spe_agent_model`, `spe_agent_base_url` | your LLM. `openai_compatible` works with any OpenAI-compatible API: set `spe_agent_base_url` (default: the de.NBI endpoint) and the model name, e.g. `qwen3.8-27b` on de.NBI. `anthropic` uses Anthropic's API. Optional `spe_agent_allowed_models: [<name>]` refuses any other model, a guard against typos selecting a pricier one. Other vendors: `agent/README.md` |
+   | `spe_agent_context_window_tokens` | only for a model other than de.NBI's `qwen3.8-27b` (whose window is already set): the model's context window in tokens, so the agent compacts a long conversation before the provider refuses it, e.g. a vLLM server's `max_model_len` (`GET <base_url>/models`), a LiteLLM gateway's `max_input_tokens` (`GET <base_url>/model/info`) or the vendor's documented window. Unset, the agent compacts only after a "too long" error. `spe_agent_compaction_enabled: false` turns compaction off. An instance that changes `spe_webui_model_id` also sets `spe_webui_model_context_tokens` to the new model's window |
    | `spe_agui_smoke` | `false`; set `true` on a run to add one model-backed check |
    | `spe_frontends` | leave the default (`[openwebui, agui]`) for both chats, or `[agui]` for the agent alone (the examples do) |
 
@@ -165,7 +167,9 @@ ssh -F ~/.ssh/config ubuntu@VM -N -L 3000:127.0.0.1:3000 -L 8100:127.0.0.1:8100
 ```
 
 Then open `http://localhost:3000`. Every tool call the agent makes is shown as a
-card; a reload starts a new conversation. If 3000 or 8100 is taken on your machine,
+card. Conversations are kept as sessions in the left sidebar (rename, pin, tag, hide, delete) and
+archived with the run. Type `/compact`, or `/compact <what to keep>`, to compact the conversation now; the
+divider replaces it. If 3000 or 8100 is taken on your machine,
 change only the first number of each `-L` (e.g. `-L 13000:127.0.0.1:3000`).
 
 To call the agent directly, as promptfoo does:
@@ -206,5 +210,7 @@ images and `platform/ansible/output/<instance>/` are kept. Then:
 - Never pass a key on a command line or put it in a prompt, test variable or config
   file in the repository; use the environment or a 0600 file.
 - Model-backed runs cost money (commercial APIs) or shared capacity (de.NBI); the agent
-  caps each run at 50 model requests, 100 tool calls and 400000 tokens.
+  caps each run at 50 model requests and 100 tool calls. A per-run token cap
+  (`spe_agent_total_tokens_limit`) is off by default, as Open WebUI has none; set a
+  number to turn it on.
 - One instance per VM; do not replace another stack to make the preflight pass.

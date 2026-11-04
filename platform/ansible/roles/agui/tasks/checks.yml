@@ -20,6 +20,89 @@
   retries: 20
   delay: 3
 
+- name: Session API answers
+  # GET /api/sessions must give 200 and a JSON list. The answer holds participants' titles
+  # and tags, so it is not logged; the assertion below says what was wrong.
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ spe_agui_ui_port }}/api/sessions"
+  register: agui_sessions_api
+  failed_when: false   # judged below, with a message the censored result could not give
+  no_log: true
+
+- name: Session API answered 200 with a JSON list
+  ansible.builtin.assert:
+    that:
+      - agui_sessions_api.status == 200
+      - (agui_sessions_api.json | default(none) | type_debug) == 'list'
+    fail_msg: >-
+      GET /api/sessions answered {{ agui_sessions_api.status }}
+      {{ 'with a JSON list' if (agui_sessions_api.json | default(none) | type_debug) == 'list' else 'without a JSON list' }};
+      expected 200 and a list
+    quiet: true
+
+- name: Read the agent configuration
+  ansible.builtin.slurp:
+    src: "{{ spe_frontend_dir }}/agent.yaml"
+  register: agui_agent_yaml
+
+- name: Agent compaction settings
+  # Shows the rendered block; fails if the agent would run without one.
+  ansible.builtin.assert:
+    that: (agui_agent_yaml.content | b64decode | from_yaml).compaction is mapping
+    success_msg: "compaction: {{ (agui_agent_yaml.content | b64decode | from_yaml).compaction | to_json }}"
+    fail_msg: agent.yaml has no compaction block
+
+- name: Agent title generation setting
+  # Shows the rendered block; fails if the agent would run without one.
+  ansible.builtin.assert:
+    that: (agui_agent_yaml.content | b64decode | from_yaml).title.enabled == (spe_agent_title_generation | bool)
+    success_msg: "title.enabled: {{ (agui_agent_yaml.content | b64decode | from_yaml).title.enabled }}"
+    fail_msg: "agent.yaml's title.enabled does not match spe_agent_title_generation"
+
+- name: The chat UI's service (chat-ui-dev in the ui-dev profile)
+  ansible.builtin.set_fact:
+    agui_ui_service: "{{ 'chat-ui-dev' if spe_agui_ui_dev | bool else 'chat-ui' }}"
+
+- name: chat-ui container
+  ansible.builtin.command:
+    argv: [docker, compose, -p, spe-frontend, -f, "{{ spe_frontend_dir }}/docker-compose.yml", ps, -q, "{{ agui_ui_service }}"]
+  register: agui_ui_container
+  changed_when: false
+  failed_when: agui_ui_container.rc != 0 or agui_ui_container.stdout_lines | length != 1
+
+# The dev server (ui-dev) writes into its source mount and node_modules by design: not hardened.
+- name: chat-ui's hardening (built chat UI only)
+  when: not spe_agui_ui_dev | bool
+  block:
+    - name: chat-ui as Docker runs it
+      ansible.builtin.command:
+        argv: [docker, inspect, "{{ agui_ui_container.stdout }}"]
+      register: agui_ui_inspect
+      changed_when: false
+      no_log: true   # Config.Env holds the agent key
+
+    - name: chat-ui's root filesystem, mounts and tmpfs
+      ansible.builtin.set_fact:
+        agui_ui_readonly: "{{ (agui_ui_inspect.stdout | from_json | first).HostConfig.ReadonlyRootfs | default(false) }}"
+        agui_ui_mounts: >-
+          {{ (agui_ui_inspect.stdout | from_json | first).Mounts | default([], true)
+             | map(attribute='Type') | zip((agui_ui_inspect.stdout | from_json | first).Mounts | default([], true)
+             | map(attribute='Destination')) | map('join', ':') | sort }}
+        agui_ui_tmpfs: "{{ ((agui_ui_inspect.stdout | from_json | first).HostConfig.Tmpfs | default({}, true)).keys() | sort }}"
+
+    - name: chat-ui keeps a read-only root, one volume at /data and tmpfs only at /tmp and /app/.next/cache
+      # The sessions volume is the only writable place that outlives the container; anything
+      # else written goes to the two tmpfs. A change to the compose file that loosens this fails here.
+      ansible.builtin.assert:
+        that:
+          - agui_ui_readonly | bool
+          - agui_ui_mounts == ['volume:/data']
+          - agui_ui_tmpfs == ['/app/.next/cache', '/tmp']
+        fail_msg: >-
+          chat-ui hardening changed: ReadonlyRootfs {{ agui_ui_readonly }}, mounts {{ agui_ui_mounts }},
+          tmpfs {{ agui_ui_tmpfs }}; expected true, ['volume:/data'], ['/app/.next/cache', '/tmp']
+        quiet: true
+
 - name: Agent refuses a request without or with a wrong bearer key
   ansible.builtin.uri:
     url: "http://127.0.0.1:{{ spe_agui_agent_port }}/agent"
@@ -49,6 +132,40 @@
            | select('match', '^(ANTHROPIC|OPENAI)_API_KEY=') | first | regex_replace('^[A-Z_]+=', '') }}
   no_log: true
 
+- name: Sandbox container
+  ansible.builtin.command:
+    argv: [docker, compose, -p, spe-frontend, -f, "{{ spe_frontend_dir }}/docker-compose.yml", ps, -q, sandbox]
+  register: agui_sandbox_container
+  changed_when: false
+  failed_when: agui_sandbox_container.rc != 0 or agui_sandbox_container.stdout_lines | length != 1
+
+- name: The sandbox's environment as Docker starts it
+  ansible.builtin.command:
+    argv: [docker, inspect, --format, !unsafe "{{json .Config.Env}}", "{{ agui_sandbox_container.stdout }}"]
+  register: agui_sandbox_env
+  changed_when: false
+  no_log: true   # holds the sandbox's own key
+
+- name: terminal.env, the sandbox's env_file
+  ansible.builtin.slurp:
+    src: "{{ spe_frontend_dir }}/terminal.env"
+  register: agui_terminal_env
+  no_log: true
+
+# Decision 17: the sandbox shares the agent's tools network, so whoever runs code in it must not
+# find the agent key there (it would let them call the agent directly with any history).
+- name: Neither the sandbox's Docker environment nor terminal.env holds the agent key
+  ansible.builtin.assert:
+    that:
+      - spe_agent_api_key | trim | length > 0
+      - agui_sandbox_env.stdout | from_json | select('match', '^OPEN_TERMINAL_API_KEY=') | list | length == 1
+      - (spe_agent_api_key | trim) not in agui_sandbox_env.stdout
+      - (spe_agent_api_key | trim) not in (agui_terminal_env.content | b64decode)
+    fail_msg: >-
+      the agent key is in the sandbox's Docker environment or in {{ spe_frontend_dir }}/terminal.env
+      (or the environment read is not the sandbox's: OPEN_TERMINAL_API_KEY missing); the key boundary is broken
+    quiet: true
+
 - name: What a command in the sandbox sees, asked through the sandbox API
   ansible.builtin.command:
     argv: [docker, compose, -p, spe-frontend, -f, "{{ spe_frontend_dir }}/docker-compose.yml",
@@ -71,6 +188,47 @@
   ansible.builtin.assert:
     that: "'AGENT_STATUS=401' in agui_probe.stdout"
     fail_msg: "an unauthenticated request from the sandbox to the agent did not get 401"
+    quiet: true
+
+- name: Keys no session file may hold (agent, LLM and sandbox keys)
+  ansible.builtin.set_fact:
+    agui_session_keys: >-
+      {{ ([spe_agent_api_key]
+          + ((agui_agent_env.content | b64decode).splitlines()
+             | select('match', '^(ANTHROPIC|OPENAI|SANDBOX)_API_KEY=')
+             | map('regex_replace', '^[A-Z_]+=', '') | list))
+         | map('trim') | reject('equalto', '') | unique | list }}
+  no_log: true
+
+- name: All three keys found (grep with no pattern would match nothing and pass)
+  ansible.builtin.assert:
+    that: agui_session_keys | length == 3
+    fail_msg: "expected the agent, LLM and sandbox keys, found {{ agui_session_keys | length }}; see agent.env"
+    quiet: true
+
+- name: Session files scanned for the keys
+  # A detector: chat-ui never holds the LLM or sandbox key, so a hit means a key
+  # reached a conversation through the agent or a tool. Keys go in on stdin, never in argv;
+  # grep prints file names only. rc 1: no file holds any key; rc 2: /data/sessions unreadable.
+  ansible.builtin.command:
+    argv: [docker, compose, -p, spe-frontend, -f, "{{ spe_frontend_dir }}/docker-compose.yml",
+           exec, -T, "{{ agui_ui_service }}", grep, -rlF, -f, -, /data/sessions]
+    stdin: "{{ agui_session_keys | join('\n') }}"
+  register: agui_session_scan
+  changed_when: false
+  failed_when: false   # judged below: the censored result would not say why
+  no_log: true
+
+- name: Session files could be scanned
+  ansible.builtin.assert:
+    that: agui_session_scan.rc in [0, 1]
+    fail_msg: "could not scan /data/sessions in {{ agui_ui_service }} (grep exit {{ agui_session_scan.rc }}); is the chat-sessions volume mounted?"
+    quiet: true
+
+- name: No session file holds the agent, LLM or sandbox key
+  ansible.builtin.assert:
+    that: agui_session_scan.rc == 1
+    fail_msg: "a key reached a session file (report it, do not hide it): {{ agui_session_scan.stdout_lines | join(', ') }}"
     quiet: true
 
 - name: Smoke helper

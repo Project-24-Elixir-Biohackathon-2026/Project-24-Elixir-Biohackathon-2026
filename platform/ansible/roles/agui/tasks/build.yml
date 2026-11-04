@@ -13,14 +13,14 @@
       - spe_agent_max_output_bytes | int > 0
       - spe_agent_request_limit | int > 0
       - spe_agent_tool_calls_limit | int > 0
-      - spe_agent_total_tokens_limit | int > 0
+      - spe_agent_total_tokens_limit is none or spe_agent_total_tokens_limit | int > 0
       - spe_agui_ui_port | int != spe_agui_agent_port | int
       - (spe_agui_ui_port | int) not in [443, spe_webui_local_port | int]
       - (spe_agui_agent_port | int) not in [443, spe_webui_local_port | int]
     fail_msg: >-
       Invalid AG-UI settings: provider openai_compatible (needs spe_agent_base_url) or
       anthropic; spe_agent_model must be one of spe_agent_allowed_models when that list is
-      set; tool surface shell; positive limits and output cap; two distinct free ports.
+      set; tool surface shell; positive limits (spe_agent_total_tokens_limit may be null) and output cap; two distinct free ports.
 
 - name: LLM key present
   ansible.builtin.assert:

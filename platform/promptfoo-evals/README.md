@@ -6,7 +6,7 @@ calls. Neither needs third-party Python packages.
 
 **Every test is one real agent run: paid model calls.** The starter suite has 3 tests;
 each run can make several model requests (up to the agent's per-run limits: 50
-requests, 100 tool calls, 400000 tokens). Get the go-ahead before running it.
+requests, 100 tool calls; no token cap unless `spe_agent_total_tokens_limit` is set). Get the go-ahead before running it.
 
 | Test | Checks |
 |---|---|

@@ -1,0 +1,26 @@
+{"type":"created","at":"2026-11-03T10:40:00.000Z","version":1,"id":"00000000-0000-4000-8000-000000000004"}
+{"type":"run_start","at":"2026-11-03T10:40:00.010Z","run_id":"r4-1","anchor":null,"messages":[{"id":"u1","role":"user","content":"first question"}],"ignored":[],"request":{"tools":[],"context":[],"state":{},"forwardedProps":{}},"source":"chat"}
+{"type":"event","at":"2026-11-03T10:40:00.100Z","run_id":"r4-1","event":{"type":"RUN_STARTED","threadId":"00000000-0000-4000-8000-000000000004","runId":"r4-1"}}
+{"type":"event","at":"2026-11-03T10:40:00.200Z","run_id":"r4-1","event":{"type":"TEXT_MESSAGE_START","messageId":"a1","role":"assistant"}}
+{"type":"event","at":"2026-11-03T10:40:00.210Z","run_id":"r4-1","event":{"type":"TEXT_MESSAGE_CONTENT","messageId":"a1","delta":"First answer."}}
+{"type":"event","at":"2026-11-03T10:40:00.220Z","run_id":"r4-1","event":{"type":"TEXT_MESSAGE_END","messageId":"a1"}}
+{"type":"event","at":"2026-11-03T10:40:00.300Z","run_id":"r4-1","event":{"type":"RUN_FINISHED","threadId":"00000000-0000-4000-8000-000000000004","runId":"r4-1"}}
+{"type":"run_end","at":"2026-11-03T10:40:00.310Z","run_id":"r4-1","status":"completed","error":null}
+{"type":"run_start","at":"2026-11-03T10:41:00.000Z","run_id":"r4-2","anchor":"a1","messages":[{"id":"u2","role":"user","content":"a long task"}],"ignored":[],"request":{"tools":[],"context":[],"state":{},"forwardedProps":{}},"source":"chat"}
+{"type":"event","at":"2026-11-03T10:41:00.100Z","run_id":"r4-2","event":{"type":"RUN_STARTED","threadId":"00000000-0000-4000-8000-000000000004","runId":"r4-2"}}
+{"type":"event","at":"2026-11-03T10:41:00.200Z","run_id":"r4-2","event":{"type":"TEXT_MESSAGE_START","messageId":"spe-compaction-r4-2","role":"assistant"}}
+{"type":"event","at":"2026-11-03T10:41:00.210Z","run_id":"r4-2","event":{"type":"TEXT_MESSAGE_CONTENT","messageId":"spe-compaction-r4-2","delta":"SUMMARY of the earlier turns\n## Not a section\n``````\nsix ticks"}}
+{"type":"event","at":"2026-11-03T10:41:00.220Z","run_id":"r4-2","event":{"type":"TEXT_MESSAGE_END","messageId":"spe-compaction-r4-2"}}
+{"type":"run_start","at":"2026-11-03T10:41:05.000Z","run_id":"r4-3","anchor":"a1","messages":[{"id":"u3","role":"user","content":"a different follow-up"}],"ignored":[],"request":{"tools":[],"context":[],"state":{},"forwardedProps":{}},"source":"chat"}
+{"type":"event","at":"2026-11-03T10:41:05.100Z","run_id":"r4-3","event":{"type":"RUN_STARTED","threadId":"00000000-0000-4000-8000-000000000004","runId":"r4-3"}}
+{"type":"event","at":"2026-11-03T10:41:05.200Z","run_id":"r4-3","event":{"type":"TEXT_MESSAGE_START","messageId":"a3","role":"assistant"}}
+{"type":"event","at":"2026-11-03T10:41:05.210Z","run_id":"r4-3","event":{"type":"TEXT_MESSAGE_CONTENT","messageId":"a3","delta":"Branch answer."}}
+{"type":"event","at":"2026-11-03T10:41:05.220Z","run_id":"r4-3","event":{"type":"TEXT_MESSAGE_END","messageId":"a3"}}
+{"type":"event","at":"2026-11-03T10:41:05.300Z","run_id":"r4-3","event":{"type":"RUN_FINISHED","threadId":"00000000-0000-4000-8000-000000000004","runId":"r4-3"}}
+{"type":"run_end","at":"2026-11-03T10:41:05.310Z","run_id":"r4-3","status":"completed","error":null}
+{"type":"event","at":"2026-11-03T10:41:10.000Z","run_id":"r4-2","event":{"type":"TEXT_MESSAGE_START","messageId":"a2","role":"assistant"}}
+{"type":"event","at":"2026-11-03T10:41:10.010Z","run_id":"r4-2","event":{"type":"TEXT_MESSAGE_CONTENT","messageId":"a2","delta":"Done after compacting."}}
+{"type":"event","at":"2026-11-03T10:41:10.020Z","run_id":"r4-2","event":{"type":"TEXT_MESSAGE_END","messageId":"a2"}}
+{"type":"event","at":"2026-11-03T10:41:10.100Z","run_id":"r4-2","event":{"type":"RUN_FINISHED","threadId":"00000000-0000-4000-8000-000000000004","runId":"r4-2"}}
+{"type":"run_end","at":"2026-11-03T10:41:10.110Z","run_id":"r4-2","status":"completed","error":null}
+{"type":"meta","at":"2026-11-03T11:00:00.000Z","deleted_at":"2026-11-03T11:00:00.000Z"}

@@ -15,7 +15,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
-from ag_ui.core import BaseEvent, RunAgentInput, RunErrorEvent, RunFinishedEvent
+from ag_ui.core import BaseEvent, EventType, RunAgentInput, RunErrorEvent, RunFinishedEvent, RunStartedEvent
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
@@ -23,15 +23,39 @@ from pydantic_ai import Agent
 from pydantic_ai.models import Model
 from pydantic_ai.messages import ToolCallPart
 from pydantic_ai.ui.ag_ui import AGUIAdapter, AGUIEventStream
+from pydantic_ai.usage import RunUsage
 
 from .agent import RunDeps, build_agent, build_model, compose_prompt
+from .compaction import (
+    CompactionRecord, build_sent, estimate_tokens, marker_events, markers_to_activities, nothing_to_compact,
+    summarise,
+)
 from .config import Config, ConfigError, Secrets
 from .runlog import RunLog, RunRecorder, redact
 from .sandbox import SandboxClient, SandboxUnavailable, build_tools, operations_from_openapi, select_operations
+from .title import TitleRequest, generate_title
 
 log = logging.getLogger("spe_agent")
 
 MAX_ERROR_CHARS = 500
+COMMAND_KEY = "spe_command"
+COMPACTION_OFF = "Compaction is turned off on this instance."
+NOTHING_TO_COMPACT = "Nothing to compact yet."
+UNKNOWN_COMMAND = "Unknown command."
+
+
+def _command(run_input: RunAgentInput) -> dict | None:
+    """The run's command, None for an ordinary run; a value that is not an object is an unknown command ({})."""
+    props = run_input.forwarded_props
+    if not isinstance(props, dict) or props.get(COMMAND_KEY) is None:
+        return None
+    command = props[COMMAND_KEY]
+    return command if isinstance(command, dict) else {}
+
+# The marker goes out before the next event that opens a response or ends the run, never before a tool
+# result: the run is one event ahead of this loop, so the step's last tool result may still be on its way.
+_MARKER_BEFORE = {EventType.TEXT_MESSAGE_START, EventType.TOOL_CALL_START, EventType.THINKING_START,
+                  EventType.REASONING_START, EventType.RUN_FINISHED, EventType.RUN_ERROR}
 
 
 class _EventStream(AGUIEventStream):
@@ -82,7 +106,15 @@ class _EventStream(AGUIEventStream):
             yield event
 
 
+@dataclass
 class _Adapter(AGUIAdapter):
+    # A dataclass, so that the generated __init__ calls __post_init__ (AGUIAdapter's own __init__ does not).
+
+    def __post_init__(self) -> None:
+        # Before anything reads `messages` (a cached property over run_input): our compaction markers,
+        # assistant messages in the chat's history, become the activity pydantic-ai reads as a cut point.
+        self.run_input = markers_to_activities(self.run_input)
+
     def build_event_stream(self) -> _EventStream:
         return _EventStream(self.run_input, accept=self.accept, ag_ui_version=self.ag_ui_version)
 
@@ -146,7 +178,7 @@ class Service:
         # Read per run: the prompt file follows edits without a restart. The sandbox's part comes
         # from discovery (it changes only with the sandbox image or its restart).
         prompt = lambda: compose_prompt(self._read_prompt(), sandbox_prompt)  # noqa: E731
-        return Ready(build_agent(self._model, prompt, tools), len(tools))
+        return Ready(build_agent(self._model, prompt, tools, self.config.compaction), len(tools))
 
     async def _watch(self) -> None:
         delay = self._retry_delay
@@ -192,17 +224,27 @@ class Service:
         return self._events(_Adapter(agent=ready.agent, run_input=run_input, accept=accept))
 
     async def _events(self, adapter: _Adapter) -> AsyncIterator[BaseEvent]:
+        command = _command(adapter.run_input)
+        if command is not None:
+            async for event in self._command_events(adapter, command):
+                yield event
+            return
         run_input = adapter.run_input
         recorder = RunRecorder(run_input)
 
         async def on_complete(result) -> None:
             recorder.usage(result.usage)
 
-        stream = adapter.run_stream(deps=RunDeps(session_id=run_input.thread_id),
-                                    usage_limits=self.config.limits.usage_limits(), on_complete=on_complete)
+        deps = RunDeps(session_id=run_input.thread_id)
+        stream = adapter.run_stream(deps=deps, usage_limits=self.config.limits.usage_limits(), on_complete=on_complete)
         status = "cancelled"  # unless a terminal event arrives: client gone or task cancelled
         try:
             async for event in stream:
+                if event.type in _MARKER_BEFORE:
+                    for summary in deps.compaction.take_pending():
+                        for marker in marker_events(summary):
+                            recorder.observe(marker)
+                            yield marker
                 if isinstance(event, RunErrorEvent):
                     event = event.model_copy(update={"message": self.sanitize(event.message)})
                     status = "failed"
@@ -214,6 +256,56 @@ class Service:
             # Closing the adapter stream ends the agent run (and its model request) if it is
             # still going. Commands the sandbox started in the background keep running there.
             await stream.aclose()
+            recorder.compactions(deps.compaction.records)
+            try:
+                self.runlog.write(recorder.finish(status))
+            except OSError:
+                log.exception("could not write the run log")
+
+    async def _command_events(self, adapter: _Adapter, command: dict) -> AsyncIterator[BaseEvent]:
+        run_input = adapter.run_input
+        recorder = RunRecorder(run_input)
+        focus = command.get("focus") if isinstance(command.get("focus"), str) else None
+        focus = (focus or "").strip() or None
+        status, records, usage = "cancelled", [], RunUsage()
+
+        def end(event: BaseEvent) -> BaseEvent:
+            recorder.observe(event)
+            return event
+
+        try:
+            yield end(RunStartedEvent(thread_id=run_input.thread_id, run_id=run_input.run_id))
+            if command.get("name") != "compact":
+                recorder.command_input(self.sanitize(f"/{command.get('name')}"))
+                status = "failed"
+                yield end(RunErrorEvent(message=UNKNOWN_COMMAND))
+                return
+            recorder.command_input("/compact" + (f" {focus}" if focus else ""))
+            history = build_sent(adapter.messages)
+            # on the raw messages: build_sent replaces our marker with a framed head, which is_ours never matches
+            error = (COMPACTION_OFF if not self.config.compaction.enabled
+                     else NOTHING_TO_COMPACT if nothing_to_compact(adapter.messages) else None)
+            if error is not None:
+                status = "failed"
+                yield end(RunErrorEvent(message=error))
+                return
+            try:
+                summary = await summarise(self._model, self.config.compaction, history, usage=usage,
+                                          usage_limits=self.config.limits.usage_limits(), focus=focus, manual=True)
+            except Exception as e:  # sanitized as every error is
+                status = "failed"
+                yield end(RunErrorEvent(message=self.sanitize(str(e))))
+                return
+            records.append(CompactionRecord(
+                trigger="manual", focus=focus, estimated_tokens=estimate_tokens(history, 0),
+                messages_cut=len(adapter.messages), summary=summary.text, usage=summary.usage))
+            for marker in marker_events(summary.text, manual=True):
+                yield end(marker)
+            status = "completed"
+            yield end(RunFinishedEvent(thread_id=run_input.thread_id, run_id=run_input.run_id))
+        finally:
+            recorder.usage(usage)
+            recorder.compactions(records)
             try:
                 self.runlog.write(recorder.finish(status))
             except OSError:
@@ -258,5 +350,27 @@ def create_app(config: Config, secrets: Secrets, model_override: Model | None = 
             errors = e.errors(include_url=False, include_input=False, include_context=False)
             return JSONResponse({"detail": errors}, status_code=422)
         return adapter.streaming_response(service._events(adapter))
+
+    @app.post("/title")
+    async def title_endpoint(request: Request):
+        if not service.authorized(request):
+            return JSONResponse({"detail": "unauthorized"}, status_code=401, headers={"WWW-Authenticate": "Bearer"})
+        if not config.title.enabled:
+            return JSONResponse({"detail": "title generation is disabled"}, status_code=404)
+        try:
+            body = TitleRequest.model_validate(await request.json())
+        except ValueError as e:  # bad JSON (json.JSONDecodeError) or a schema mismatch (ValidationError)
+            errors = e.errors(include_url=False, include_input=False, include_context=False) \
+                if isinstance(e, ValidationError) else str(e)
+            return JSONResponse({"detail": errors}, status_code=422)
+        title, record = await generate_title(service._model, config.title, body)
+        try:
+            service.runlog.write(record)
+        except OSError:
+            log.exception("could not write the run log")
+        if title is None:
+            detail = service.sanitize(record["error"]) if record["error"] else "could not produce a title"
+            return JSONResponse({"detail": detail}, status_code=422)
+        return {"title": title}
 
     return app

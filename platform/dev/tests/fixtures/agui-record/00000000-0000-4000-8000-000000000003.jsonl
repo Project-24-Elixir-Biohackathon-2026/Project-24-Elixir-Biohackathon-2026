@@ -1,0 +1,26 @@
+{"type":"created","at":"2026-11-03T10:20:00.000Z","version":1,"id":"00000000-0000-4000-8000-000000000003"}
+{"type":"run_start","at":"2026-11-03T10:20:00.010Z","run_id":"r3-1","anchor":null,"messages":[{"id":"u1","role":"user","content":"run a slow command"}],"ignored":[],"request":{"tools":[],"context":[],"state":{},"forwardedProps":{}},"source":"chat"}
+{"type":"event","at":"2026-11-03T10:20:00.100Z","run_id":"r3-1","event":{"type":"RUN_STARTED","threadId":"00000000-0000-4000-8000-000000000003","runId":"r3-1"}}
+{"type":"event","at":"2026-11-03T10:20:00.200Z","run_id":"r3-1","event":{"type":"TEXT_MESSAGE_START","messageId":"a1","role":"assistant"}}
+{"type":"event","at":"2026-11-03T10:20:00.210Z","run_id":"r3-1","event":{"type":"TEXT_MESSAGE_CONTENT","messageId":"a1","delta":"Starting."}}
+{"type":"event","at":"2026-11-03T10:20:00.220Z","run_id":"r3-1","event":{"type":"TEXT_MESSAGE_END","messageId":"a1"}}
+{"type":"event","at":"2026-11-03T10:20:00.300Z","run_id":"r3-1","event":{"type":"RUN_ERROR","message":"model overloaded","code":"model_error"}}
+{"type":"run_end","at":"2026-11-03T10:20:00.310Z","run_id":"r3-1","status":"failed","error":"model overloaded"}
+{"type":"run_start","at":"2026-11-03T10:21:00.000Z","run_id":"r3-2","anchor":"a1","messages":[{"id":"u2","role":"user","content":"try again"}],"ignored":[],"request":{"tools":[],"context":[],"state":{},"forwardedProps":{}},"source":"chat"}
+{"type":"event","at":"2026-11-03T10:21:00.100Z","run_id":"r3-2","event":{"type":"RUN_STARTED","threadId":"00000000-0000-4000-8000-000000000003","runId":"r3-2"}}
+{"type":"event","at":"2026-11-03T10:21:00.200Z","run_id":"r3-2","event":{"type":"TEXT_MESSAGE_START","messageId":"a2","role":"assistant"}}
+{"type":"event","at":"2026-11-03T10:21:00.210Z","run_id":"r3-2","event":{"type":"TEXT_MESSAGE_CONTENT","messageId":"a2","delta":"Working"}}
+{"type":"event","at":"2026-11-03T10:21:00.220Z","run_id":"r3-2","event":{"type":"TEXT_MESSAGE_END","messageId":"a2"}}
+{"type":"event","at":"2026-11-03T10:21:00.300Z","run_id":"r3-2","event":{"type":"RUN_ERROR","message":"aborted","code":"abort"}}
+{"type":"run_end","at":"2026-11-03T10:21:00.310Z","run_id":"r3-2","status":"cancelled","error":"aborted"}
+{"type":"meta","at":"2026-11-03T10:23:00.000Z","hidden":true}
+{"type":"run_start","at":"2026-11-03T10:24:00.000Z","run_id":"r3-3","anchor":"a2","messages":[{"id":"u3","role":"user","content":"once more"}],"ignored":[],"request":{"tools":[],"context":[],"state":{},"forwardedProps":{}},"source":"chat"}
+{"type":"event","at":"2026-11-03T10:24:00.100Z","run_id":"r3-3","event":{"type":"RUN_STARTED","threadId":"00000000-0000-4000-8000-000000000003","runId":"r3-3"}}
+{"type":"event","at":"2026-11-03T10:24:00.200Z","run_id":"r3-3","event":{"type":"TEXT_MESSAGE_START","messageId":"a3","role":"assistant"}}
+{"type":"event","at":"2026-11-03T10:24:00.210Z","run_id":"r3-3","event":{"type":"TEXT_MESSAGE_CONTENT","messageId":"a3","delta":"Partial"}}
+{"type":"run_end","at":"2026-11-03T10:24:00.300Z","run_id":"r3-3","status":"aborted","error":"this session could not be saved"}
+{"type":"run_start","at":"2026-11-03T10:25:00.000Z","run_id":"r3-4","anchor":"a3","messages":[{"id":"u4","role":"user","content":"last try"}],"ignored":[],"request":{"tools":[],"context":[],"state":{},"forwardedProps":{}},"source":"chat"}
+{"type":"event","at":"2026-11-03T10:25:00.100Z","run_id":"r3-4","event":{"type":"RUN_STARTED","threadId":"00000000-0000-4000-8000-000000000003","runId":"r3-4"}}
+{"type":"event","at":"2026-11-03T10:25:00.200Z","run_id":"r3-4","event":{"type":"TEXT_MESSAGE_START","messageId":"a4","role":"assistant"}}
+{"type":"event","at":"2026-11-03T10:25:00.210Z","run_id":"r3-4","event":{"type":"TEXT_MESSAGE_CONTENT","messageId":"a4","delta":"Still go"}}
+{"type":"event","at":"2026-11-03T10:25:01.000Z","run_id":"r3-4","event":{"type":"TEXT_MESSAGE_CONT

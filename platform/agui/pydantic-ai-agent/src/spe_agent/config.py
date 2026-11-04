@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, PositiveInt, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PositiveInt, ValidationError, model_validator
 from pydantic_ai.usage import UsageLimits
 
 class ConfigError(Exception):
@@ -59,11 +59,27 @@ class ToolsCfg(_Strict):
 class LimitsCfg(_Strict):
     request_limit: PositiveInt = 50
     tool_calls_limit: PositiveInt = 100
-    total_tokens_limit: PositiveInt = 400_000
+    # Off by default: it sums every request's tokens in a run, and each request resends the whole
+    # conversation, so a long chat hits it while Open WebUI, which has no such cap, does not.
+    total_tokens_limit: PositiveInt | None = None
 
     def usage_limits(self) -> UsageLimits:
         return UsageLimits(request_limit=self.request_limit, tool_calls_limit=self.tool_calls_limit,
                            total_tokens_limit=self.total_tokens_limit)
+
+
+class CompactionCfg(_Strict):
+    enabled: bool = True
+    # The model's context window in tokens. Unset: only a provider's "too long" error compacts.
+    context_window_tokens: PositiveInt | None = None
+    trigger_ratio: float = Field(0.8, gt=0, lt=1)
+    summary_max_tokens: PositiveInt = 4096
+
+
+class TitleCfg(_Strict):
+    enabled: bool = True
+    # Room for a reasoning model to think first: qwen3.8-27b spends ~120 tokens before a ~13-token title.
+    max_tokens: PositiveInt = 1024
 
 
 class Config(_Strict):
@@ -71,6 +87,8 @@ class Config(_Strict):
     prompt: PromptCfg
     tools: ToolsCfg
     limits: LimitsCfg = LimitsCfg()
+    compaction: CompactionCfg = CompactionCfg()
+    title: TitleCfg = TitleCfg()
     run_log: Path = Path("/var/lib/spe-agent/runs.jsonl")
 
 

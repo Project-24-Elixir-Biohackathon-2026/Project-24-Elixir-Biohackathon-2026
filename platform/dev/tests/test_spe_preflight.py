@@ -318,6 +318,37 @@ def test_reset_of_symlinked_path_is_refused(pf, tmp_path):
     assert any("data_root" in p and "symlink" in p for p in plan["problems"])
 
 
+def test_reset_takes_a_symlinked_compose_file_down_through_its_link(pf, tmp_path):
+    # The frontend's docker-compose.yml links into the repository clone; Compose reads the .env with
+    # COMPOSE_PROFILES next to the file it is given, so the resolved path would take nothing down.
+    c = reset_cfg(tmp_path)
+    c["paths"]["repo_dir"] = str(tmp_path / "srv" / "sperange")
+    created(c)
+    link = Path(c["projects"]["spe-frontend"])
+    target = Path(c["paths"]["repo_dir"]) / "platform" / "instance" / "compose.yml"
+    target.parent.mkdir(parents=True)
+    target.write_text("services: {}\n")
+    link.unlink()
+    link.symlink_to(target)
+    plan = pf.reset_plan(c, running(c))
+    assert plan["problems"] == []
+    assert {"name": "spe-frontend", "file": str(link)} in plan["projects"]
+
+
+def test_reset_with_compose_link_pointing_outside_owned_paths_is_refused(pf, tmp_path):
+    c = reset_cfg(tmp_path)
+    created(c)
+    link = Path(c["projects"]["spe-frontend"])
+    target = tmp_path / "elsewhere" / "compose.yml"
+    target.parent.mkdir()
+    target.write_text("services: {}\n")
+    link.unlink()
+    link.symlink_to(target)
+    plan = pf.reset_plan(c, running(c))
+    assert any("spe-frontend" in p and "outside" in p for p in plan["problems"])
+    assert plan["projects"] == []
+
+
 def test_reset_of_project_created_from_another_file_is_refused(pf, tmp_path):
     c = reset_cfg(tmp_path)
     created(c)

@@ -2,8 +2,8 @@
 
 A self-service portal for SPE evaluation instances. Participants log in, pick a
 testbed (a preset from this repo) or set the parameters themselves, and get
-their own SPE instance with a chat frontend (Open WebUI, or our own AG-UI
-agent with a CopilotKit chat), opened with one click. When they stop or delete the workspace, the run (chats, report,
+their own SPE instance with two chat frontends against one sandbox (Open WebUI, and our own AG-UI
+agent with a CopilotKit chat), each opened with one click. When they stop or delete the workspace, the run (chats, report,
 parameters, canary record) is archived to shared storage and the instance is
 torn down.
 
@@ -32,7 +32,7 @@ Ansible playbooks in `../ansible`; the Coder template only wraps them.
  └───────────────▲────────────────────────────────────────────────────┘
                  │ agent dials out to :7080 (private network)
  ┌───────────────┴──────── SPE VM per workspace ───────────────────────┐
- │ coder-agent ─▶ 127.0.0.1:8080 OpenWebUI  or  :3000 CopilotKit chat   │
+ │ coder-agent ─▶ 127.0.0.1:8080 OpenWebUI  and  :3000 CopilotKit chat  │
  │                       └─▶ open-terminal sandbox (the agent's shell)   │
  │ WES / DRS / TRS stack, seeded data, canaries                        │
  └─────────────────────────────────────────────────────────────────────┘
@@ -50,7 +50,7 @@ Ansible playbooks in `../ansible`; the Coder template only wraps them.
 | `platform/ansible/` | Builds and tears down one instance (see `platform/ansible/README.md`) | maintainers |
 | `platform/agui/` | The AG-UI frontend: `pydantic-ai-agent/` and `copilotkit-chat/`, built into images by the `agui` role | maintainers |
 | `platform/ansible/reports/run_report.md.j2` | **Run report template**, becomes the pinned "Run report" note in OpenWebUI | anyone (via PR) |
-| `platform/ansible/roles/run_archive/` | Exports OpenWebUI and writes the run directory | maintainers |
+| `platform/ansible/roles/run_archive/` | Exports each frontend's chats (Open WebUI's, and the AG-UI chat sessions with the agent's run log) and writes the run directory | maintainers |
 
 ### Working in a workspace
 
@@ -128,12 +128,13 @@ note title "Run report" (`spe_report_title`), the archive looks for it.
 
 1. Log in at `https://sperange.<zone>`.
 2. **Create workspace** → template `spe-testbed` → pick a preset (or adjust the
-   parameters) → **Create**. Building takes about 7 minutes for the Open WebUI
+   parameters) → **Create**. Building takes about 7 minutes for the "All data"
    preset (the slow downloads, builds and the data copy overlap); the build
    log is shown live.
-3. Click **OpenWebUI** (or **Chat (AG-UI)** for the `agui` frontend). You are
+3. Click **OpenWebUI** or **Chat (AG-UI)**. You are
    logged in directly; the agent has a terminal inside the instance.
-4. Document as you go (Open WebUI only; the AG-UI chat has no notes or tags yet):
+4. Document as you go (the run report is Open WebUI only; in the AG-UI chat, tag sessions in the sidebar's
+   `⋯` menu):
    - Write in the pinned note **Run report** (sidebar → Notes).
    - Tag the chats that matter, in the chat's `…` menu: `report`, plus one
      outcome tag `leak`, `no-leak` or `partial`.
@@ -153,6 +154,10 @@ Runs are saved to `/data-share/runs/<UTC time>_<instance>/`:
 | `run.yml` | Participant, parameters, seed, versions |
 | `canaries.json`, `canaries.manifest.sha256` | The canary record of this instance |
 | `openwebui-export.json` | Complete raw export (re-render with `write_run.py`) |
+| `agui/` | The AG-UI chat's part of the run: `index.md` (every session, linked from the top `index.md`), and the three rows below |
+| `agui/chats/NN-<title>.md`, `.json` | Each AG-UI session, exported as an Open WebUI chat: every branch in `.json`, the active one readable, with run statuses, the content the client sent that was not used, and compactions |
+| `agui/agui-journals/` | Every session's journal as written, hidden and deleted included |
+| `agui/agent-runs.jsonl` | The agent's run log: every run, tool calls and results |
 
 ## Deploying the portal on a new VM
 
@@ -400,13 +405,16 @@ forgotten instances from eating quota.
 
 ### 9. Smoke test
 
-1. Log in, create a workspace from the Open WebUI preset, wait for "Running".
+1. Log in, create a workspace from the "All data" preset, wait for "Running".
 2. Click **OpenWebUI**: no login prompt, the pinned "Run report" note exists.
 3. Ask the agent to list DRS objects; it should run `curl` in its terminal.
-4. Tag that chat `report`, write a line in the report, **Stop** the workspace.
-5. `/data-share/runs/<time>_cw-<user>-<ws>/index.md` lists the chat with its
-   tags and says the report is filled in.
-6. `openstack server list` shows no `cw-…-api` server left.
+4. Click **Chat (AG-UI)** and ask the same: the tool calls show as cards and the
+   session gets a title in the sidebar.
+5. Tag the Open WebUI chat `report`, write a line in the report, **Stop** the workspace.
+6. `/data-share/runs/<time>_cw-<user>-<ws>/index.md` lists the chat with its
+   tags, says the report is filled in and links `agui/index.md`, which lists the
+   AG-UI session.
+7. `openstack server list` shows no `cw-…-api` server left.
 
 ## Operating
 
@@ -415,7 +423,7 @@ forgotten instances from eating quota.
 | Logs | `journalctl -u coder`, `journalctl -u caddy`, build logs in the UI (Workspace → Builds) |
 | List instances | Coder dashboard (all users: Workspaces, filter off); OpenStack: servers named `cw-<user>-<workspace>-api` |
 | Save a run without stopping | on the VM: `ansible-playbook playbooks/archive.yml -e spe_instance=cw-<user>-<ws>` in `ansible/` (instance vars default to `group_vars`; parameters in `run.yml` are then the defaults, not the workspace's) |
-| Re-render an old run | `platform/ansible/roles/run_archive/files/write_run.py <run>/openwebui-export.json <run> "Run report"` |
+| Re-render an old run | first the AG-UI part, `platform/ansible/roles/run_archive/files/write_run.py <run>/agui/openwebui-export.json <run>/agui "Run report"`, then Open WebUI's, `… <run>/openwebui-export.json <run> "Run report"` (it links `agui/` when that is there) |
 | Update Coder | re-run the install script, `sudo systemctl restart coder` |
 | Back up Coder | stop Coder, archive `~ubuntu/.config/coderv2/` (built-in PostgreSQL) |
 
@@ -441,10 +449,8 @@ servers, security groups and keypairs named `cw-*` and remove them with
   with OpenWebUI and can reach its API without credentials. A planned fix
   (OpenWebUI on the host network bound to 127.0.0.1, terminal published on
   127.0.0.1:8000) is not built yet.
-- **The `agui` frontend is not archived.** Its chat keeps no history and the
-  agent's run log (`runs.jsonl`, in a volume on the VM) is lost with the
-  instance; only parameters and the canary record are saved. The run report
-  note and chat tags exist in Open WebUI only.
+- **The `agui` frontend has no run report.** Its sessions (with tags) and the agent's run log are
+  archived; there is no "Run report" note as in Open WebUI.
 - **Stop = destroy.** A stopped workspace keeps nothing but its parameters;
   start rebuilds from scratch (~7 min). Chats survive only in the archive.
 - **One run directory per stop.** Starting and stopping the same workspace

@@ -171,6 +171,12 @@ spe_local_vars:
   - spe_agent_model
   - spe_agent_base_url
   - spe_agent_allowed_models
+  - spe_agent_total_tokens_limit
+  - spe_agent_compaction_enabled
+  - spe_agent_context_window_tokens
+  - spe_agent_compaction_trigger_ratio
+  - spe_agent_compaction_summary_max_tokens
+  - spe_agent_title_generation
   - spe_webui_auth
 spe_local_vars_extra: []     # instance files add their own overrides here
 spe_frontend_webui_image: ghcr.io/open-webui/open-webui:v0.11.3
@@ -213,17 +219,26 @@ spe_report_template: "{{ playbook_dir }}/../reports/run_report.md.j2"
 spe_report_title: Run report
 
 # Run archive: playbooks/archive.yml (also run first by destroy.yml) saves the
-# OpenWebUI chats and notes, the parameters and the canary record of an
-# instance to <spe_runs_root>/<UTC time>_<instance>/ on the controller.
+# frontend's chats (OpenWebUI chats and notes, or the AG-UI journals and the
+# agent's run log), the parameters and the canary record of an instance to
+# <spe_runs_root>/<UTC time>_<instance>/ on the controller.
 # destroy.yml stops if the archive fails; pass -e spe_archive_skip=true to
 # destroy without saving.
 spe_runs_root: /data-share/runs
 spe_archive_skip: false
+# AG-UI: archive.yml copies the journals and the run log from the running
+# containers and stops nothing, so it can run at any time as a backup.
+# destroy.yml runs it with spe_archive_final: true, the final archive: chat-ui,
+# then the agent, are stopped first and not started again.
+spe_archive_final: false
 
 # The model id OpenWebUI serves from the de.NBI endpoint; the system prompt is
 # attached to it so every chat gets it by default, and it is the model
 # preselected for new chats (DEFAULT_MODELS, listed first in the picker).
 spe_webui_model_id: qwen3.8-27b
+# Its context window in tokens: max_input_tokens from the de.NBI gateway's (LiteLLM)
+# GET /v1/model/info, read on 2026-11-03. Change the two together.
+spe_webui_model_context_tokens: 262144
 
 # --- AG-UI agent frontend ('agui' in spe_frontends) --------------------------
 # Containers in compose project spe-frontend: chat-ui (Next.js + CopilotKit),
@@ -255,5 +270,17 @@ spe_agent_include_sandbox_prompt: true
 spe_agent_max_output_bytes: 16384
 spe_agent_request_limit: 50          # per run, not an aggregate budget
 spe_agent_tool_calls_limit: 100
-spe_agent_total_tokens_limit: 400000
+spe_agent_total_tokens_limit: null   # a number caps a run's summed tokens; null: no cap, as in Open WebUI
+# Compaction: when the conversation nears the model's context window, the agent replaces the
+# older part, for the model only, with a summary the same model writes. The window is the
+# model's, in tokens; null leaves only the reactive trigger (a provider's "too long" error).
+spe_agent_compaction_enabled: true
+# Set for the de.NBI model; another model needs its own value in the instance file.
+spe_agent_context_window_tokens: "{{ spe_webui_model_context_tokens if spe_agent_model == spe_webui_model_id else none }}"
+spe_agent_compaction_trigger_ratio: 0.8      # compact at this share of the window, in (0, 1)
+spe_agent_compaction_summary_max_tokens: 4096
+# Title generation: after a session's first completed run, the agent asks the same model for
+# a 2-4 word title from the first exchange, unless the session already has one (a rename or an
+# earlier title). Off: sessions keep the chat-UI default (untitled, or the first message).
+spe_agent_title_generation: true
 spe_agent_api_key: "{{ (spe_seed | string ~ ':agent-api') | hash('sha256') }}"
