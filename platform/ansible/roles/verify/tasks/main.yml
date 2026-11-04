@@ -43,4 +43,4 @@
 
 - name: AG-UI frontend checks (no model call unless spe_agui_smoke)
   ansible.builtin.include_tasks: "{{ playbook_dir }}/../roles/agui/tasks/checks.yml"
-  when: spe_frontend == 'agui'
+  when: "'agui' in spe_frontends"

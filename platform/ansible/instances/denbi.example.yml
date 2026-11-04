@@ -17,7 +17,7 @@ spe_existing_ssh_args: "-F /home/agentvm/.ssh/config"   # the config that knows 
 spe_manage_docker: true              # false if Docker on the VM belongs to someone else
 spe_source_data_root: /home/agentvm/spe-dummy-data      # on the controller
 spe_workflows: [wes-drs-smoke]       # gatk-hc-chr20 needs real genomes
-spe_frontend: agui
+spe_frontends: [agui]              # both frontends by default; this VM runs only the AG-UI one
 spe_agent_model_provider: openai_compatible   # the de.NBI endpoint, spe_llm_base_url
 spe_agent_model: qwen3.8-27b                  # spe_webui_model_id, as for Open WebUI
 spe_agui_smoke: false                # true makes one paid model call per create/verify run

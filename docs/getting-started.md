@@ -8,9 +8,10 @@ Reference material lives elsewhere: `platform/ansible/README.md` (all playbook o
 `platform/promptfoo-evals/README.md`.
 
 An instance is one VM running the GA4GH workflow stack (WES, DRS, TRS behind
-Traefik on 443), seeded with test data and canary tokens, plus a frontend:
-`agui` (our agent over AG-UI with a CopilotKit chat, the subject of this guide)
-or `openwebui`. Everything is driven from a **controller**, the machine where you
+Traefik on 443), seeded with test data and canary tokens, plus the chat frontends
+(`spe_frontends`): `agui`, our agent over AG-UI with a CopilotKit chat, the subject
+of this guide, and `openwebui`, both by default, sharing one sandbox. Everything is
+driven from a **controller**, the machine where you
 run `ansible-playbook`; the controller and the VM may be the same machine.
 
 This is the by-hand path. Participants normally get instances from the Coder
@@ -51,7 +52,7 @@ needed port is taken, or if disk is short. Nothing on a refused VM is changed.
 | **SSH key and config** for de.NBI | Reaching VMs on the private network through the jump host | Your de.NBI account (key registered with de.NBI and on the VMs) | `~/.ssh/config` and your key, outside any repository | **No** |
 | **Agent bearer key** | Required by the agent's AG-UI endpoint; the chat UI and promptfoo send it | Derived from the seed by the playbook | `platform/ansible/output/<instance>/agent_api_key` (0600); on the VM in `agent.env` and `chat-ui.env` (0600) | Only with people who may use the agent |
 | **Canary record** | The answer key: every planted token and where it is | Written by the playbook | `platform/ansible/output/<instance>/canaries.json` (0600; encrypted to `canaries.json.age` if `spe_age_recipient` is set) | **No.** Never copy it to a VM or to a player. `canaries.manifest.sha256` (hashes only) may go to detection tooling |
-| **Hand-off** | Addresses, tunnel command, Open WebUI admin password (`openwebui` frontend) | Written by the playbook | `platform/ansible/output/<instance>/hosts.yml`, `summary.md` | Operators only |
+| **Hand-off** | Addresses, tunnel command, Open WebUI admin password (with `spe_webui_auth`) | Written by the playbook | `platform/ansible/output/<instance>/hosts.yml`, `summary.md` | Operators only |
 | **Run log** | Every agent run: player input, tool calls and results, answers, usage | Written by the agent | On the VM, volume `spe-frontend_agent-runs` | **No**: contains canaries |
 | **Evaluation reports** | promptfoo results | `npm run eval` | `platform/promptfoo-evals/reports/`, `.promptfoo/` (git-ignored) | **No**: contain canaries. Delete after use |
 
@@ -130,6 +131,7 @@ and `VM` with the VM's SSH host.
    | `spe_data_root` | leave the default `/data-share` only if that path does not exist on the VM. On de.NBI VMs `/data-share` may be the mounted shared dataset: use e.g. `/srv/spe-data` |
    | `spe_agent_model_provider`, `spe_agent_model`, `spe_agent_base_url` | your LLM. `openai_compatible` works with any OpenAI-compatible API: set `spe_agent_base_url` (default: the de.NBI endpoint) and the model name, e.g. `qwen3.8-27b` on de.NBI. `anthropic` uses Anthropic's API. Optional `spe_agent_allowed_models: [<name>]` refuses any other model, a guard against typos selecting a pricier one. Other vendors: `agent/README.md` |
    | `spe_agui_smoke` | `false`; set `true` on a run to add one model-backed check |
+   | `spe_frontends` | leave the default (`[openwebui, agui]`) for both chats, or `[agui]` for the agent alone (the examples do) |
 
    `git status` must not list the file: if it does, stop and check `platform/ansible/.gitignore`.
 
@@ -174,7 +176,7 @@ Evaluations: see `platform/promptfoo-evals/README.md` (every test is a model-bac
 On the VM (`ssh …` then):
 
 ```bash
-docker compose -p spe-frontend ps                    # chat-ui, agent, sandbox
+docker compose -p spe-frontend ps                    # chat-ui, agent, sandbox (and open-webui)
 docker compose -p spe-frontend logs agent
 docker compose -p spe-frontend restart
 docker compose -p spe-frontend exec agent cat /var/lib/spe-agent/runs.jsonl   # private

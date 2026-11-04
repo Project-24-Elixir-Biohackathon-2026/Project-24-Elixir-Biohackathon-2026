@@ -7,28 +7,29 @@ catalog these instances exist for is in `../threats/`.
 |---|---|---|
 | `ansible/` | Builds one instance (VM, data with canaries, WES/DRS/TRS stack, chat frontend), verifies it, archives its run, tears it down | `ansible/README.md` |
 | `coder/` | The portal: participants pick a testbed preset, get an instance with the frontend one click away, and every stop archives the run | `coder/README.md` |
-| `agui/` | The AG-UI frontend (`spe_frontend: agui`): `pydantic-ai-agent/`, our Pydantic AI agent served over AG-UI, and `copilotkit-chat/`, its Next.js + CopilotKit chat | each one's `README.md` |
+| `agui/` | The AG-UI frontend: `pydantic-ai-agent/`, our Pydantic AI agent served over AG-UI, and `copilotkit-chat/`, its Next.js + CopilotKit chat | each one's `README.md` |
 | `promptfoo-evals/` | promptfoo suite that drives an instance's agent directly and checks answers and tool calls | `promptfoo-evals/README.md` |
 | `dev/` | Dummy dataset generator, a scripted agent for offline runs, tests for the host-side scripts | `../AGENTS.md`, "Running things" |
 
-## Two frontends, one switch
+## Two frontends, one sandbox
 
-Each instance runs one chat frontend on its VM, chosen with `spe_frontend` (an
-instance-file variable, or the "Chat frontend" parameter in the portal):
+Each instance runs both chat frontends on its VM (`spe_frontends`, an instance-file
+variable listing `openwebui` and `agui`; the portal always deploys both and shows a
+button for each). The person picks the chat; both drive the same sandbox:
 
-| | `openwebui` (default) | `agui` |
+| | `openwebui` | `agui` |
 |---|---|---|
 | Chat | Open WebUI on `127.0.0.1:8080` | CopilotKit chat on `127.0.0.1:3000` |
 | Agent loop | Open WebUI's own | `pydantic-ai-agent` on `127.0.0.1:8100`, over AG-UI |
 | Holds the LLM key | Open WebUI | the agent only |
-| Commands run in | the open-terminal sandbox (`ansible/roles/sandbox`), same image for both | |
+| Commands run in | the one open-terminal sandbox (`ansible/roles/sandbox`), shared by both | |
 | Login | none (`spe_webui_auth: false`); the portal or the SSH tunnel is the gate | bearer key between chat and agent; none in the browser |
 | Documentation by the tester | pinned "Run report" note, chat tags | not yet |
 | Archived on stop | chats, notes, tags, parameters, canary record | parameters, canary record |
 | Evaluations | | `promptfoo-evals/` (AG-UI provider) |
 
-Both use the compose project `spe-frontend`, so switching replaces one with the
-other on a running instance.
+Both are in the compose project `spe-frontend`; `spe_frontends: [agui]` (or
+`[openwebui]`) deploys only one, `[]` none.
 
 ## Where things run
 

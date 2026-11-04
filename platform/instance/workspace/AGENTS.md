@@ -20,10 +20,10 @@ Example: "check every workflow before it is registered in TRS". The SPE agent re
 ## Layout
 
 - `~/sperange`: a git clone of the repository (github.com/kraatz/elixir-biohackathon-2026-test), the source of everything below, checked out at the commit the workspace was built from (a detached HEAD until you create a branch). Edit here.
-- `~/spe-frontend`: the chat frontend's compose project. Written by Ansible when the instance was built: `.env` (which frontend, image names, ports), `agent.yaml`, secret env files, the instance CA (`spe-ca.crt`). `docker-compose.yml` is a link to `~/sperange/platform/instance/compose.yml`. Do not edit the secret files; do not print them.
+- `~/spe-frontend`: the chat frontend's compose project. Written by Ansible when the instance was built: `.env` (which frontends, image names, ports), `agent.yaml`, secret env files, the instance CA (`spe-ca.crt`). `docker-compose.yml` is a link to `~/sperange/platform/instance/compose.yml`. Do not edit the secret files; do not print them.
 - `~/workflow-stack`: the GA4GH services (compose project `workflow-stack`); `/opt/spe`: the installers Ansible ran at creation and the workflow catalog they installed; `/data-share`: the seeded dataset.
 
-The frontend is either Open WebUI (`spe-frontend` containers `open-webui`, `open-terminal`) or our own AG-UI agent (`chat-ui` or `chat-ui-dev`, `agent`, `sandbox`); `COMPOSE_PROFILES` in `~/spe-frontend/.env` says which.
+Two chat frontends run side by side (`COMPOSE_PROFILES` in `~/spe-frontend/.env` lists them): Open WebUI (`spe-frontend` container `open-webui`) and our own AG-UI agent (`chat-ui` or `chat-ui-dev`, `agent`). Both drive the same `sandbox` container, where every command of the SPE agent runs, so a change for the SPE agent reaches both chats at once.
 
 ## The procedure
 
@@ -58,7 +58,7 @@ You run as the workspace user on the instance's VM, with Docker and the whole st
 - The SPE agent's run log (AG-UI frontend): `docker compose -p spe-frontend exec agent cat /var/lib/spe-agent/runs.jsonl`. It holds canaries: quote from it sparingly.
 - The GA4GH APIs from this VM: `curl -sS --cacert ~/spe-frontend/spe-ca.crt https://localhost/ga4gh/trs/v2/tools` (also `/ga4gh/drs/v1/...`, `/ga4gh/wes/v1/...`). The `-k` rule below is for the sandbox, not for you here.
 - What the installers did: `/opt/spe` and the compose project `workflow-stack` (`docker compose -p workflow-stack ps`). `diff /opt/spe/bin/<x>.py ~/sperange/platform/ansible/roles/<role>/files/<x>.py` shows whether the installed copy is the clone's version: it is after `spe-apply stack`, not before.
-- What the SPE agent did: the frontend's logs (`spe-apply logs open-terminal` or `spe-apply logs sandbox`) and the TRS, DRS and WES listings.
+- What the SPE agent did: the sandbox's log (`spe-apply logs sandbox`, both chats) and the TRS, DRS and WES listings.
 
 ## Hand over
 

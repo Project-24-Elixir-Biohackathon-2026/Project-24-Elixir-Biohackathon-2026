@@ -29,7 +29,7 @@
       weskit_commit: "{{ spe_weskit_commit }}"
       model: "{{ spe_webui_model_id }}"
       llm_base_url: "{{ spe_llm_base_url }}"
-      frontend: "{{ spe_frontend }}"
+      frontends: "{{ spe_frontends }}"
 
 - name: Canary record
   ansible.builtin.copy:
@@ -59,7 +59,7 @@
       # Run {{ spe_run_dir | basename }}
 
       - Archived: {{ spe_archive_time }}
-      - Frontend: {{ spe_frontend }}; no chat export (only the openwebui frontend keeps chats and notes)
+      - Frontends: {{ spe_frontends | join(", ") or "none" }}; no chat export (only Open WebUI keeps chats and notes)
       - Parameters and canary record: [run.yml](run.yml), canaries.json
   when: not ((spe_output_dir ~ '/archive-bundle.json') is file)
 

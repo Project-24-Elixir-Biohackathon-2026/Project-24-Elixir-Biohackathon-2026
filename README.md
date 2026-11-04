@@ -54,7 +54,7 @@ flowchart TB
       ui["chat-ui :3000<br/>Next.js + CopilotKit"]
       agent["agent :8100<br/>Pydantic AI over AG-UI"]
       sandbox["sandbox<br/>open-terminal"]
-      owui["open-webui :8080<br/>previous design, still available<br/>(spe_frontend: openwebui)"]:::alt
+      owui["open-webui :8080<br/>Open WebUI's own agent loop"]:::alt
     end
     subgraph ws["compose project workflow-stack"]
       traefik["Traefik :443<br/>instance CA"]
@@ -87,10 +87,9 @@ flowchart TB
   linkStyle 0,1,2 stroke-dasharray: 6 4
 ```
 
-Dashed: **Open WebUI**, the previous design. It is still available as an alternative
-(`spe_frontend: openwebui`) and uses the same open-terminal sandbox, so the sandbox
-and everything behind it stay the same whichever frontend runs. Only one frontend
-runs at a time: selecting one replaces the other.
+Dashed: **Open WebUI**, the previous design. Both frontends run on every instance by
+default (`spe_frontends: [openwebui, agui]`) and drive the same sandbox, so the sandbox
+and everything behind it stay the same whichever chat the person opens.
 
 **One VM, one instance.** Ansible on the controller configures a VM (an existing one,
 or one it creates in OpenStack) with two Docker Compose projects:
@@ -99,7 +98,7 @@ or one it creates in OpenStack) with two Docker Compose projects:
   Traefik on port 443 with the instance's own CA. The data under `spe_data_root` is
   a copy of the test dataset with renamed samples and planted canary tokens; the
   canary record (the answer key) stays on the controller.
-- **`spe-frontend`**: the probing agent. With `spe_frontend: agui`:
+- **`spe-frontend`**: the probing agent, two chats, one sandbox:
   - **chat-ui** (`127.0.0.1:3000`): a thin Next.js + CopilotKit client; every tool
     call appears as a card. Its server side holds the agent's bearer key.
   - **agent** (`127.0.0.1:8100`): a Pydantic AI agent served over AG-UI
@@ -110,12 +109,13 @@ or one it creates in OpenStack) with two Docker Compose projects:
   - **sandbox**: open-terminal with the instance's CA, the WES/DRS/TRS base URLs and
     a runbook. Model-chosen commands run here; it publishes no port.
 
-  `spe_frontend: openwebui` is the previous design, kept as an alternative and as the
-  baseline for comparisons: Open WebUI (`127.0.0.1:8080`) runs its own agent loop,
-  holds the LLM key itself, and drives the same open-terminal sandbox in place of the
-  chat UI and our agent. `none` deploys no frontend. Both frontends use the same
-  compose project, so switching replaces one with the other (each keeps its data
-  volumes).
+  - **open-webui** (`127.0.0.1:8080`): the previous design, kept as the baseline for
+    comparisons. Open WebUI runs its own agent loop, holds the LLM key itself, and
+    drives the same sandbox as its terminal server. It keeps chats, notes and the run
+    report, archived when the instance stops.
+
+  `spe_frontends` lists what runs (both by default, `[]` for none); the portal
+  always deploys both and shows a button for each.
 
 **The key boundary.** The process holding the LLM key and the place where
 model-chosen commands run are different containers:
