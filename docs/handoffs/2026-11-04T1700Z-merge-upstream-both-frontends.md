@@ -35,4 +35,4 @@ create/archive/destroy OK. The knowledge note for this session's push failure is
      `compaction-live`; they read journals with local `docker compose`, so run them through a workspace tunnel
      or adapt `InstanceRun._exec` to `coder ssh`).
 
-**Push from this account:** no SSH agent; `docs/knowledge/git-push-no-ssh-agent.md`.
+**Pushes fail on and off** (GitHub side, 2026-11-04): retry; `docs/knowledge/github-auth-intermittent.md`.
