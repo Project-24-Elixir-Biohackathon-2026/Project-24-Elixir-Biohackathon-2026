@@ -81,7 +81,8 @@ notes: []}`, plus our `spe_archive_mode`), one chat per session, using the rebui
   `process_messages_with_output`), so the export is a chat Open WebUI could continue;
 - `spe_run` on that assistant message (`run_id`, `status`, `started_at`, `ended_at`, `error` from the run's
   `run_end`), and `spe_ignored` (the run's ignored content) on it too, so a refused run still has a message to
-  carry what it was sent.
+  carry what it was sent; `spe_command` (`{name, focus}`), on a command run's message, refused and failed ones
+  too (§15, *The archive*).
 
 Fields starting with `spe_` are ours; Open WebUI itself never writes them, so its own runs render as before.
 

@@ -18,3 +18,19 @@ ansible-playbook -i <worktree>/platform/ansible/inventory/hosts.yml playbooks/cr
 ```
 
 Use the same `-i` for `verify.yml`. The private instance file and `output/` stay the main checkout's.
+
+## Roles, too: a role file the branch changed (`archive.yml`)
+
+**Symptom.** `archive.yml` run from the main checkout, even as `<worktree>/platform/ansible/playbooks/archive.yml`,
+rendered the chats with `main`'s `write_run.py`: the branch's `/compact` line was missing (2026-11-04, #30).
+
+**Why.** Roles resolve through the `ansible.cfg` of the current directory (`roles_path = ./roles`).
+
+**Fix.** For a branch that changes a role's files, run from the worktree's `platform/ansible`, pointing at the
+main checkout's private files:
+
+```bash
+cd <worktree>/platform/ansible
+ansible-playbook playbooks/archive.yml -e @MAIN/platform/ansible/instances/NAME.yml \
+  -e spe_output_root=MAIN/platform/ansible/output </dev/null
+```

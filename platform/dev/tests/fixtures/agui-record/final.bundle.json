@@ -1230,6 +1230,306 @@
      }
     ]
    }
+  },
+  {
+   "id": "00000000-0000-4000-8000-000000000006",
+   "title": "What have we covered so far?",
+   "created_at": 1793703600,
+   "updated_at": 1793703840,
+   "archived": false,
+   "meta": {
+    "tags": []
+   },
+   "chat": {
+    "title": "What have we covered so far?",
+    "history": {
+     "messages": {
+      "u1": {
+       "id": "u1",
+       "parentId": null,
+       "childrenIds": [
+        "spe-run-r6-1"
+       ],
+       "role": "user",
+       "content": "What have we covered so far?",
+       "timestamp": 1793703600
+      },
+      "spe-run-r6-1": {
+       "id": "spe-run-r6-1",
+       "parentId": "u1",
+       "childrenIds": [
+        "spe-run-r6-2",
+        "spe-run-r6-3"
+       ],
+       "role": "assistant",
+       "content": "We discussed the setup and ran two commands.",
+       "timestamp": 1793703600,
+       "output": [
+        {
+         "type": "message",
+         "id": "a1",
+         "role": "assistant",
+         "content": [
+          {
+           "type": "output_text",
+           "text": "We discussed the setup and ran two commands."
+          }
+         ],
+         "status": "completed"
+        }
+       ],
+       "spe_run": {
+        "run_id": "r6-1",
+        "status": "completed",
+        "started_at": "2026-11-03T11:00:00.010Z",
+        "ended_at": "2026-11-03T11:00:00.310Z",
+        "error": null
+       },
+       "spe_ignored": []
+      },
+      "spe-run-r6-2": {
+       "id": "spe-run-r6-2",
+       "parentId": "spe-run-r6-1",
+       "childrenIds": [],
+       "role": "assistant",
+       "content": "",
+       "timestamp": 1793703660,
+       "output": [],
+       "spe_run": {
+        "run_id": "r6-2",
+        "status": "failed",
+        "started_at": "2026-11-03T11:01:00.000Z",
+        "ended_at": "2026-11-03T11:01:00.210Z",
+        "error": "Compaction is turned off on this instance."
+       },
+       "spe_ignored": [],
+       "spe_command": {
+        "name": "compact",
+        "focus": null
+       }
+      },
+      "spe-run-r6-3": {
+       "id": "spe-run-r6-3",
+       "parentId": "spe-run-r6-1",
+       "childrenIds": [
+        "u5"
+       ],
+       "role": "assistant",
+       "content": "",
+       "timestamp": 1793703720,
+       "output": [
+        {
+         "type": "message",
+         "id": "spe-compaction-manual-r6-3",
+         "role": "assistant",
+         "content": [
+          {
+           "type": "output_text",
+           "text": "Kept the canary paths in view."
+          }
+         ],
+         "status": "completed"
+        }
+       ],
+       "spe_run": {
+        "run_id": "r6-3",
+        "status": "completed",
+        "started_at": "2026-11-03T11:02:00.000Z",
+        "ended_at": "2026-11-03T11:02:00.310Z",
+        "error": null
+       },
+       "spe_ignored": [],
+       "spe_command": {
+        "name": "compact",
+        "focus": "keep the ```` canary paths"
+       }
+      },
+      "spe-run-r6-4": {
+       "id": "spe-run-r6-4",
+       "parentId": null,
+       "childrenIds": [],
+       "role": "assistant",
+       "content": "",
+       "timestamp": 1793703780,
+       "output": [],
+       "spe_run": {
+        "run_id": "r6-4",
+        "status": "refused",
+        "started_at": "2026-11-03T11:03:00.000Z",
+        "ended_at": "2026-11-03T11:03:00.010Z",
+        "error": "Nothing to compact yet."
+       },
+       "spe_ignored": [],
+       "spe_command": {
+        "name": "compact",
+        "focus": null
+       }
+      },
+      "u5": {
+       "id": "u5",
+       "parentId": "spe-run-r6-3",
+       "childrenIds": [
+        "spe-run-r6-5"
+       ],
+       "role": "user",
+       "content": "What should I focus on next?",
+       "timestamp": 1793703840
+      },
+      "spe-run-r6-5": {
+       "id": "spe-run-r6-5",
+       "parentId": "u5",
+       "childrenIds": [],
+       "role": "assistant",
+       "content": "Focus on finishing the canary checks.",
+       "timestamp": 1793703840,
+       "output": [
+        {
+         "type": "message",
+         "id": "a5",
+         "role": "assistant",
+         "content": [
+          {
+           "type": "output_text",
+           "text": "Focus on finishing the canary checks."
+          }
+         ],
+         "status": "completed"
+        }
+       ],
+       "spe_run": {
+        "run_id": "r6-5",
+        "status": "completed",
+        "started_at": "2026-11-03T11:04:00.000Z",
+        "ended_at": "2026-11-03T11:04:00.310Z",
+        "error": null
+       },
+       "spe_ignored": []
+      }
+     },
+     "currentId": "spe-run-r6-5"
+    },
+    "messages": [
+     {
+      "id": "u1",
+      "parentId": null,
+      "childrenIds": [
+       "spe-run-r6-1"
+      ],
+      "role": "user",
+      "content": "What have we covered so far?",
+      "timestamp": 1793703600
+     },
+     {
+      "id": "spe-run-r6-1",
+      "parentId": "u1",
+      "childrenIds": [
+       "spe-run-r6-2",
+       "spe-run-r6-3"
+      ],
+      "role": "assistant",
+      "content": "We discussed the setup and ran two commands.",
+      "timestamp": 1793703600,
+      "output": [
+       {
+        "type": "message",
+        "id": "a1",
+        "role": "assistant",
+        "content": [
+         {
+          "type": "output_text",
+          "text": "We discussed the setup and ran two commands."
+         }
+        ],
+        "status": "completed"
+       }
+      ],
+      "spe_run": {
+       "run_id": "r6-1",
+       "status": "completed",
+       "started_at": "2026-11-03T11:00:00.010Z",
+       "ended_at": "2026-11-03T11:00:00.310Z",
+       "error": null
+      },
+      "spe_ignored": []
+     },
+     {
+      "id": "spe-run-r6-3",
+      "parentId": "spe-run-r6-1",
+      "childrenIds": [
+       "u5"
+      ],
+      "role": "assistant",
+      "content": "",
+      "timestamp": 1793703720,
+      "output": [
+       {
+        "type": "message",
+        "id": "spe-compaction-manual-r6-3",
+        "role": "assistant",
+        "content": [
+         {
+          "type": "output_text",
+          "text": "Kept the canary paths in view."
+         }
+        ],
+        "status": "completed"
+       }
+      ],
+      "spe_run": {
+       "run_id": "r6-3",
+       "status": "completed",
+       "started_at": "2026-11-03T11:02:00.000Z",
+       "ended_at": "2026-11-03T11:02:00.310Z",
+       "error": null
+      },
+      "spe_ignored": [],
+      "spe_command": {
+       "name": "compact",
+       "focus": "keep the ```` canary paths"
+      }
+     },
+     {
+      "id": "u5",
+      "parentId": "spe-run-r6-3",
+      "childrenIds": [
+       "spe-run-r6-5"
+      ],
+      "role": "user",
+      "content": "What should I focus on next?",
+      "timestamp": 1793703840
+     },
+     {
+      "id": "spe-run-r6-5",
+      "parentId": "u5",
+      "childrenIds": [],
+      "role": "assistant",
+      "content": "Focus on finishing the canary checks.",
+      "timestamp": 1793703840,
+      "output": [
+       {
+        "type": "message",
+        "id": "a5",
+        "role": "assistant",
+        "content": [
+         {
+          "type": "output_text",
+          "text": "Focus on finishing the canary checks."
+         }
+        ],
+        "status": "completed"
+       }
+      ],
+      "spe_run": {
+       "run_id": "r6-5",
+       "status": "completed",
+       "started_at": "2026-11-03T11:04:00.000Z",
+       "ended_at": "2026-11-03T11:04:00.310Z",
+       "error": null
+      },
+      "spe_ignored": []
+     }
+    ]
+   }
   }
  ],
  "tags": [

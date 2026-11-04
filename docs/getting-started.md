@@ -166,7 +166,8 @@ ssh -F ~/.ssh/config ubuntu@VM -N -L 3000:127.0.0.1:3000 -L 8100:127.0.0.1:8100
 
 Then open `http://localhost:3000`. Every tool call the agent makes is shown as a
 card. Conversations are kept as sessions in the left sidebar (rename, pin, tag, hide, delete) and
-archived with the run. If 3000 or 8100 is taken on your machine,
+archived with the run. Type `/compact`, or `/compact <what to keep>`, to compact the conversation now; the
+divider replaces it. If 3000 or 8100 is taken on your machine,
 change only the first number of each `-L` (e.g. `-L 13000:127.0.0.1:3000`).
 
 To call the agent directly, as promptfoo does:

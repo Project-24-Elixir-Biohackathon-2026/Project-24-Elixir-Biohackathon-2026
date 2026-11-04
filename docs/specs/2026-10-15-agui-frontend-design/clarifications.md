@@ -221,3 +221,20 @@ in the parts it amends.
     is shown as failed; when a message's second call streams in, its first card moves under the new group
     header and remounts, so a card opened while the calls stream in closes again. *Amends:* §6 *Tool calls
     are rendered*. *Status:* folded.
+
+18. **A resent command message is compared by its parsed command, not its raw text; `forwardedProps` that is not
+    a plain object is normalized before the command key is set; the focus limit counts code points; and step 4's
+    two refusals are checked in that order** (2026-11-04; AG-UI `/compact`, slice 2/2). §15 *The run route* now
+    says: a resent command message stays unedited when its role is `user` and its content parses to the same
+    command and focus, since `run_start.command` keeps the parsed command, not the raw text (`/compact` resent
+    as `  /compact  ` is not `edited`); a `forwardedProps` that is not a plain object (absent, `null`, a list) is
+    treated as `{}`, so a command run sends `{spe_command: {...}}` and an ordinary run sends it as the client
+    sent it; the 1000-character focus limit is counted in code points, so 1000 emoji are allowed as 1000 letters
+    are; and "Nothing to compact yet." is checked before the focus-length check, so a path that both ends in a
+    marker and carries a too-long focus is refused for the first reason. *Reason:* slice 2's implementation
+    needed each of these to behave one specific way, and the spec left them open. *Cost if wrong:* a resent
+    `/compact` with different whitespace would be recorded `edited` though nothing the agent saw changed; a
+    non-object `forwardedProps` could crash the merge instead of starting a run; a focus near the limit would be
+    measured in UTF-16 units instead of characters, cutting a focus with emoji short of 1000; and the two
+    refusals could report the wrong reason on a path that triggers both. *Amends:* §15 *The run route*, steps 2,
+    4 and 5. *Status:* folded.

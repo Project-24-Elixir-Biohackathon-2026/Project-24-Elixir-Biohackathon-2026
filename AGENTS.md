@@ -189,11 +189,6 @@ is open (`docs/guides/contributing-upstream.md`, step 6).
 
 - **Canary evaluation ladder** (biohackathon 0013): spec (#1) and plan (#2) merged. **Next: slice 1/9**
   `impl/canary-eval-ladder-1-scoring`. Handoff: `ls docs/superpowers/plans/2026-10-22-canary-eval-ladder/handoffs | tail -1`.
-- **AG-UI `/compact`** (Full mode): a `/compact [focus]` chat command, journaled as a command, compacted by the
-  agent; §15 of the living AG-UI spec. Spec merged (#26). Plan merged (#27):
-  `docs/superpowers/plans/2026-11-03-agui-compact-command/`, 2 slices. Slice 1 (the agent, #28) merged.
-  **Next: slice 2/2** `impl/agui-compact-command-2-chat`. Handoff:
-  `ls docs/superpowers/plans/2026-11-03-agui-compact-command/handoffs | tail -1`.
 - **Upstream PR kraatz #9** (`contrib/agui-token-cap-optional`): the AG-UI agent's token cap optional, off by
   default (fork #4); waits on upstream's review (`docs/guides/contributing-upstream.md`, step 6).
 - **Not scheduled**: `BACKLOG.md` holds every deferred item without a slice; its *Next*, the ones due soon or

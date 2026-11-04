@@ -156,6 +156,24 @@ test("a run_start whose messages are not objects with a string id is skipped", (
   assert.deepEqual(warn.mock.calls.map((c) => c.arguments[0]), [2, 3, 4, 5, 6].map((n) => `journal: line ${n} skipped (not a journal line)`));
 });
 
+test("a run_start whose command is malformed is skipped; a well-formed one parses with it", (t) => {
+  const warn = t.mock.method(console, "warn", () => {});
+  const runStart = (command: unknown) => JSON.stringify({ type: "run_start", at: "t", run_id: "r1", anchor: null, messages: [],
+    ignored: [], request: {}, source: "chat", command });
+  const good = { name: "compact", focus: null, message_id: "k" };
+  const text = [
+    runStart(good), runStart({ name: "compact", focus: "keep x", message_id: "k" }),
+    runStart(null), runStart("compact"), runStart({ name: "other", focus: null, message_id: "k" }),
+    runStart({ name: "compact", focus: 7, message_id: "k" }), runStart({ name: "compact", message_id: "k" }),
+    runStart({ name: "compact", focus: null }),
+  ].join("\n") + "\n";
+  const { lines, skipped } = parseJournal(text);
+  assert.equal(lines.length, 2);
+  assert.equal(skipped, 6);
+  assert.deepEqual((lines[0] as { command?: unknown }).command, good);
+  assert.equal(warn.mock.callCount(), 6);
+});
+
 test("a torn last line gets a newline before the next append, and parsing skips only it", async (t) => {
   const warn = t.mock.method(console, "warn", () => {});
   const file = path.join(await tmp(), `${randomUUID()}.jsonl`);

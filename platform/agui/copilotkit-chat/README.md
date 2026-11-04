@@ -27,10 +27,10 @@ Each conversation is a session with one append-only journal, `/data/sessions/<id
 `chat-sessions` volume (mounted at `/data`; the image creates `/data/sessions` owned by `node`). `<id>` is the
 AG-UI thread id, a lower-case UUID v4; nothing else ever names a file. One JSON line per step: `created`,
 then per run `run_start` (the new user message, what the client sent that was not used, the request's
-`tools`, `context`, `state`, `forwardedProps`), every AG-UI `event` the agent sent, `run_end` with the status
-(`completed`, `failed`, `cancelled`, `aborted`, `refused`); and `meta` lines for `title`, `tags`, `pinned`,
-`hidden`, `deleted_at`. Nothing rewrites or truncates a journal. Files of the earlier format (`<id>.json`) are
-neither read nor migrated.
+`tools`, `context`, `state`, `forwardedProps`, and for a command run its `command`), every AG-UI `event` the
+agent sent, `run_end` with the status (`completed`, `failed`, `cancelled`, `aborted`, `refused`); and `meta`
+lines for `title`, `tags`, `pinned`, `hidden`, `deleted_at`. Nothing rewrites or truncates a journal. Files of
+the earlier format (`<id>.json`) are neither read nor migrated.
 
 - `lib/recorder.ts` is the run route's hook (AG-UI middleware, attached with `agent.use()`): the chat UI owns
   the history. From each request it takes only the new user message and sends the agent the journal's
@@ -38,7 +38,11 @@ neither read nor migrated.
   `deleted`, `system`) and, when there is any, the browser gets a `MESSAGES_SNAPSHOT` of what the agent saw.
   `run_start` is fsynced before the agent is called; a journal that cannot be written ends the run with
   "this session could not be saved". Runs on one session may overlap and become branches; the chat reopens
-  on the branch of the run that ended last. It never stores request headers or the agent key.
+  on the branch of the run that ended last. It never stores request headers or the agent key. A run whose
+  only new message is `/compact` or `/compact <focus>` is a command (`lib/command.ts`): journaled as
+  `run_start.command` with no message, sent the history with `forwardedProps.spe_command`, refused when there
+  is nothing to compact or the focus is over 1000 characters; an admitted one always sends the browser the
+  snapshot.
 - `lib/journal.ts` writes and parses the lines, `lib/rebuild.ts` rebuilds a conversation with
   `@ag-ui/client`'s own event handling, `lib/anchor.ts` compares the client's history with the journal.
 - `lib/sessions.ts` appends one session at a time through a queue on `globalThis` that every route bundle

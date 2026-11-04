@@ -5,9 +5,9 @@ records what implementation verified and changed). §6's sessions and sidebar: i
 2026-11-02, and moved onto the conversation record. The conversation record (§13, §14, decisions 1–18) and the
 live archive (decision 30, since clarification 2): approved 2026-11-03 (the fork's PR #19,
 `thodkatz/elixir-biohackathon-2026-test`), built in the fork's PRs #22, #23, #24 and #25 (clarification 14).
-`/compact` (§15, decisions 31–39): proposed 2026-11-03 (the fork's PR #26), not built. The history before this
+`/compact` (§15, decisions 31–39): approved 2026-11-03 (the fork's PR #26), built in the fork's PRs #28 and #30 (clarification 18; decision 39 checked on de.NBI `qwen3.8-27b`). The history before this
 directory is that of the single file it replaced: `git log -- docs/specs/2026-10-15-agui-frontend-design.md`.
-**Latest clarification:** 16.
+**Latest clarification:** 18.
 §13 and §14 were read against `@ag-ui/client` 1.0.2 and CopilotKit 1.79.0 (`@copilotkit/runtime`,
 `@copilotkit/react-core`) as pinned in `package-lock.json`, and Open WebUI v0.11.3 (the image
 `spe_frontend_webui_image` pins) as the model to follow, read in its source at tag `v0.11.3` (`2a960a5`).
@@ -42,7 +42,7 @@ edits made through the chat; it assumes the participant holds neither the agent 
 ## Decisions taken
 
 Decisions 1–18 are the conversation record's; 19–30 are the chat sessions', restated for the record. All thirty
-are built (clarification 14). 31–39 are `/compact`'s (§15), not built. §§1–5 and 7–12 predate the table and state
+are built (clarification 14). 31–39 are `/compact`'s (§15), built (clarification 18). §§1–5 and 7–12 predate the table and state
 their design in their text.
 
 | # | Decision | Section | Acceptance check |

@@ -11,10 +11,12 @@ and .json (active branch of each chat, with tags), notes/ for any other
 notes, index.md (overview) and openwebui-export.json (the raw bundle).
 
 A bundle with spe_archive_mode is the AG-UI chat UI's export (one assistant
-message per run, with spe_run and spe_ignored): write_agui() renders it
-instead, escaping or fencing every text, with each run's status, its ignored
-content and compaction markers; it links agui-journals/ and agent-runs.jsonl
-when they are in the run directory. There is no report.
+message per run, with spe_run, spe_ignored and, for a /compact run, spe_command):
+write_agui() renders it instead, escaping or fencing every text, with each
+run's status, its ignored content, and a compaction marker or a refused or
+failed /compact run shown as requested by the participant; it links
+agui-journals/ and agent-runs.jsonl when they are in the run directory. There
+is no report.
 Stdlib only.
 """
 import datetime
@@ -98,8 +100,9 @@ def write(path, text):
 
 
 # AG-UI bundles: the chat UI's exporter writes this same shape plus `spe_archive_mode` (live or final), one
-# assistant message per run carrying `spe_run` (its status) and `spe_ignored` (what the client sent that was not
-# used). Everything in them came from a participant or a model, so it is rendered fenced or escaped.
+# assistant message per run carrying `spe_run` (its status), `spe_ignored` (what the client sent that was not
+# used) and, for a command run (spec §15), `spe_command` (its name and focus, refused and failed runs
+# included). Everything in them came from a participant or a model, so it is rendered fenced or escaped.
 
 MARKER_PREFIX = "spe-compaction-"
 IGNORED_HEADING = "## sent by the client, not used"
@@ -107,7 +110,7 @@ STATUS_NOTES = {
     "failed": "the agent's stream ended in an error, or without a final event",
     "cancelled": "stopped by the participant before it ended",
     "aborted": "the chat UI could not save the run, so it ended it",
-    "refused": "the agent was not called (the request carried no new user message)",
+    "refused": "the chat UI did not call the agent (the reason follows)",
     "incomplete": "no end was recorded; in a live archive the run may still have been going",
 }
 ARCHIVE_MODES = {
@@ -208,17 +211,32 @@ def render_ignored(entries):
     return "\n".join(out[:-1])
 
 
+def render_command(cmd):
+    """A command run's line (spec §15, *The archive*): who asked, and the focus fenced."""
+    if not isinstance(cmd, dict) or cmd.get("name") != "compact":
+        return ""
+    out = "*Requested by the participant (`/compact`)*"
+    focus = cmd.get("focus")
+    if isinstance(focus, str) and focus:
+        out += "\n\n" + fence(focus)
+    return out
+
+
 def render_output(m):
     """A run's output items in order: text and results fenced, tool calls with fenced arguments, a marker as a
-    Compacted section."""
+    Compacted section naming who asked for it. A command run with no marker (refused, failed or cancelled)
+    shows that same line on its own, after the run's status."""
+    cmd = render_command(m.get("spe_command"))
     out = []
     for it in m.get("output") or []:
         if not isinstance(it, dict):
             continue
         t = it.get("type")
         if is_compaction(it):
-            out.append("## Compacted\n\nFrom here the model saw this summary instead of the messages above.\n\n"
+            out.append("## Compacted\n\n" + (cmd + "\n\n" if cmd else "")
+                       + "From here the model saw this summary instead of the messages above.\n\n"
                        + fence(texts(it.get("content"))))
+            cmd = ""
         elif t == "message":
             if texts(it.get("content")).strip():
                 out.append(fence(texts(it.get("content"))))
@@ -235,6 +253,8 @@ def render_output(m):
             out.append(fence(json.dumps(it, indent=2, ensure_ascii=False), "json"))
     if not out and str(m.get("content") or "").strip():
         out.append(fence(str(m["content"])))
+    if cmd:
+        out.insert(0, cmd)
     return "\n\n".join(out)
 
 

@@ -6,10 +6,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import type { Message } from "@ag-ui/client";
+import { EventType } from "@ag-ui/client";
+import type { BaseEvent, Message } from "@ag-ui/client";
 import type { Clock, JournalFs } from "./journal.ts";
 import {
-  Journals, ValidationError, autoTitle, isSessionId, normaliseTags, parsePatch, shared,
+  Journals, ValidationError, autoTitle, isSessionId, normaliseTags, parsePatch, shared, withSession,
 } from "./sessions.ts";
 import { seedRun } from "./test-journals.ts";
 
@@ -430,4 +431,32 @@ test("SPE_SESSIONS_TEST_SAVE_DELAY_MS holds a run_end append, nothing else", asy
   } finally {
     delete process.env.SPE_SESSIONS_TEST_SAVE_DELAY_MS;
   }
+});
+
+test("get(): a command run's message is never on the branch, its marker is (spec §15, decision 32)", async () => {
+  const { journals } = await tmpJournals();
+  const first = await seedRun(journals, "first question");
+  const runId = randomUUID();
+  const markerId = `spe-compaction-manual-${runId}`;
+  const ids = { threadId: first.id, runId };
+  const events = [
+    { type: EventType.RUN_STARTED, ...ids },
+    { type: EventType.TEXT_MESSAGE_START, messageId: markerId, role: "assistant" },
+    { type: EventType.TEXT_MESSAGE_CONTENT, messageId: markerId, delta: "SUMMARY" },
+    { type: EventType.TEXT_MESSAGE_END, messageId: markerId },
+    { type: EventType.RUN_FINISHED, ...ids },
+  ] as BaseEvent[];
+  await withSession(first.id, async () => {
+    await journals.append(first.id, {
+      type: "run_start", run_id: runId, anchor: first.replyId, messages: [], ignored: [],
+      request: { tools: [], context: [], state: {}, forwardedProps: {} }, source: "chat",
+      command: { name: "compact", focus: null, message_id: "cmd1" },
+    }, "now");
+    for (const event of events) await journals.append(first.id, { type: "event", run_id: runId, event }, "soon");
+    await journals.append(first.id, { type: "run_end", run_id: runId, status: "completed", error: null }, "now");
+  });
+  const view = await journals.get(first.id);
+  assert.ok(view);
+  assert.ok(!view.messages.some((m) => m.id === "cmd1"));
+  assert.deepEqual(view.messages.map((m) => m.id), [first.user.id, first.replyId, markerId]);
 });

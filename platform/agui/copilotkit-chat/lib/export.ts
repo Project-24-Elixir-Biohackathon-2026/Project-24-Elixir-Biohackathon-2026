@@ -1,9 +1,12 @@
 // A rebuilt session → an Open WebUI chat (spec §14, *The Open WebUI chat*); a directory of journals → the bundle
 // write_run.py renders. Each run becomes one assistant message whose `output` items are the run's AG-UI messages
-// in the order they first appeared, in Open WebUI v0.11.3's shapes; user messages stay messages. The journals are
-// only read.
+// in the order they first appeared, in Open WebUI v0.11.3's shapes; user messages stay messages. Besides
+// `output`, a run's message may carry `spe_run` (its status), `spe_ignored` (what was sent but unused) and,
+// for a command run (spec §15), `spe_command` (its name and focus, refused and failed runs included); a
+// remapped message carries `spe_original_id` (the id it forged). The journals are only read.
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { Command } from "./command.ts";
 import { MARKER_PREFIX } from "./compaction.ts";
 import type { Ignored } from "./journal.ts";
 import { idOfJournal } from "./journal.ts";
@@ -16,7 +19,7 @@ export type OutputItem = Record<string, unknown> & { type: string; id: string };
 export type SpeRun = { run_id: string; status: RunView["status"]; started_at: string; ended_at: string | null; error: string | null };
 export type ExportedMessage = {
   id: string; parentId: string | null; childrenIds: string[]; role: string; content: string; timestamp: number;
-  output?: OutputItem[]; spe_run?: SpeRun; spe_ignored?: Ignored[]; spe_original_id?: string;
+  output?: OutputItem[]; spe_run?: SpeRun; spe_ignored?: Ignored[]; spe_original_id?: string; spe_command?: Command;
 };
 export type OpenWebUIChat = {
   id: string; title: string; created_at: number; updated_at: number; archived: boolean;
@@ -156,6 +159,7 @@ export function toOpenWebUIChat(conv: Conversation): OpenWebUIChat {
       timestamp: seconds(run.ended_at ?? run.last_at), output,
       spe_run: { run_id: run.run_id, status: run.status, started_at: run.started_at, ended_at: run.ended_at, error: run.error },
       spe_ignored: run.ignored,
+      ...(run.command ? { spe_command: { name: run.command.name, focus: run.command.focus } } : {}),
     });
   }
   for (const id of order) {

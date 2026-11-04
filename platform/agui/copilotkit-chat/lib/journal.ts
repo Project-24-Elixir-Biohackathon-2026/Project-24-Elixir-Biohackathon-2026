@@ -5,6 +5,7 @@
 import fsp from "node:fs/promises";
 import path from "node:path";
 import type { BaseEvent, Message } from "@ag-ui/client";
+import type { CommandField } from "./command.ts";
 import { isSessionId, ValidationError } from "./sessions.ts";
 
 export type RunStatus = "completed" | "failed" | "cancelled" | "aborted" | "refused";
@@ -18,7 +19,7 @@ export type MetaFields = { title?: string; tags?: string[]; pinned?: boolean; hi
 export type CreatedLine = { type: "created"; at: string; version: 1; id: string };
 export type RunStartLine = {
   type: "run_start"; at: string; run_id: string; anchor: string | null; messages: Message[];
-  ignored: Ignored[]; request: RequestFields; source: "chat";
+  ignored: Ignored[]; request: RequestFields; source: "chat"; command?: CommandField;
 };
 export type EventLine = { type: "event"; at: string; run_id: string; event: BaseEvent };
 export type RunEndLine = { type: "run_end"; at: string; run_id: string; status: RunStatus; error: string | null };
@@ -52,7 +53,9 @@ function isLine(v: unknown): v is Line {
       return isString(v.id);
     case "run_start":
       return isString(v.run_id) && (v.anchor === null || isString(v.anchor)) && Array.isArray(v.messages)
-        && v.messages.every((m) => isObject(m) && isString(m.id)) && Array.isArray(v.ignored) && isObject(v.request);
+        && v.messages.every((m) => isObject(m) && isString(m.id)) && Array.isArray(v.ignored) && isObject(v.request)
+        && (v.command === undefined || (isObject(v.command) && v.command.name === "compact"
+          && (v.command.focus === null || isString(v.command.focus)) && isString(v.command.message_id)));
     case "event":
       return isString(v.run_id) && isObject(v.event) && isString(v.event.type);
     case "run_end":

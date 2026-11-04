@@ -1,8 +1,10 @@
 // A client's history against the journal (spec §13, *The run route*, step 2; decision 2). The anchor is the
 // client message the journal holds that the journal added last; the new messages are the user messages after
 // it (in the client's order) whose ids the journal does not hold; whatever else differs from the journal is
-// ignored content, recorded with its kind. Pure: no I/O, no clock.
+// ignored content, recorded with its kind. A command's message (spec §15) is known too, but never the anchor,
+// new or on the path: the journal holds it as a command, not a node. Pure: no I/O, no clock.
 import type { Message } from "@ag-ui/client";
+import { parseCommand, sameCommand } from "./command.ts";
 import type { Ignored } from "./journal.ts";
 import { isBoundary, pathTo } from "./rebuild.ts";
 import type { Conversation, Node } from "./rebuild.ts";
@@ -73,6 +75,15 @@ export function classify(conv: Conversation | null, client: Message[]): Classifi
     const id = idOf(message);
     if (message?.role === "system") {
       ignored.push({ kind: "system", message });
+      continue;
+    }
+    const command = id !== null && !known(id) ? conv?.commands.get(id) : undefined;
+    if (command) {
+      // A command's message (spec §15, step 2): known for this purpose only, never the anchor, new or on the
+      // path. Unchanged means a user message that parses to the same command (spec §15, clarification 18).
+      const parsed = message.role === "user" ? parseCommand(message.content) : null;
+      if (!parsed || !sameCommand(parsed, command)) ignored.push({ kind: "edited", message });
+      seen.add(id!); // id !== null: that's what made `command` lookup possible above
       continue;
     }
     if (known(id)) {

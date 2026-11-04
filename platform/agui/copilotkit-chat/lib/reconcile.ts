@@ -18,6 +18,8 @@ export const REFUSED_RUN_MESSAGES: readonly string[] = [
   "this session could not be saved",
   "this run carries no new message",
   "this run was already recorded",
+  "Nothing to compact yet.",
+  "The focus after /compact is too long (1000 characters at most).",
 ];
 
 export type ListResult = { list: SessionMeta[]; serverOffsetMs: number };

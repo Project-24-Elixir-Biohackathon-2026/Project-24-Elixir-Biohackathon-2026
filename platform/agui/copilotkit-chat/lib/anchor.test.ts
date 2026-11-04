@@ -313,3 +313,86 @@ test("an activity message the journal holds is neither in the path nor deleted: 
   assert.deepEqual(ids(c.newMessages), ["u2"]);
   assert.deepEqual(c.ignored, []);
 });
+
+// --- /compact (spec §15) ------------------------------------------------------------------------
+
+// A command run (spec §15): run_start with no message and a command; completed with a manual marker, or refused.
+const compactRun = (id: string, anchor: string, messageId: string, focus: string | null = null): Line[] => [
+  { type: "run_start", at: AT, run_id: id, anchor, messages: [], ignored: [], request, source: "chat",
+    command: { name: "compact", focus, message_id: messageId } },
+  ev(id, { type: EventType.RUN_STARTED, threadId: ID, runId: id }),
+  ...text(id, `spe-compaction-manual-${id}`, "SUMMARY"),
+  ev(id, { type: EventType.RUN_FINISHED, threadId: ID, runId: id }),
+  { type: "run_end", at: AT, run_id: id, status: "completed", error: null },
+];
+const refusedCompact = (id: string, anchor: string, messageId: string, focus: string | null = null): Line[] => [
+  { type: "run_start", at: AT, run_id: id, anchor, messages: [], ignored: [], request, source: "chat",
+    command: { name: "compact", focus, message_id: messageId } },
+  { type: "run_end", at: AT, run_id: id, status: "refused", error: "Nothing to compact yet." },
+];
+
+test("decision 32: a command message sent back unchanged ignores nothing and is never the anchor", async () => {
+  const conv = await journal(r1(), r2(), r3(), refusedCompact("k1", "a3", "cmd1", "keep x"));
+  // Spec §15, clarification 18: unchanged is compared on the parsed command, not the raw text.
+  for (const content of ["/compact keep x", "  /compact   keep x "]) {
+    const c = classify(conv, [...branch(conv), user("cmd1", content), user("u4", "next")]);
+    assert.equal(c.anchor, "a3", content);
+    assert.deepEqual(ids(c.newMessages), ["u4"], content);
+    assert.deepEqual(c.ignored, [], content);
+    assert.ok(!ids(c.path).includes("cmd1"), content);
+  }
+});
+
+test("decision 32: a command message sent back changed is edited", async () => {
+  const conv = await journal(r1(), r2(), r3(), refusedCompact("k1", "a3", "cmd1", "keep x"));
+  for (const changed of [user("cmd1", "/compact keep y"), user("cmd1", "/compact"), user("cmd1", "hello"),
+                         assistant("cmd1", "/compact keep x")]) {
+    const c = classify(conv, [...branch(conv), changed, user("u4", "next")]);
+    assert.deepEqual(kinds(c), [["edited", "cmd1"]], JSON.stringify(changed));
+    assert.deepEqual(ids(c.newMessages), ["u4"], JSON.stringify(changed));
+    assert.equal(c.anchor, "a3", JSON.stringify(changed));
+  }
+});
+
+test("decision 32: after a completed command the path ends in its marker, without the command", async () => {
+  const conv = await journal(r1(), r2(), r3(), compactRun("k1", "a3", "cmd1"));
+  for (const client of [
+    [...branch(conv), conv.nodes.get("spe-compaction-manual-k1")!.message, user("u4", "next")],
+    // As the browser holds it: the command bubble, then the marker the run added.
+    [...branch(conv), user("cmd1", "/compact"), conv.nodes.get("spe-compaction-manual-k1")!.message, user("u4", "next")],
+  ]) {
+    const c = classify(conv, client);
+    assert.equal(c.anchor, "spe-compaction-manual-k1");
+    assert.deepEqual(ids(c.path).slice(-2), ["a3", "spe-compaction-manual-k1"]);
+    assert.ok(!ids(c.path).includes("cmd1"));
+    assert.deepEqual(ids(c.newMessages), ["u4"]);
+    assert.deepEqual(c.ignored, []);
+  }
+});
+
+test("spec §15: kept command bubbles are known, not new", async () => {
+  const conv = await journal(r1(), r2(), r3(), refusedCompact("k1", "a3", "cmd1"), refusedCompact("k2", "a3", "cmd2"));
+  const kept = [...branch(conv), user("cmd1", "/compact"), user("cmd2", "/compact")];
+  const third = classify(conv, [...kept, user("cmd3", "/compact")]);
+  assert.deepEqual([third.anchor, ids(third.newMessages), third.ignored], ["a3", ["cmd3"], []]);
+  const plain = classify(conv, [...kept, user("u4", "next")]);
+  assert.deepEqual([plain.anchor, ids(plain.newMessages), plain.ignored], ["a3", ["u4"], []]);
+});
+
+test("spec §15: compact after a stopped run moves the anchor back; no dangling call on the path", async () => {
+  const stopped: Line[] = [
+    { type: "run_start", at: AT, run_id: "r4", anchor: "a3", messages: [user("u4", "list more")], ignored: [], request, source: "chat" },
+    ev("r4", { type: EventType.RUN_STARTED, threadId: ID, runId: "r4" }),
+    ev("r4", { type: EventType.TOOL_CALL_START, toolCallId: "call-4", toolCallName: "execute", parentMessageId: "c4" }),
+    ev("r4", { type: EventType.TOOL_CALL_ARGS, toolCallId: "call-4", delta: '{"cmd":"ls"}' }),
+    ev("r4", { type: EventType.TOOL_CALL_END, toolCallId: "call-4" }),
+    { type: "run_end", at: AT, run_id: "r4", status: "cancelled", error: null },
+  ];
+  const conv = await journal(r1(), r2(), r3(), stopped);
+  const client = [...branch(conv), conv.nodes.get("u4")!.message, conv.nodes.get("c4")!.message, user("cmd", "/compact")];
+  const c = classify(conv, client);
+  assert.equal(c.anchor, "u4");
+  assert.deepEqual(ids(c.newMessages), ["cmd"]);
+  assert.equal(ids(c.path).at(-1), "u4");
+  assert.deepEqual(kinds(c), [["deleted", "c4"]]); // c4, cut back as for any run
+});

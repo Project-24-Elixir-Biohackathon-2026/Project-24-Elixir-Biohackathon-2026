@@ -118,8 +118,8 @@ itself once the checks in `AGENTS.md`, *Overrides*, pass; the status column then
 
 | n/N | Branch | Tasks | Delivers | Est. LOC | Reviewer checks | File | Status |
 |---|---|---|---|---|---|---|---|
-| 1/2 | `impl/agui-compact-command-1-agent` | 3 | `summarise()` shared by both paths; the agent answers `spe_command: compact` (35); its run log record (36); `fake_agent.py` answers a command | ~450 | agent `pytest`; `fake_agent.py` answered with `curl` (task 3) | [slice-1-agent.md](slice-1-agent.md) | planned |
-| 2/2 | `impl/agui-compact-command-2-chat` | 5 | **early output** first (31–33, Playwright, sample); refusals (34); a marker cut short (37); archive (38); docs; de.NBI check (39, paid: ask first); spec built | ~750 | `npm test`; `npm run build`; pytest; e2e `sessions.py --scenario compact-command`; the early output sample | [slice-2-chat.md](slice-2-chat.md) | planned |
+| 1/2 | `impl/agui-compact-command-1-agent` | 3 | `summarise()` shared by both paths; the agent answers `spe_command: compact` (35); its run log record (36); `fake_agent.py` answers a command | ~450 | agent `pytest`; `fake_agent.py` answered with `curl` (task 3) | [slice-1-agent.md](slice-1-agent.md) | merged #28 |
+| 2/2 | `impl/agui-compact-command-2-chat` | 5 | **early output** first (31–33, Playwright, sample); refusals (34); a marker cut short (37); archive (38); docs; de.NBI check (39, paid: ask first); spec built | ~750 | `npm test`; `npm run build`; pytest; e2e `sessions.py --scenario compact-command`; the early output sample | [slice-2-chat.md](slice-2-chat.md) | merged #30 |
 
 **What the user sees, and when.** Slice 2's task 3 posts the spec's early output on its PR (screenshots of the
 divider live and after a reload after `/compact keep the canary paths`, and the journal's `run_start` with its

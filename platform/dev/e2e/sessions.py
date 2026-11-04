@@ -986,6 +986,48 @@ def check_compaction(r: Run) -> None:
     r.ok("compaction: divider in place live and after a reload, summary collapsed and shown as text, record keeps it")
 
 
+def check_compact_command(r: Run) -> None:
+    """/compact with a focus (spec §15): the bubble is replaced by the divider, live and after a reload; the
+    journal's run_start carries the command and no message."""
+    page = r.page
+    page.get_by_role("button", name="New chat").click()
+    expect(page.locator(".spe-header-title")).to_have_text("New chat")
+    r.send("first question", 1)
+    r.send("second question", 2)
+    box = page.get_by_test_id("copilot-chat-textarea")
+    box.fill("/compact keep the canary paths")
+    box.press("Enter")
+    divider = page.locator(".spe-compaction")
+    expect(divider).to_have_count(1, timeout=20_000)
+    expect(page.get_by_text("/compact keep the canary paths", exact=True)).to_have_count(0)
+    r.shot("compact-command")
+    sid = r.url_session()
+    rec = r.wait_runs(sid, 3)
+    starts = [x for x in read_journal((r.sessions / f"{sid}.jsonl").read_text()) if x["type"] == "run_start"]
+    assert starts[-1]["messages"] == [] and starts[-1]["command"]["focus"] == "keep the canary paths", starts[-1]
+    markers = [m for m in rec["messages"] if str(m.get("id") or "").startswith("spe-compaction-manual-")]
+    assert len(markers) == 1 and "keep the canary paths" in markers[0]["content"], rec
+    if r.shots:
+        (r.shots / "run_start.json").write_text(json.dumps(starts[-1], indent=2) + "\n")
+    page.reload()
+    expect(page.locator(".spe-compaction")).to_have_count(1, timeout=10_000)
+    expect(page.get_by_text("/compact keep the canary paths", exact=True)).to_have_count(0)
+    # A reload does not scroll a restored session to its newest content, unlike a live send:
+    # bring the divider into view so the shot shows it, not an earlier turn.
+    page.locator(".spe-compaction").scroll_into_view_if_needed()
+    r.shot("compact-command-reload")
+    # Turn numbering restarts after a compaction (see check_compaction), so this answer is "Turn 1" again, as the
+    # first question's still on the page is: r.send would hit a strict-mode double match. Count the answers.
+    turn1 = page.get_by_text(re.compile(r"Turn 1: the command ran\."))
+    before = turn1.count()
+    box.fill("third question")
+    box.press("Enter")
+    expect(turn1).to_have_count(before + 1, timeout=20_000)
+    expect(page.locator(".spe-compaction")).to_have_count(1)
+    r.wait_runs(sid, 4)
+    r.ok("compact-command: bubble gone, divider in place live and after a reload, run_start holds the command")
+
+
 def check_save_failed(r: Run) -> None:
     """The chat UI cannot write the journal (its directory made read-only): the run is refused before the agent
     is called, the error bar says "this session could not be saved", the list is fetched once, not retried, and
@@ -1144,7 +1186,7 @@ def compaction_live(r: Run, turns: int = 8) -> None:
           f"after {turn} turns")
 
 
-LOCAL = ("all", "stop", "compaction", "devtools-edit", "restore-tip")
+LOCAL = ("all", "stop", "compaction", "devtools-edit", "restore-tip", "compact-command")
 INSTANCE = ("stop", "slow-loop", "two-turn", "compaction-live", "live-run")
 
 
@@ -1230,6 +1272,7 @@ def main() -> None:
                 check_deleted_open(r)
                 check_tool_group(r)
                 check_compaction(r)
+                check_compact_command(r)
                 check_no_false_alarm(r)
                 check_stop(r)
                 check_devtools_edit(r)
@@ -1245,6 +1288,9 @@ def main() -> None:
             elif args.scenario == "restore-tip":
                 page.goto(BASE + "/")
                 check_restore_tip(r)
+            elif args.scenario == "compact-command":
+                page.goto(BASE + "/")
+                check_compact_command(r)
             else:
                 page.goto(BASE + "/")
                 check_compaction(r)

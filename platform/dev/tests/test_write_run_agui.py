@@ -16,13 +16,14 @@ WRITE_RUN = TESTS.parents[1] / "ansible" / "roles" / "run_archive" / "files" / "
 RECORD = TESTS / "fixtures" / "agui-record"
 OWUI = TESTS / "fixtures" / "openwebui-run"
 
-TOOLS, IGNORED, STATUSES, BRANCHES, MARKUP = (f"00000000-0000-4000-8000-00000000000{n}" for n in range(1, 6))
+TOOLS, IGNORED, STATUSES, BRANCHES, MARKUP, MANUAL = (f"00000000-0000-4000-8000-00000000000{n}" for n in range(1, 7))
 NAMES = {
     TOOLS: "01-list-the-home-directory",
     IGNORED: "02-hello",
     STATUSES: "03-run-a-slow-command",
     BRANCHES: "04-first-question",
     MARKUP: "05-try-the-pipe-forged-heading-script-alert-1-script",
+    MANUAL: "06-what-have-we-covered-so-far",
 }
 
 
@@ -79,7 +80,7 @@ def prepare(tmp_path, bundle="live.bundle.json", journals=True, log=True):
 def rendered(tmp_path):
     src, out = prepare(tmp_path)
     proc = run(src, out)
-    assert "5 sessions (1 hidden, 1 deleted), live archive, run log" in proc.stdout
+    assert "6 sessions (1 hidden, 1 deleted), live archive, run log" in proc.stdout
     return out
 
 
@@ -196,7 +197,8 @@ def test_a_refused_run_off_the_branch_still_shows_what_it_was_sent(rendered):
     md = chat(rendered, IGNORED)
     other = md[md.index("## Other branches"):]
     assert other.index("**deleted**: message `a2`") < other.index("## assistant · 2026-11-03 10:12 UTC · after `u2`") \
-        < other.index("**Run refused**: the agent was not called (the request carried no new user message).")
+        < other.index("**Run refused**: the chat UI did not call the agent (the reason follows). "
+                      "Error: no new user message")
     assert "- Runs: 3 (completed 2, refused 1)" in md
 
 
@@ -212,6 +214,36 @@ def test_a_compaction_is_a_section_where_it_happened(rendered):
     other = md[md.index("## Other branches"):]
     assert "## user · 2026-11-03 10:41 UTC · after `spe-run-r4-1`" in other and "Branch answer." in other
     assert md.startswith("Deleted by the participant at 2026-11-03 11:00 UTC.\n\n# first question\n")
+
+
+def test_a_manual_compaction_says_the_participant_asked(rendered):
+    md = chat(rendered, MANUAL)
+    section = md[md.index("## Compacted"):]
+    assert section.startswith("## Compacted\n\n*Requested by the participant (`/compact`)*\n\n")
+    assert "`````\nkeep the ```` canary paths\n`````" in section  # the fence outlasts the focus's four backticks
+    assert md.count("## Compacted") == 1
+
+
+def test_a_failed_or_refused_command_shows_the_command_beside_its_status(rendered):
+    md = chat(rendered, MANUAL)
+    # one line per command run: r6-2 (failed), r6-3 (its "Compacted" section), r6-4 (refused)
+    assert md.count("*Requested by the participant (`/compact`)*") == 3
+    failed = md.index("Compaction is turned off on this instance.")
+    # r6-2 renders under "Other branches", after "## Compacted" (r6-3's section): slice to the next heading
+    # instead of to "## Compacted", so this is r6-2's own command line, beside its own status.
+    next_heading = md.find("\n## ", failed)
+    section = md[failed:next_heading if next_heading != -1 else len(md)]
+    assert "*Requested by the participant (`/compact`)*" in section
+
+
+def test_the_index_counts_manual_compactions(rendered):
+    index = (rendered / "index.md").read_text()
+    header = next(l for l in index.splitlines() if l.startswith("| #"))
+    columns = [c.strip() for c in header.strip("|").split("|")]
+    compactions_col = columns.index("Compactions")
+    row = next(l for l in index.splitlines() if NAMES[MANUAL] in l)
+    cells = [c.strip() for c in row.strip("|").split("|")]
+    assert cells[compactions_col] == "1"
 
 
 def test_title_with_a_pipe_and_a_heading(rendered):

@@ -34,13 +34,13 @@ function msg(c: OpenWebUIChat, id: string): ExportedMessage {
 }
 
 test("every journal is a chat, hidden and deleted included; other files are not journals", () => {
-  assert.deepEqual(live.chats.map((c) => c.id), [1, 2, 3, 4, 5].map(J)); // not …0009.json, nor the bundles
+  assert.deepEqual(live.chats.map((c) => c.id), [1, 2, 3, 4, 5, 6].map(J)); // not …0009.json, nor the bundles
   assert.equal(live.spe_archive_mode, "live");
   assert.equal(live.exported_at, Date.parse("2026-11-03T12:00:00.000Z") / 1000);
   assert.deepEqual(live.notes, []);
   assert.deepEqual(live.tags, ["<b>x</b>", "a|b", "dns", "exfil"].map((t) => ({ id: t, name: t })));
   assert.deepEqual(live.chats.map((c) => [c.archived, c.meta.spe_deleted_at ?? null]),
-    [[false, null], [false, null], [true, null], [false, "2026-11-03T11:00:00.000Z"], [false, null]]);
+    [[false, null], [false, null], [true, null], [false, "2026-11-03T11:00:00.000Z"], [false, null], [false, null]]);
 });
 
 test("one assistant message per run, its output items in the order they first appeared", () => {
@@ -112,6 +112,16 @@ test("titles, tags and content are exported unchanged", () => {
   assert.equal(c.chat.title, c.title);
   assert.deepEqual(c.meta.tags, ["a|b", "<b>x</b>"]);
   assert.equal(msg(c, "u1").content, "# x\n<script>alert(2)</script>\n| a | b |");
+});
+
+test("every command run's message carries spe_command, refused and failed ones too", () => {
+  const c = chat(6);
+  assert.deepEqual(msg(c, "spe-run-r6-2").spe_command, { name: "compact", focus: null });
+  assert.deepEqual(msg(c, "spe-run-r6-3").spe_command, { name: "compact", focus: "keep the ```` canary paths" });
+  assert.deepEqual(msg(c, "spe-run-r6-4").spe_command, { name: "compact", focus: null });
+  assert.equal(msg(c, "spe-run-r6-1").spe_command, undefined);
+  assert.equal(msg(c, "spe-run-r6-3").spe_run?.status, "completed");
+  assert.deepEqual(msg(c, "spe-run-r6-3").output?.map((i) => i.id), ["spe-compaction-manual-r6-3"]);
 });
 
 test("an empty journal is a chat with no messages", async () => {
@@ -217,7 +227,7 @@ test("the command writes the bundle; a wrong mode is refused", async () => {
   const out = path.join(dir, "bundle.json");
   const node = [process.execPath, "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON", "scripts/export-journals.ts"];
   const { stdout } = await execFileP(node[0], [...node.slice(1), FIXTURES, out, "final"], { cwd: CHAT });
-  assert.equal(stdout, "5 sessions (1 hidden, 1 deleted), final archive\n");
+  assert.equal(stdout, "6 sessions (1 hidden, 1 deleted), final archive\n");
   const written = JSON.parse(await fs.readFile(out, "utf8")) as Bundle;
   const fixture = JSON.parse(await fs.readFile(path.join(FIXTURES, "final.bundle.json"), "utf8")) as Bundle;
   assert.deepEqual({ ...written, exported_at: 0 }, { ...fixture, exported_at: 0 });

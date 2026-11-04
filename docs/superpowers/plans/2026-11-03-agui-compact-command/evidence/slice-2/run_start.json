@@ -1,0 +1,20 @@
+{
+  "type": "run_start",
+  "at": "2026-11-04T00:16:32.133Z",
+  "run_id": "2678c81b-aff5-4f4e-90d6-979ab8d9c558",
+  "anchor": "0646aaf5-ab5b-48c9-affd-dc3a8551c380",
+  "messages": [],
+  "ignored": [],
+  "request": {
+    "tools": [],
+    "context": [],
+    "state": {},
+    "forwardedProps": {}
+  },
+  "source": "chat",
+  "command": {
+    "name": "compact",
+    "focus": "keep the canary paths",
+    "message_id": "65c587b9-dd78-4c57-887a-a3779fde77f4"
+  }
+}

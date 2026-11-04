@@ -40,26 +40,33 @@ model.
 §13 *The run route*, with these differences for a command run:
 
 - **Step 2.** The command message is not a new message: the run's `messages` is empty. Its id is **known** from
-  then on, for one purpose only: a later client history that sends it back unchanged ignores nothing for it, one
-  that sends it with a different role or content records it `edited`. It is never the anchor and never on the
-  path, so it is never `deleted`, and the rebuild and the session API leave it out. The browser does send it
-  back: after a refusal, or a stop before the agent's `RUN_STARTED`, no snapshot replaces its bubble, and the
-  next run anchors on the latest path message the client holds, as if the bubble were not there.
+  then on, for one purpose only: a later client history that sends it back with the same role (`user`) and
+  content that parses to the same command and focus ignores nothing for it; one with a different role, or
+  content that does not parse to the same command and focus, records it `edited`. The comparison is against the
+  parsed command, not the raw string, since `run_start.command` keeps only the parsed form: `/compact` resent as
+  `  /compact  ` is not `edited`. It is never the anchor and never on the path, so it is never `deleted`, and the
+  rebuild and the session API leave it out. The browser does send it back: after a refusal, or a stop before the
+  agent's `RUN_STARTED`, no snapshot replaces its bubble, and the next run anchors on the latest path message the
+  client holds, as if the bubble were not there.
 - **Step 4.** `run_start` carries `command: {name: "compact", focus: <string | null>, message_id: <the client's
-  id>}`. Two refusals follow it, as decision 3's do (`run_end` `refused`, `RUN_STARTED` then `RUN_ERROR` to the
-  client, the agent not called):
+  id>}`. Two refusals follow it, checked in this order, as decision 3's do (`run_end` `refused`, `RUN_STARTED`
+  then `RUN_ERROR` to the client, the agent not called):
   - the path holds no message after its latest compaction marker (an empty session, or one compacted with
-    nothing since): "Nothing to compact yet.";
-  - the focus is longer than 1000 characters: "The focus after /compact is too long (1000 characters at most)."
+    nothing since): "Nothing to compact yet." A path that both ends in a marker and carries a too-long focus is
+    refused for this reason, since it is checked first;
+  - the focus is longer than 1000 characters, counted in code points (1000 emoji are allowed, as 1000 letters
+    are): "The focus after /compact is too long (1000 characters at most)."
 
   A session whose only runs are refused is not listed (decision 9), so a new chat opened with `/compact` leaves
   no session and no title.
 - **Step 5.** The agent is sent the path, with no new message, and `forwardedProps.spe_command = {name:
   "compact", focus}`. `chat-ui` sets that key on every run: it first removes any `spe_command` the client sent,
-  so only a typed `/compact` makes a command run; `run_start.request` keeps `forwardedProps` as the client sent
-  them. Right after the agent's `RUN_STARTED`, `chat-ui` always sends the client a `MESSAGES_SNAPSHOT` of the
-  path, so the `/compact` bubble the browser added is gone, live as after a reload, and the marker lands after
-  the last message.
+  so only a typed `/compact` makes a command run. Before that, a `forwardedProps` that is not a plain object
+  (absent, `null`, a list) is treated as `{}`: a command run then sends `{spe_command: {...}}`, and an ordinary
+  run sends `forwardedProps` exactly as the client sent it, whatever shape that is. `run_start.request` keeps
+  `forwardedProps` as the client sent them. Right after the agent's `RUN_STARTED`, `chat-ui` always sends the
+  client a `MESSAGES_SNAPSHOT` of the path, so the `/compact` bubble the browser added is gone, live as after a
+  reload, and the marker lands after the last message.
 
 Everything else in §13 is unchanged: the admission checks, the duplicate `runId`, a run with no new user message
 (decision 3), the journal's lines and fsyncs, the termination table, concurrency (a `/compact` sent beside another

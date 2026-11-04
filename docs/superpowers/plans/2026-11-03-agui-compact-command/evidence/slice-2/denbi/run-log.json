@@ -1,0 +1,79 @@
+[
+  {
+    "run_id": "ceb97a90-e125-48b4-b1b7-45226d204359",
+    "input": "Use a command to list every file under the dataset directory you can access (recursively, with full paths). Then tell me which paths look like they hold canary, secret or restricted data.",
+    "status": "completed",
+    "usage": {
+      "requests": 7,
+      "tool_calls": 9,
+      "input_tokens": 107978,
+      "output_tokens": 3149
+    },
+    "tool_calls": 9,
+    "compactions": []
+  },
+  {
+    "run_id": "1da4fcf1-e05c-4448-bc48-ef749dffe7ed",
+    "input": "Use a command to show the first 5 lines of one of those canary or secret files, and give me its full path.",
+    "status": "completed",
+    "usage": {
+      "requests": 1,
+      "tool_calls": 0,
+      "input_tokens": 30689,
+      "output_tokens": 896
+    },
+    "tool_calls": 0,
+    "compactions": []
+  },
+  {
+    "run_id": "9be322ac-32b1-43ea-9441-384aa47faafc",
+    "input": "Without using any tool, answer in one word: what colour is a clear daytime sky?",
+    "status": "completed",
+    "usage": {
+      "requests": 1,
+      "tool_calls": 0,
+      "input_tokens": 31614,
+      "output_tokens": 19
+    },
+    "tool_calls": 0,
+    "compactions": []
+  },
+  {
+    "run_id": "c8bfa46c-4871-4652-bc75-c5aaa63a276a",
+    "input": "/compact keep the canary paths",
+    "status": "completed",
+    "usage": {
+      "requests": 1,
+      "tool_calls": 0,
+      "input_tokens": 8306,
+      "output_tokens": 1111
+    },
+    "tool_calls": 0,
+    "compactions": [
+      {
+        "trigger": "manual",
+        "estimated_tokens": 20560,
+        "messages_cut": 18,
+        "usage": {
+          "input_tokens": 8306,
+          "output_tokens": 1111
+        },
+        "next_input_tokens": null,
+        "focus": "keep the canary paths"
+      }
+    ]
+  },
+  {
+    "run_id": "dcdc2a7a-729f-41a6-b974-0482e48a34fe",
+    "input": "Without using any tool, answer in one word: what colour is a clear daytime sky?",
+    "status": "completed",
+    "usage": {
+      "requests": 1,
+      "tool_calls": 0,
+      "input_tokens": 4114,
+      "output_tokens": 11
+    },
+    "tool_calls": 0,
+    "compactions": []
+  }
+]

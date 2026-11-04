@@ -1,14 +1,19 @@
 // The run route's hook: AG-UI middleware on the `spe` agent that keeps each session's journal. Per run it
 // admits or refuses; classifies the client's history against the journal (lib/anchor.ts); writes run_start,
 // fsynced, before the agent is called; sends the agent the journal's path plus the new messages; journals every
-// event; and writes run_end before the terminal event is passed on (spec §13, *The run route*). One instance
-// serves every clone of the agent, so all per-run state lives in the closure of run().
+// event; and writes run_end before the terminal event is passed on (spec §13, *The run route*). A command run
+// (/compact, spec §15) is journaled with run_start.command and no new message, is sent the path alone plus
+// forwardedProps.spe_command, and always gets a snapshot of the path. One instance serves every clone of the
+// agent, so all per-run state lives in the closure of run().
 import { EventType, Middleware } from "@ag-ui/client";
 import type { AbstractAgent, BaseEvent, Message, RunAgentInput } from "@ag-ui/client";
 import { Observable } from "rxjs";
 import type { Subscription } from "rxjs";
 import { classify } from "./anchor.ts";
 import type { Classification } from "./anchor.ts";
+import { commandOf } from "./command.ts";
+import type { Command, CommandField } from "./command.ts";
+import { isCompactionMarker } from "./compaction.ts";
 import type { Durability, NewLine, RunStatus } from "./journal.ts";
 import { codeOf, isSessionId, shared, withSession } from "./sessions.ts";
 import type { Journals, RunHandle } from "./sessions.ts";
@@ -21,11 +26,24 @@ const NOT_SAVED = "this session could not be saved";
 const NO_NEW_MESSAGE = "this run carries no new message";
 const DUPLICATE_RUN = "this run was already recorded";
 const STOPPED = "the run was stopped";
+const NOTHING_TO_COMPACT = "Nothing to compact yet.";
+const FOCUS_TOO_LONG = "The focus after /compact is too long (1000 characters at most).";
+const MAX_FOCUS = 1000; // code points (spec §15, clarification 18)
 export const REFUSAL_MESSAGES: readonly string[] = Object.freeze([
-  INVALID, DELETED, CLOSING, NOT_SAVED, NO_NEW_MESSAGE, DUPLICATE_RUN,
+  INVALID, DELETED, CLOSING, NOT_SAVED, NO_NEW_MESSAGE, DUPLICATE_RUN, NOTHING_TO_COMPACT, FOCUS_TOO_LONG,
 ]);
 
-type Admission = { refused: string } | { refused: null; classification: Classification };
+type Admission = { refused: string } | { refused: null; classification: Classification; command: CommandField | null };
+
+// spe_command is chat-ui's to set (spec §15, *The run route*, step 5): a client's is removed on every run, so
+// only a typed /compact makes a command run. forwardedProps that is not a plain object is sent as sent on a
+// plain run, and replaced by one holding only the command on a command run (spec §15, clarification 18).
+function forwardedFor(sent: unknown, command: Command | null): unknown {
+  const spe_command = command && { name: command.name, focus: command.focus };
+  if (typeof sent !== "object" || sent === null || Array.isArray(sent)) return spe_command ? { spe_command } : sent;
+  const { spe_command: _client, ...rest } = sent as Record<string, unknown>;
+  return spe_command ? { ...rest, spe_command } : rest;
+}
 
 // A run's key among the recorder's requests and in shared().running: its session and run id. The client
 // supplies the run id, so two sessions could send the same one; runs on one session may overlap.
@@ -171,11 +189,12 @@ export class SessionRecorder extends Middleware {
           });
           return;
         }
-        const { path, newMessages, ignored } = admission.classification;
-        const messages: Message[] = [...path, ...newMessages];
-        let snapshotDue = ignored.length > 0; // decision 6
+        const { classification: { path, newMessages, ignored }, command } = admission;
+        const messages: Message[] = command ? path : [...path, ...newMessages];
+        let snapshotDue = ignored.length > 0 || command !== null; // decisions 6 and 33
         this.requests.set(key, request);
-        inner = this.runNext({ ...input, messages }, next).subscribe({
+        const forwardedProps = forwardedFor(input.forwardedProps, command);
+        inner = this.runNext({ ...input, messages, forwardedProps }, next).subscribe({
           next: (event) => {
             const status = statusOf(event);
             if (status !== null) terminal = true; // synchronously: a cancel() right after is a no-op
@@ -269,6 +288,7 @@ export class SessionRecorder extends Middleware {
       // shutdown() took its snapshot of `running` would never be cancelled.
       if (shared().closing) return { refused: CLOSING };
       const classification = classify(conv, input.messages);
+      const command = commandOf(classification.newMessages);
       const { tools, context, state, forwardedProps } = input;
       // A run journaled but not admitted: its run_end, then the refusal the client sees. A run_end that cannot
       // be written leaves the run incomplete in the journal; the client is refused either way.
@@ -286,8 +306,9 @@ export class SessionRecorder extends Middleware {
         if (conv === null) await journals.append(id, { type: "created", version: 1, id }, "soon");
         runStartTried = true;
         await journals.append(id, {
-          type: "run_start", run_id: input.runId, anchor: classification.anchor, messages: classification.newMessages,
-          ignored: classification.ignored, request: { tools, context, state, forwardedProps }, source: "chat",
+          type: "run_start", run_id: input.runId, anchor: classification.anchor,
+          messages: command ? [] : classification.newMessages, ignored: classification.ignored,
+          request: { tools, context, state, forwardedProps }, source: "chat", ...(command ? { command } : {}),
         }, "now");
       } catch (error) {
         console.error(`journal: run_start of run ${input.runId} of ${id} failed: ${codeOf(error)}`);
@@ -295,14 +316,21 @@ export class SessionRecorder extends Middleware {
         // incomplete (Journals.append dropped the failed writer, so this reopens the journal).
         return runStartTried ? endHere("aborted", NOT_SAVED) : { refused: NOT_SAVED };
       }
-      if (classification.newMessages.length === 0) return endHere("refused", NO_NEW_MESSAGE);
+      if (command) {
+        // Spec §15, step 4: nothing after the path's latest marker, or a focus too long. The agent backstops the first.
+        const last = classification.path.at(-1);
+        if (!last || isCompactionMarker(last)) return endHere("refused", NOTHING_TO_COMPACT);
+        if (command.focus !== null && [...command.focus].length > MAX_FOCUS) return endHere("refused", FOCUS_TOO_LONG);
+      } else if (classification.newMessages.length === 0) {
+        return endHere("refused", NO_NEW_MESSAGE);
+      }
       // Re-checked once run_start is on disk: SIGTERM may have landed during its fsync, after shutdown() took
       // its snapshot of `running`, so a run admitted now would never be cancelled and drain would time out.
-      // Its run_start already carries the new user message, so it ends cancelled, not refused (a refused run
-      // adds no message, §13).
+      // Its run_start already carries the new user message, or for a command run the command itself, so it
+      // ends cancelled, not refused (a refused run adds no message, §13).
       if (shared().closing) return endHere("cancelled", CLOSING);
       shared().running.set(runKey(id, input.runId), handle);
-      return { refused: null, classification };
+      return { refused: null, classification, command };
     });
   }
 }

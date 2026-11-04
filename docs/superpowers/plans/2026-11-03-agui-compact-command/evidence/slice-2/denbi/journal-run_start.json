@@ -1,0 +1,12 @@
+{
+  "type": "run_start",
+  "at": "2026-11-04T07:14:59.596Z",
+  "run_id": "c8bfa46c-4871-4652-bc75-c5aaa63a276a",
+  "anchor": "399e2909-f779-4c3b-adbc-30b4ebd872d8",
+  "source": "chat",
+  "command": {
+    "name": "compact",
+    "focus": "keep the canary paths",
+    "message_id": "e4f3b7d4-27d5-41bb-876d-6bb9f7255870"
+  }
+}

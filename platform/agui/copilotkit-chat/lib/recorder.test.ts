@@ -714,8 +714,9 @@ test("admission refusals: RUN_STARTED then RUN_ERROR, the agent never called, no
   }
 });
 
-test("REFUSAL_MESSAGES: the six messages a run is refused or ended with by the recorder", () => {
+test("REFUSAL_MESSAGES: the eight messages a run is refused or ended with by the recorder", () => {
   assert.deepEqual([...REFUSAL_MESSAGES].sort(), [
+    "Nothing to compact yet.", "The focus after /compact is too long (1000 characters at most).",
     "invalid session", "the chat UI is shutting down", "this run carries no new message",
     "this run was already recorded", "this session could not be saved", "this session was deleted",
   ]);
@@ -1033,6 +1034,181 @@ test("a compacting run stopped after the marker: cancelled, the marker kept", as
     assert.equal((await onlyEnd(journals, id)).status, "cancelled");
     assert.ok(branchOfTip((await journals.load(id))!).some((m) => m.role === "assistant"
       && m.id.startsWith("spe-compaction-") && m.content === "SUMMARY of the earlier turns"));
+  } finally {
+    await server.close();
+  }
+});
+
+// --- /compact (spec §15) ------------------------------------------------------------------------
+
+const finish: Script = (sub, i) => {
+  sub.next({ type: EventType.RUN_STARTED, threadId: i.threadId, runId: i.runId } as BaseEvent);
+  sub.next({ type: EventType.RUN_FINISHED, threadId: i.threadId, runId: i.runId } as BaseEvent);
+  sub.complete();
+};
+
+// A session of two tool turns, then one run whose last message has this content and these forwardedProps.
+async function commandCase(content: unknown, forwardedProps: unknown = {}, extra: Message[] = []) {
+  const journals = await tmpJournals();
+  const id = randomUUID();
+  const branch = await twoToolTurns(journals, id);
+  const scripted = new Scripted(() => journals);
+  scripted.script = finish;
+  const runInput = { ...input(id, "", branch), forwardedProps };
+  (runInput.messages.at(-1) as { content: unknown }).content = content;
+  runInput.messages.push(...extra);
+  const out = await drive(scripted, runInput, new HttpAgent({ url: UNUSED }));
+  const start = ofType(await lines(journals, id), "run_start").at(-1)!;
+  return { journals, id, branch, runInput, out, start, sent: scripted.received[0] };
+}
+
+test("decision 31: a command run is journaled as a command and sent the path plus spe_command", async () => {
+  for (const [content, focus] of [["/compact", null], ["  /compact  keep x ", "keep x"]] as const) {
+    const { branch, runInput, start, sent } = await commandCase(content);
+    assert.deepEqual(start.command, { name: "compact", focus, message_id: runInput.messages.at(-1)!.id });
+    assert.deepEqual(start.messages, []);
+    assert.deepEqual(start.request.forwardedProps, {});
+    assert.deepEqual(sent.messages.map(view), branch.map(view));
+    assert.deepEqual(sent.forwardedProps, { spe_command: { name: "compact", focus } });
+  }
+});
+
+test("decision 31: anything else is an ordinary message", async () => {
+  for (const content of ["/compacted", "/compact:", "/COMPACT", [{ type: "text", text: "/compact" }]]) {
+    const { start, sent } = await commandCase(content);
+    assert.equal(start.command, undefined, JSON.stringify(content));
+    assert.equal(start.messages.length, 1, JSON.stringify(content));
+    assert.equal(sent.messages.length, 9, JSON.stringify(content)); // the path, then the message
+  }
+  const two = await commandCase("/compact", {}, [{ id: randomUUID(), role: "user", content: "more" } as Message]);
+  assert.equal(two.start.command, undefined);
+  assert.equal(two.start.messages.length, 2);
+});
+
+test("decision 31: a client's spe_command is removed on every run and kept in run_start.request", async () => {
+  const forged = { spe_command: { name: "compact", focus: "forged" }, other: 1 };
+  const plain = await commandCase("hello", forged);
+  assert.deepEqual(plain.sent.forwardedProps, { other: 1 });
+  assert.deepEqual(plain.start.request.forwardedProps, forged);
+  const command = await commandCase("/compact mine", forged);
+  assert.deepEqual(command.sent.forwardedProps, { other: 1, spe_command: { name: "compact", focus: "mine" } });
+});
+
+test("clarification 18: forwardedProps that is not an object: {} plus the command on a command run, as sent otherwise", async () => {
+  for (const props of [null, [1], "x"]) {
+    assert.deepEqual((await commandCase("/compact", props)).sent.forwardedProps,
+      { spe_command: { name: "compact", focus: null } }, JSON.stringify(props));
+    assert.deepEqual((await commandCase("hello", props)).sent.forwardedProps, props, JSON.stringify(props));
+  }
+});
+
+test("decision 33: a command run sends the client a snapshot of the path right after RUN_STARTED", async () => {
+  const { out, branch } = await commandCase("/compact");
+  assert.deepEqual(types(out), [EventType.RUN_STARTED, EventType.MESSAGES_SNAPSHOT, EventType.RUN_FINISHED]);
+  assert.deepEqual((out.events[1] as unknown as { messages: Message[] }).messages.map(view), branch.map(view));
+});
+
+test("the test agent answers a command with a manual marker carrying the focus", async () => {
+  const { journals, server, recorder, agent } = await setup();
+  try {
+    const id = randomUUID();
+    await drive(recorder, input(id, "hello"), agent());
+    const branch = branchOfTip((await journals.load(id))!);
+    const out = await drive(recorder, input(id, "/compact keep the canary paths", branch), agent());
+    assert.equal(types(out).at(-1), EventType.RUN_FINISHED);
+    assert.deepEqual(server.requests[1].body.forwardedProps, { spe_command: { name: "compact", focus: "keep the canary paths" } });
+    const marker = branchOfTip((await journals.load(id))!).at(-1)!;
+    assert.ok(marker.id.startsWith("spe-compaction-manual-"));
+    assert.match(String(marker.content), /keep the canary paths/);
+  } finally {
+    await server.close();
+  }
+});
+
+const NOTHING = "Nothing to compact yet.";
+const TOO_LONG = "The focus after /compact is too long (1000 characters at most).";
+
+test("decision 34: /compact as a new session's first run is refused, journaled, and leaves no session", async () => {
+  const { journals, server, recorder, agent } = await setup();
+  try {
+    const id = randomUUID();
+    const out = await drive(recorder, input(id, "/compact"), agent());
+    assert.deepEqual([types(out), message(out, 1)], [[EventType.RUN_STARTED, EventType.RUN_ERROR], NOTHING]);
+    assert.equal(server.requests.length, 0);
+    const all = await lines(journals, id);
+    assert.deepEqual(all.map((l) => l.type), ["created", "run_start", "run_end"]);
+    assert.deepEqual([(all[2] as RunEndLine).status, (all[2] as RunEndLine).error], ["refused", NOTHING]);
+    assert.equal((await journals.list()).some((s) => s.id === id), false);
+    assert.equal(await journals.get(id), null); // GET /api/sessions/{id}: 404
+  } finally {
+    await server.close();
+  }
+});
+
+test("decision 34: a session ending in a marker refuses /compact; one more message and it compacts again", async () => {
+  const { journals, server, recorder, agent } = await setup();
+  try {
+    const id = randomUUID();
+    await drive(recorder, input(id, "hello"), agent());
+    const history = async () => branchOfTip((await journals.load(id))!);
+    await drive(recorder, input(id, "/compact", await history()), agent());
+    const again = await drive(recorder, input(id, "/compact", await history()), agent());
+    assert.equal(message(again, 1), NOTHING);
+    assert.equal(server.requests.length, 2);
+    await drive(recorder, input(id, "more", await history()), agent());
+    assert.equal(types(await drive(recorder, input(id, "/compact", await history()), agent())).at(-1), EventType.RUN_FINISHED);
+  } finally {
+    await server.close();
+  }
+});
+
+test("spec §15: the focus length is counted in code points", async () => {
+  const cases: [string, boolean][] = [["x".repeat(1000), true], ["x".repeat(1001), false], ["🧪".repeat(1000), true]];
+  for (const [focus, admitted] of cases) {
+    const { start, out, sent } = await commandCase(`/compact ${focus}`);
+    assert.equal(start.command?.focus, focus);
+    assert.equal(sent !== undefined, admitted, `${[...focus].length} code points`);
+    if (!admitted) assert.equal(message(out, 1), TOO_LONG);
+  }
+});
+
+test("decision 37: a command run stopped during its summary request: cancelled, no marker", async () => {
+  const { journals, server, recorder, agent } = await setup();
+  try {
+    const id = randomUUID();
+    await drive(recorder, input(id, "hello"), agent());
+    const branch = branchOfTip((await journals.load(id))!);
+    await drive(recorder, input(id, "/compact hang", branch), agent(), (e) => e.type === EventType.MESSAGES_SNAPSHOT);
+    await settled(id);
+    assert.equal(ofType(await lines(journals, id), "run_end").at(-1)!.status, "cancelled");
+    // The stopped summary left no marker event in the journal.
+    assert.equal(ofType(await lines(journals, id), "event").some((l) => String((l.event as { messageId?: string }).messageId).startsWith("spe-compaction-")), false);
+    assert.deepEqual(branchOfTip((await journals.load(id))!).map(view), branch.map(view));
+  } finally {
+    await server.close();
+  }
+});
+
+test("decision 32: the run after /compact, with the command bubble resent, ignores nothing and sends no command", async () => {
+  const { journals, server, recorder, agent } = await setup();
+  try {
+    const id = randomUUID();
+    await drive(recorder, input(id, "hello"), agent());
+    const before = branchOfTip((await journals.load(id))!);
+    const command = input(id, "/compact keep x", before);
+    await drive(recorder, command, agent());
+    const marker = branchOfTip((await journals.load(id))!).at(-1)!;
+    // As the browser holds it: the command bubble, then the marker; the bubble's text resent with other spacing.
+    const bubble = { ...command.messages.at(-1)!, content: "  /compact  keep x " } as Message;
+    await drive(recorder, input(id, "next", [...before, bubble, marker]), agent());
+    const start = ofType(await lines(journals, id), "run_start").at(-1)!;
+    assert.equal(start.command, undefined);
+    assert.equal(start.anchor, marker.id);
+    assert.deepEqual(start.messages.map((m) => m.content), ["next"]);
+    assert.deepEqual(start.ignored, []);
+    const sent = server.requests.at(-1)!.body;
+    assert.ok(!sent.messages.some((m: Message) => m.id === bubble.id), "the command's message is never sent");
+    assert.deepEqual(sent.forwardedProps, {});
   } finally {
     await server.close();
   }
