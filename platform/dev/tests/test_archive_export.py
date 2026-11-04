@@ -97,7 +97,7 @@ def export(tmp_path: Path, final: bool, **stub_env: str):
     env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "STUB_LOG": str(log),
            "ANSIBLE_ROLES_PATH": str(ANSIBLE / "roles"), "ANSIBLE_NOCOLOR": "1", **stub_env}
     proc = subprocess.run(
-        ["ansible-playbook", str(play), "-e", "spe_frontend=agui", "-e", f"spe_frontend_dir={tmp_path / 'frontend'}",
+        ["ansible-playbook", str(play), "-e", json.dumps({"spe_frontends": ["agui"]}), "-e", f"spe_frontend_dir={tmp_path / 'frontend'}",
          "-e", f"spe_output_dir={out}", "-e", json.dumps({"spe_archive_final": final})],
         cwd=ANSIBLE, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=300)
     calls = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
