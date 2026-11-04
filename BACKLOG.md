@@ -26,32 +26,18 @@ start reads this section; keep it short.
   `spe_frontends: [agui]`; slices 8 (:344, :392) and 9 (:503, :566) assume an AG-UI-only instance, so the level files
   must pin `spe_frontends: [agui]` (or Open WebUI stays an unhardened path) and slice 9's preflight refuses an
   airlock when `openwebui` is in `spe_frontends`; due: before slice 2.
-- AG-UI via Coder, before any upstream PR (`upstream/main`, with its clone-on-VM layout, merged in #35): (1) done
-  (#36, 2026-11-04: `denbi-agui-01` on the clone-on-VM layout from `main`, all-features check 17/17, live archive
-  agrees; needed #37); (2) done (#38, 2026-11-04: end to end in workspace `theo/agui-e2e`, every check passed); (3) the archive on stop runs from the portal's upstream checkout, so test it with
-  `create.yml`/`destroy.yml` from our checkout, with both frontends on (#39): a stop leaves Open WebUI's `chats/`
-  and `index.md` intact, `<run>/agui/` complete, and the top `index.md` links `agui/index.md` (the portal's
-  upstream checkout has no AG-UI export yet, so a portal stop drops the AG-UI chats until the upstream PR lands). Passes when, on the AG-UI route: long conversations (several
-  compactions per session) run smoothly with no error in the chat or in the agent and `chat-ui` logs; every run is
-  saved as it happens (journal written per run, live archive keeps up); and nothing is lost: each session's
-  messages in the chat, its rebuilt journal after a reload, the live archive and the final archive agree, run for
-  run — asked for by the user (2026-11-03); due: after the `/compact`
-  track's slice 2/2 merges, before the *Upstream: port the AG-UI package* item. Approved by the user (2026-11-03):
-  instances and paid model calls for this test need no further OK, but at most one instance at a time (a Coder
-  workspace counts; stop it before step 3's `create.yml`), destroyed when done. Fixes are part of the test: an
-  issue found here (or in the thorough chat-minors test) is fixed by the session of the unit that owns the failing
-  piece, in its own PR, which merges before this item completes and before the upstream PR opens.
 - Upstream PR for the AG-UI package (sessions, conversation record, compaction, `/compact`, chat minors) as its
   final state (also fixing upstream's stale "Open WebUI preset" in `platform/coder/README.md`'s smoke test and
   "the frontend one click away" in `platform/README.md`, #39 review), not each fork commit replayed — needs a *package port* path in `docs/guides/contributing-upstream.md`
   (the user's choice of one coherent upstream package, 2026-11-03, PR #19). Prepared by a session as one
   `contrib/<slug>` branch cut from `upstream/main`, per the guide: only project changes pass its exclude check,
   upstream's `AGENTS.md` project rules are written in by hand, the repo's test commands pass on the branch, and before
-  the push the *AG-UI via Coder* item's checklist re-runs against a checkout of the branch, so the PR lands fully
-  functional; the compaction plan's upstream doc rewrite (PR #16 review, finding 10) is part of it. `gh` cannot
+  the push the *AG-UI via Coder* checks re-run against a checkout of the branch (#36, #38, #40: the all-features
+  check, the workspace e2e and the final archive, `docs/knowledge/agui-coder-e2e-check.md`), so the PR lands fully
+  functional; the existing-host reset fix (#41, `spe_preflight.py`, the same bug upstream) is part of it; the compaction plan's upstream doc rewrite (PR #16 review, finding 10) is part of it. `gh` cannot
   create the PR on kraatz (403 createPullRequest, 2026-11-03, `docs/knowledge/gh-pr-create-token.md`): the session
   pushes the `contrib/<slug>` branch to `origin` ready to compare and stops there; **the user opens the PR on
-  kraatz**; no fork PR tracks this unit. Waits on the *AG-UI via Coder* item. Supersedes kraatz #9 (the user,
+  kraatz**; no fork PR tracks this unit. Supersedes kraatz #9 (the user,
   2026-11-04); the cut, the PR text draft and the #9 steps: `docs/handoffs/2026-11-04T1111Z-upstream-package-start.md`.
 
 ## Unscheduled

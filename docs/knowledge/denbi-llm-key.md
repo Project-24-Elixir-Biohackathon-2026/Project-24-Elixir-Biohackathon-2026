@@ -27,3 +27,17 @@ Compare hashes, never print the key. For a deployment, read it into the environm
 and LiteLLM enforces it itself: a request past it gets 400 `litellm.ContextWindowExceededError` ("Context
 Window exceeded for given call … Max Input Tokens=262144, Got=…") before vLLM sees it (compaction plan, slice 3,
 task 4, 2026-11-03). Whether vLLM's own `max_model_len` is the same figure is still unread.
+
+**`coder ssh` starts a stopped workspace** (2026-11-04, step 3 of *AG-UI via Coder*): with `theo/theo-workspace`
+stopped, the `coder ssh … printenv` above hung past the Bash tool's 2-minute timeout, and `coder list` showed
+the workspace `Starting`. It is a full portal build (about 12 minutes), `coder stop` refuses it meanwhile ("A
+workspace build is already active"), and it counts against "one instance at a time". Check `coder list` first.
+With every workspace stopped, reuse the key the last deploy wrote on the VM instead (only while an instance is
+deployed there: a `destroy.yml` reset removes `~/spe-frontend` and its `agent.env`), after checking it on a
+de.NBI VM (prints only the status, 200 or 401):
+
+```bash
+ssh -F ~/.ssh/config agent-service-1 'K=$(grep -h "^OPENAI_API_KEY=" ~/spe-frontend/agent.env | cut -d= -f2-);
+  curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer $K" https://denbi-llm-api-internal.bihealth.org/v1/models'
+export DENBI_LLM_API_KEY=$(ssh -F ~/.ssh/config agent-service-1 'grep -h "^OPENAI_API_KEY=" ~/spe-frontend/agent.env | cut -d= -f2-')
+```
