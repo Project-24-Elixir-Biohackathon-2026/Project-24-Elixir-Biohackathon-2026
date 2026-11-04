@@ -283,8 +283,8 @@ How to deploy and use it: [`docs/getting-started.md`](docs/getting-started.md).
 
 All 13 tasks are done, including the model-backed checks on the development VM
 (Anthropic `claude-haiku-5-5`) and on de.NBI (`qwen3.8-27b`). Merged into `main`
-on 2026-10-19 together with the Coder portal, which offers it as the `agui`
-frontend. Chat sessions (sidebar, archive) were added by the *AG-UI chat
+on 2026-10-19 together with the Coder portal, which now runs it on every instance
+next to Open WebUI (`spe_frontends`, kraatz #16). Chat sessions (sidebar, archive) were added by the *AG-UI chat
 sessions* plan (`docs/superpowers/plans/2026-10-29-agui-chat-sessions/`, done).
 The conversation record (journals, the live archive, TM-007) was built by the
 *AG-UI conversation record* plan (`docs/superpowers/plans/2026-11-03-agui-conversation-record/`, done).

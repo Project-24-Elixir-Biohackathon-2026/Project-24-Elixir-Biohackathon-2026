@@ -20,14 +20,21 @@ start reads this section; keep it short.
   `roles/sandbox/files/AGENTS.md`, gone or moved in the 2026-11-04 upstream merge (#35: `platform/instance/compose.yml`,
   `files/agent/AGENTS.md`, images `:local` via `.env`); slice 5:562 names TM-001 "sensitive data access" (now
   `-exposure`). Rewrite those tasks with a ruling in the plan — from #35's methodology review (finding 1, 6); not done
-  in #35 because the ladder's PR #3 is open on that plan; due: before slice 2.
+  in #35 because the ladder's PR #3 is open on that plan. Also from #39 (both frontends on every instance,
+  `spe_frontends`): slice 3:1227 and :961 and README.md:66 render `spe_frontend` into `hardening.json` (undefined
+  under the new default: use `frontends: "{{ spe_frontends }}"`); slice 4:1269 `spe_frontend: agui` becomes
+  `spe_frontends: [agui]`; slices 8 (:344, :392) and 9 (:503, :566) assume an AG-UI-only instance, so the level files
+  must pin `spe_frontends: [agui]` (or Open WebUI stays an unhardened path) and slice 9's preflight refuses an
+  airlock when `openwebui` is in `spe_frontends`; due: before slice 2.
 - AG-UI via Coder, before any upstream PR (`upstream/main`, with its clone-on-VM layout, merged in #35): (1) done
   (#36, 2026-11-04: `denbi-agui-01` on the clone-on-VM layout from `main`, all-features check 17/17, live archive
   agrees; needed #37); (2) test end to end in a workspace from the
   portal's main template: `~/sperange` fetches our fork's branch, `spe-apply all`, then in the chat: several sessions open at once, switching between them (also
   mid-run), new / rename / delete, reload and reopen, automatic compaction, `/compact` with and without a focus,
   stop mid-run and send again at once (no "Thread already running"), the live archive; (3) the archive on stop runs from the portal's upstream checkout, so test it with
-  `create.yml`/`destroy.yml` from our checkout. Passes when, on the AG-UI route: long conversations (several
+  `create.yml`/`destroy.yml` from our checkout, with both frontends on (#39): a stop leaves Open WebUI's `chats/`
+  and `index.md` intact, `<run>/agui/` complete, and the top `index.md` links `agui/index.md` (the portal's
+  upstream checkout has no AG-UI export yet, so a portal stop drops the AG-UI chats until the upstream PR lands). Passes when, on the AG-UI route: long conversations (several
   compactions per session) run smoothly with no error in the chat or in the agent and `chat-ui` logs; every run is
   saved as it happens (journal written per run, live archive keeps up); and nothing is lost: each session's
   messages in the chat, its rebuilt journal after a reload, the live archive and the final archive agree, run for
@@ -38,7 +45,8 @@ start reads this section; keep it short.
   issue found here (or in the thorough chat-minors test) is fixed by the session of the unit that owns the failing
   piece, in its own PR, which merges before this item completes and before the upstream PR opens.
 - Upstream PR for the AG-UI package (sessions, conversation record, compaction, `/compact`, chat minors) as its
-  final state, not each fork commit replayed — needs a *package port* path in `docs/guides/contributing-upstream.md`
+  final state (also fixing upstream's stale "Open WebUI preset" in `platform/coder/README.md`'s smoke test and
+  "the frontend one click away" in `platform/README.md`, #39 review), not each fork commit replayed — needs a *package port* path in `docs/guides/contributing-upstream.md`
   (the user's choice of one coherent upstream package, 2026-11-03, PR #19). Prepared by a session as one
   `contrib/<slug>` branch cut from `upstream/main`, per the guide: only project changes pass its exclude check,
   upstream's `AGENTS.md` project rules are written in by hand, the repo's test commands pass on the branch, and before
