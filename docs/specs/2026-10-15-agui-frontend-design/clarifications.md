@@ -30,7 +30,7 @@ in the parts it amends.
    `spe-compaction-` is rendered as `## Compacted`, the line "From here the model saw this summary instead of the
    messages above." and the summary in a fence; `index.md`'s columns become `# | Session | Tags | Created | Runs |
    Compactions | State`. *Reason:* the agent compacts a conversation that no longer fits the model's context and
-   marks the point in the session's messages (`docs/superpowers/specs/2026-11-03-agui-compaction-design.md`, §7,
+   marks the point in the session's messages (the compaction design, now §15, and its
    clarification 1). It was written as the chat sessions spec's clarification 8 on that branch, which #19's fold
    took first. *Amends:* §14, the archive as built (`index.md` columns). *Status:* folded.
 

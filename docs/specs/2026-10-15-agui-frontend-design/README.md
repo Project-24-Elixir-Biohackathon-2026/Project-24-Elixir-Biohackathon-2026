@@ -3,11 +3,12 @@
 **Status:** living spec. §§1–5 and 7–12: implemented 2026-10-15 (branch `agent-agui-frontend-impl`; §12
 records what implementation verified and changed). §6's sessions and sidebar: implemented 2026-10-29 to
 2026-11-02, and moved onto the conversation record. The conversation record (§13, §14, decisions 1–18) and the
-live archive (decision 30, since clarification 2): approved 2026-11-03 (the fork's PR #19,
-`thodkatz/elixir-biohackathon-2026-test`), built in the fork's PRs #22, #23, #24 and #25 (clarification 14).
+live archive (decision 30, since clarification 2): approved 2026-11-03 (the fork's PR #19), built in the fork's PRs #22, #23, #24 and #25 (clarification 14).
 `/compact` (§15, decisions 31–39): approved 2026-11-03 (the fork's PR #26), built in the fork's PRs #28 and #30 (clarification 18; decision 39 checked on de.NBI `qwen3.8-27b`); its slash-menu entry and marked composer in #32 (clarification 19). The history before this
 directory is that of the single file it replaced: `git log -- docs/specs/2026-10-15-agui-frontend-design.md`.
-**Latest clarification:** 21.
+**Latest clarification:** 23.
+PR numbers here and in the clarifications are those of the fork where this was developed and reviewed,
+`thodkatz/elixir-biohackathon-2026-test`; `kraatz #N` is a pull request of this repository.
 §13 and §14 were read against `@ag-ui/client` 1.0.2 and CopilotKit 1.79.0 (`@copilotkit/runtime`,
 `@copilotkit/react-core`) as pinned in `package-lock.json`, and Open WebUI v0.11.3 (the image
 `spe_frontend_webui_image` pins) as the model to follow, read in its source at tag `v0.11.3` (`2a960a5`).
