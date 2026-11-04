@@ -23,6 +23,7 @@ import { CommandInput } from "./command-input";
 import { AssistantOrCompaction } from "./compaction-divider";
 import { ToolCard } from "./tool-calls";
 import { Sidebar } from "./sidebar";
+import { ThemeControl } from "./theme-control";
 import { useHydrated } from "./use-hydrated";
 import { useRunReconcile } from "./use-run-reconcile";
 
@@ -221,6 +222,7 @@ function Chat() {
           onDelete={() => void deleteOpen()}
           onError={setError}
         />
+        <ThemeControl />
         {error && (
           <div className="spe-error" role="alert">
             <span className="spe-error-text">{error}</span>
@@ -253,7 +255,7 @@ function Chat() {
 }
 
 // CopilotKit's own dark styles key on a `dark` class; this follows the *effective* theme (the
-// sidebar's forced choice, via <html>'s data-theme attribute, or else the system setting),
+// theme toggle's forced choice, via <html>'s data-theme attribute, or else the system setting),
 // updating when either changes. The attribute is read fresh each time rather than mirrored into
 // state, since app/theme-control.tsx (and the before-paint script in app/layout.tsx) are the
 // only writers of it.

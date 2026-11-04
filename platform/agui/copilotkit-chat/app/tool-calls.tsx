@@ -1,11 +1,12 @@
 "use client";
 // Tool-call cards, after Open WebUI's ToolCallDisplay: a status icon, "Executing <name>…" while the call
-// runs and "View Result from <name>" once it is done, and, unfolded, the arguments and the result. The
-// calls of one model response sit under one group header. All of it is React text, never HTML.
+// runs and the bare name once it is done (the check already says so), and, unfolded, the arguments and the
+// result, under Open WebUI's "Input" and "Output" labels. The calls of one model response sit under one group
+// header, "Explored list_files, 2 run_command" as Open WebUI words it. All of it is React text, never HTML.
 import { contentToText } from "@ag-ui/client";
 import { CopilotChatToolCallsView, type CopilotChatToolCallsViewProps } from "@copilotkit/react-core/v2";
 import {
-  argumentRows, cardState, commandOf, groupState, readResult, type CallStatus, type CardState,
+  argumentRows, cardState, commandOf, groupState, readResult, toolSummary, type CallStatus, type CardState,
 } from "../lib/tool-card.ts";
 import { Check, ChevronRight, Cross, Spinner } from "./icons";
 
@@ -19,7 +20,7 @@ function ToolStatus({ state }: { state: CardState }) {
 function ToolTitle({ state, name }: { state: CardState; name: string }) {
   const code = <code>{name}</code>;
   if (state === "running") return <>Executing {code}…</>;
-  return state === "failed" ? <>{code} failed</> : <>View Result from {code}</>;
+  return state === "failed" ? <>{code} failed</> : code;
 }
 
 // Arguments as key/value rows; run_command's command as a `$ <command>` line above them instead.
@@ -34,6 +35,7 @@ export function ToolCard({ name, parameters, status, result }: ToolProps) {
         <span className="spe-tool-title"><ToolTitle state={state} name={name} /></span>
         <ChevronRight className="spe-tool-chevron" />
       </summary>
+      {(command !== null || rows.length > 0) && <div className="spe-tool-label">Input</div>}
       {command !== null && <pre className="spe-tool-command">$ {command}</pre>}
       {rows.length > 0 && (
         <dl className="spe-tool-args">
@@ -42,13 +44,14 @@ export function ToolCard({ name, parameters, status, result }: ToolProps) {
           ))}
         </dl>
       )}
+      {result !== undefined && <div className="spe-tool-label">Output</div>}
       {result !== undefined && <pre className="spe-tool-result">{readResult(name, result).body}</pre>}
     </details>
   );
 }
 
 // The assistant message's toolCallsView slot: one call as its card, several under a header that says
-// how many, which tools, and the group's state. A call counts as running until its tool message arrives.
+// "Exploring" or "Explored", which tools how often, and how many failed. A call counts as running until its tool message arrives.
 export function ToolCallsView({ message, messages = [] }: CopilotChatToolCallsViewProps) {
   const calls = message.toolCalls ?? [];
   if (calls.length < 2) return <CopilotChatToolCallsView message={message} messages={messages} />;
@@ -58,16 +61,16 @@ export function ToolCallsView({ message, messages = [] }: CopilotChatToolCallsVi
   });
   const state = groupState(states);
   const failed = states.filter((s) => s === "failed").length;
-  const names = [...new Set(calls.map((call) => call.function.name))].join(", ");
+  const names = toolSummary(calls.map((call) => call.function.name));
   return (
     <details className={`spe-tool-group spe-tool-${state}`}>
       <summary>
         <ToolStatus state={state} />
-        <span className="spe-tool-title">
-          {state === "running" ? `Executing ${calls.length} tools…` : `View Results from ${calls.length} tools`}
+        <span className="spe-tool-title">{state === "running" ? "Exploring" : "Explored"}</span>
+        <span className="spe-tool-names">
+          {names}
           {failed > 0 && state !== "running" && <span className="spe-tool-group-failed"> · {failed} failed</span>}
         </span>
-        <span className="spe-tool-names">{names}</span>
         <ChevronRight className="spe-tool-chevron" />
       </summary>
       <div className="spe-tool-group-calls">
