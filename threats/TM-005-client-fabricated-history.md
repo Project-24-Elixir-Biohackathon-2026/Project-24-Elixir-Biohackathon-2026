@@ -1,5 +1,5 @@
 ---
-id: TM-007
+id: TM-005
 name: Conversation History Fabricated Through the Client
 description: >
   In protocols where the client holds the conversation and sends all of it with every run (AG-UI, OpenAI-style chat completions), an agent that trusts the history it is sent believes whatever the client says happened earlier. A participant can fabricate an assistant turn or a tool call with a result the environment never produced, edit or delete real turns, or forge a marker the agent acts on, such as a compaction marker that makes it drop everything before it. Unlike pasted text (TM-003), the injected content claims to be the agent's own words or the environment's output, so the model gives it more weight, and a record that stores the client's latest history shows the forgery as if it had happened. This is AG-UI's default, not a slip of one implementation: its client resends the whole history on every run, contributors in the protocol's own discussion name that history untrusted input, and the same run input carries the client's tool definitions, which reach the model too (scenario 5).
@@ -16,7 +16,7 @@ stride:
   - information-disclosure
 ---
 
-# TM-007: Conversation History Fabricated Through the Client
+# TM-005: Conversation History Fabricated Through the Client
 
 ## Attack Scenarios
 

@@ -97,6 +97,6 @@ All 13 tasks are done, including the model-backed checks on the development VM
 on 2026-10-19 together with the Coder portal, which runs it on every instance
 next to Open WebUI (`spe_frontends`). Since then the spec, now a directory with
 one file per section, has grown chat sessions (§6), the conversation record that
-`chat-ui` owns (§13, threat TM-007), the archive of AG-UI chats (§14) and
+`chat-ui` owns (§13, threat TM-005), the archive of AG-UI chats (§14) and
 compaction with `/compact` (§15); its `clarifications.md` records each change.
 Not done yet: a run-report equivalent in the CopilotKit chat.
