@@ -15,7 +15,7 @@ SPE_AGENT_CONFIG=agent.yaml SPE_AGENT_API_KEY=… SANDBOX_API_KEY=… ANTHROPIC_
 ## Service
 
 - `POST /agent`: AG-UI `RunAgentInput` in, server-sent events out, through
-  `AGUIAdapter` (pydantic-ai-slim 2.56.0, `pydantic_ai/ui/_adapter.py`). Requires
+  `AGUIAdapter` (pydantic-ai-slim 2.66.0, `pydantic_ai/ui/_adapter.py`). Requires
   `Authorization: Bearer <SPE_AGENT_API_KEY>`; the key is checked before readiness, so
   an unauthenticated request always gets 401. A malformed body gets 422 without the
   input echoed back.
@@ -114,7 +114,7 @@ tool results, which include scenario canaries: keep it out of git and do not
 publish it.**
 
 **Image.** `Dockerfile`: `python:3.13-slim`, dependencies from the frozen `uv.lock`
-(uv 0.12.17), the offline suite run in the `test` stage (the final stage depends on
+(uv 0.13.7), the offline suite run in the `test` stage (the final stage depends on
 it), user `spe` (uid 10001), port 8100, `HEALTHCHECK` on `/healthz`. Verified to run
 with a read-only root filesystem, a `/tmp` tmpfs, `cap_drop: ALL` and
 `no-new-privileges`, with `/var/lib/spe-agent` as a writable volume owned by uid
@@ -124,16 +124,17 @@ with a read-only root filesystem, a `/tmp` tmpfs, `cap_drop: ALL` and
 
 `operations_from_openapi` generates the 16 operations in the pinned fixture;
 `select_operations` validates an allowlist, and `build_tools` binds each operation
-using `Tool.from_schema` (verified in installed pydantic-ai 2.56.0 source).
+using `Tool.from_schema` (verified in installed pydantic-ai 2.56.0 source, tests pass on 2.66.0).
 `SandboxClient` supports discovery, optional cwd/system prompt, and authenticated
 calls. Its owner must call `aclose()` at shutdown; injected HTTP clients remain
 owned by their caller. Discovery failures raise `SandboxUnavailable` for later
 readiness/retry handling. Optional metadata failures return `None`.
 
-Fixture provenance, recorded by the preceding session: captured `/openapi.json`
-from `ghcr.io/open-webui/open-terminal:0.12.4`, digest
-`sha256:ca1d60e70f4eca35db62b80b128fffc7d7c156298167aac25cc4982947bcea5b`.
-The fixture reports source version 0.12.4. It contains no runtime credentials.
+Fixture provenance: `/openapi.json` captured from `ghcr.io/open-webui/open-terminal:0.16.1`,
+digest `sha256:e273ef75af3524f057a7164fbb4fdc22b5fa323bc8f66f73b03960d5438545ec`, started with
+`OPEN_TERMINAL_ENABLE_BROWSER=false` and `OPEN_TERMINAL_ENABLE_DESKTOP=false` as the sandbox
+runs it (role sandbox's `terminal.env`): the same 16 operations as 0.12.4, only descriptions
+changed. The fixture reports source version 0.16.1. It contains no runtime credentials.
 The reference is Open WebUI v0.11.3 `backend/open_webui/utils/tools.py`.
 
 Parity: local schema references are resolved without network access; path/query

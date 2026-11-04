@@ -46,7 +46,7 @@ from spe_agent.compaction import FOCUS_HEADING, SUMMARY_PROMPT, SUMMARY_PROMPT_M
 from spe_agent.config import Config, Secrets
 from spe_agent.sandbox import SandboxClient
 
-FIXTURE = Path(__file__).resolve().parents[1] / "agui" / "pydantic-ai-agent" / "tests" / "fixtures" / "open-terminal-0.12.4-openapi.json"
+FIXTURE = Path(__file__).resolve().parents[1] / "agui" / "pydantic-ai-agent" / "tests" / "fixtures" / "open-terminal-0.16.1-openapi.json"
 
 SLOW_STEPS = 10
 # The dev VM's live archive check sets SPE_FAKE_SLOW_STEP_SECONDS (fake-agent.compose.yml) for a longer run.
