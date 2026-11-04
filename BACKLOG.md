@@ -26,20 +26,6 @@ start reads this section; keep it short.
   `spe_frontends: [agui]`; slices 8 (:344, :392) and 9 (:503, :566) assume an AG-UI-only instance, so the level files
   must pin `spe_frontends: [agui]` (or Open WebUI stays an unhardened path) and slice 9's preflight refuses an
   airlock when `openwebui` is in `spe_frontends`; due: before slice 2.
-- Upstream PR for the AG-UI package (sessions, conversation record, compaction, `/compact`, chat minors) as its
-  final state (also fixing upstream's stale "Open WebUI preset" in `platform/coder/README.md`'s smoke test and
-  "the frontend one click away" in `platform/README.md`, #39 review), not each fork commit replayed — by the *package port* path in `docs/guides/contributing-upstream.md`, step 3
-  (written 2026-11-04; the user's choice of one coherent upstream package, 2026-11-03, PR #19). Prepared by a session as one
-  `contrib/<slug>` branch cut from `upstream/main`, per the guide: only project changes pass its exclude check,
-  upstream's `AGENTS.md` project rules are written in by hand, the repo's test commands pass on the branch. The
-  *AG-UI via Coder* checks (#36, #38, #40) are not re-run: the branch's code is `bdb93a6`'s byte for byte (it
-  differs only in six Markdown files), so they hold for it (the user, 2026-11-04); a cheap smoke test of the
-  reviewer's path (a workspace's `~/sperange` on the branch, `spe-apply all`, one AG-UI chat, `archive.yml`) runs
-  instead. **Cut and pushed 2026-11-04** (`contrib/agui-package`, `bf152a8`, every test command green); the PR text in fork issue #42 (2026-11-04, screenshots on `pr-assets`, the reviewer's path checked in a workspace): **opened as kraatz #17** (2026-11-04), #9 closed; next the tracking steps and TM-007's port (`AGENTS.md`, *Current work*); the existing-host reset fix (#41, `spe_preflight.py`, the same bug upstream) is part of it; the compaction plan's upstream doc rewrite (PR #16 review, finding 10) is part of it. `gh` cannot
-  create the PR on kraatz (403 createPullRequest, 2026-11-03, `docs/knowledge/gh-pr-create-token.md`): the session
-  pushes the `contrib/<slug>` branch to `origin` ready to compare and stops there; **the user opens the PR on
-  kraatz**; no fork PR tracks this unit. Supersedes kraatz #9 (the user,
-  2026-11-04); the cut, the PR text draft and the #9 steps: `docs/handoffs/2026-11-04T1111Z-upstream-package-start.md`.
 
 ## Unscheduled
 

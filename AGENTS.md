@@ -189,11 +189,9 @@ is open (`docs/guides/contributing-upstream.md`, step 6).
 
 - **Canary evaluation ladder** (biohackathon 0013): spec (#1) and plan (#2) merged. **Next: slice 1/9**
   `impl/canary-eval-ladder-1-scoring`. Handoff: `ls docs/superpowers/plans/2026-10-22-canary-eval-ladder/handoffs | tail -1`.
-- **Upstream PR kraatz #17** (`contrib/agui-package`): the AG-UI package, opened by the user 2026-11-04; kraatz #9
-  (the token cap, `contrib/agui-token-cap-optional`) closed in its favour. Waits on upstream's review. **Next:** port
-  TM-007's update (fork #43) onto the branch as one commit; the tracking steps (`docs/upstream-ports.md` lines,
-  #9's branch cleanup; `docs/guides/contributing-upstream.md`, steps 6–7). Handoff:
-  `docs/handoffs/2026-11-04T1258Z-upstream-package-pr-text.md`.
+- **Upstream PR kraatz #17** (`contrib/agui-package`): the AG-UI package, opened by the user 2026-11-04, with
+  TM-007's update (fork #43) on it; kraatz #9 (the token cap) closed in its favour. Waits on upstream's review.
+  Ledger: `docs/upstream-ports.md`; after it merges, `docs/guides/contributing-upstream.md`, step 7.
 - **Not scheduled**: `BACKLOG.md` holds every deferred item without a slice; its *Next*, the ones due soon or
   waiting on the user.
 
