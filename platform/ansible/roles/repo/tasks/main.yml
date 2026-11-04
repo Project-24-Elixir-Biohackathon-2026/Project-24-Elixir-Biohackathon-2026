@@ -54,9 +54,11 @@
     group: "{{ spe_ssh_user }}"
     mode: "0600"
   vars:
+    # query('vars', *names), not map('extract', vars): the internal vars dictionary is
+    # deprecated in ansible-core 2.22 and goes away in 2.24.
     spe_local_values: >-
       {{ dict((spe_local_vars + spe_local_vars_extra)
-              | zip((spe_local_vars + spe_local_vars_extra) | map('extract', vars))) }}
+              | zip(query('ansible.builtin.vars', *(spe_local_vars + spe_local_vars_extra)))) }}
   no_log: true
   when: not spe_local_apply
 
