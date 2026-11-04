@@ -31,10 +31,11 @@ start reads this section; keep it short.
   "the frontend one click away" in `platform/README.md`, #39 review), not each fork commit replayed — needs a *package port* path in `docs/guides/contributing-upstream.md`
   (the user's choice of one coherent upstream package, 2026-11-03, PR #19). Prepared by a session as one
   `contrib/<slug>` branch cut from `upstream/main`, per the guide: only project changes pass its exclude check,
-  upstream's `AGENTS.md` project rules are written in by hand, the repo's test commands pass on the branch, and before
-  the push the *AG-UI via Coder* checks re-run against a checkout of the branch (#36, #38, #40: the all-features
-  check, the workspace e2e and the final archive, `docs/knowledge/agui-coder-e2e-check.md`), so the PR lands fully
-  functional; the existing-host reset fix (#41, `spe_preflight.py`, the same bug upstream) is part of it; the compaction plan's upstream doc rewrite (PR #16 review, finding 10) is part of it. `gh` cannot
+  upstream's `AGENTS.md` project rules are written in by hand, the repo's test commands pass on the branch. The
+  *AG-UI via Coder* checks (#36, #38, #40) are not re-run: the branch's code is `bdb93a6`'s byte for byte (it
+  differs only in six Markdown files), so they hold for it (the user, 2026-11-04); a cheap smoke test of the
+  reviewer's path (a workspace's `~/sperange` on the branch, `spe-apply all`, one AG-UI chat, `archive.yml`) runs
+  instead. **Cut and pushed 2026-11-04** (`contrib/agui-package`, `bf152a8`, every test command green); the existing-host reset fix (#41, `spe_preflight.py`, the same bug upstream) is part of it; the compaction plan's upstream doc rewrite (PR #16 review, finding 10) is part of it. `gh` cannot
   create the PR on kraatz (403 createPullRequest, 2026-11-03, `docs/knowledge/gh-pr-create-token.md`): the session
   pushes the `contrib/<slug>` branch to `origin` ready to compare and stops there; **the user opens the PR on
   kraatz**; no fork PR tracks this unit. Supersedes kraatz #9 (the user,
