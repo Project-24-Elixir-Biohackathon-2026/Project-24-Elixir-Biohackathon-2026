@@ -756,7 +756,8 @@ def check_tool_group(r: Run) -> None:
     for when in ("live", "reloaded"):
         group = page.locator(".spe-tool-group.spe-tool-failed")
         expect(group).to_have_count(1, timeout=10_000)
-        expect(group.locator("> summary .spe-tool-title")).to_have_text("View Results from 2 tools · 1 failed")
+        expect(group.locator("> summary .spe-tool-title")).to_have_text("Explored")
+        expect(group.locator("> summary .spe-tool-names")).to_have_text("2 run_command · 1 failed")
         expect(group.locator(".spe-tool")).to_have_count(2)
         expect(group.locator(".spe-tool.spe-tool-done")).to_have_count(1)
         expect(group.locator(".spe-tool.spe-tool-failed .spe-tool-title")).to_have_text("run_command failed")

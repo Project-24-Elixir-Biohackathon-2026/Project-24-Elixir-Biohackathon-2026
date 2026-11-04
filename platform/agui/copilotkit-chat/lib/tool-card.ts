@@ -76,3 +76,11 @@ export function groupState(states: CardState[]): CardState {
   if (states.includes("running")) return "running";
   return states.includes("failed") ? "failed" : "done";
 }
+
+// A group header's list of tools, as Open WebUI's ConsecutiveDetailsGroup writes it: each name once, in
+// the order first called, with its count when called more than once ("list_files, 2 run_command").
+export function toolSummary(names: string[]): string {
+  const counts = new Map<string, number>();
+  for (const name of names) counts.set(name, (counts.get(name) ?? 0) + 1);
+  return [...counts].map(([name, n]) => (n > 1 ? `${n} ${name}` : name)).join(", ");
+}

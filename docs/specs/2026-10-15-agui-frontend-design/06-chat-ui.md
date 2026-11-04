@@ -10,13 +10,14 @@
   (`@copilotkit/react-core/v2`, verified in CopilotKit docs 2026-10-15): one
   collapsible card per call, after Open WebUI's `ToolCallDisplay`. Its title line is a status icon (a
   spinner while the call runs, a check once done, a cross when it failed) and "Executing `<name>`…"
-  (shimmering) while it runs, "View Result from `<name>`" once done, or "`<name>` failed". Unfolded, it shows
-  the arguments as key/value rows (`run_command`'s command as a `$ <command>` line instead) and the first
-  lines of the result in a code block (`run_command`'s output parts joined, not its JSON envelope). A call
+  (shimmering) while it runs, the bare `<name>` once done, or "`<name>` failed". Unfolded, it shows
+  under Open WebUI's "Input" and "Output" labels, the arguments as key/value rows (`run_command`'s command
+  as a `$ <command>` line instead) and the first lines of the result in a code block (`run_command`'s output parts joined, not its JSON envelope). A call
   failed when its result is a JSON object with a string `error` or a nonzero `exit_code`; a failed card and
   its result are tinted with the danger colour. The calls of one assistant message (one model response)
-  sit under one group header, "Executing N tools…" or "View Results from N tools" with the number that
-  failed, set through the assistant message's `toolCallsView` slot. All of it is React text, never HTML.
+  sit under one group header worded as Open WebUI's `ConsecutiveDetailsGroup`: "Exploring" (shimmering)
+  or "Explored", then each tool's name once with its count when called more than once (`list_files,
+  2 run_command`), then the number that failed, set through the assistant message's `toolCallsView` slot. All of it is React text, never HTML.
 - No secrets in the browser. The conversation is kept on the server, in `chat-ui`, which owns it (§13);
   the browser changes only a session's metadata.
 - Exact package versions are pinned in `package-lock.json`; the image runs
@@ -88,9 +89,11 @@ Plain React and CSS in `app/` (no new dependencies); all session data is rendere
 
 - **Look:** Open WebUI's sidebar and chat chrome, finished to the standard of claude.ai and chatgpt.com:
   its gray scale, type sizes, row and menu geometry and transitions, Heroicons-style inline SVG icons; the
-  CopilotKit chat restyled to the same palette. Light and dark follow a **theme control** in the sidebar
-  footer (System / Light / Dark, `localStorage` key `spe.theme`): System tracks `prefers-color-scheme`,
-  Light and Dark set `<html data-theme="light|dark">` to pick the matching palette outright. An inline
+  CopilotKit chat restyled to the same palette. Light and dark follow a **theme toggle** at the chat pane's
+  top right (a pill switch, sun and moon, its knob on the theme that renders; `localStorage` key `spe.theme`
+  holding System / Light / Dark): until it is first used the page follows `prefers-color-scheme`; a click
+  flips the rendered theme, stored as Light or Dark, or as System again when the system already prefers the
+  new theme. Light and Dark set `<html data-theme="light|dark">` to pick the matching palette outright. An inline
   script in the page `<head>` reads the stored choice and sets `data-theme` before first paint, so there is
   no flash of the other theme on load.
 - **Layout:** a left sidebar, resizable by dragging its right edge or with the Left/Right arrow keys while
@@ -101,8 +104,8 @@ Plain React and CSS in `app/` (no new dependencies); all session data is rendere
   `tag:<name>` terms filter by tag (several must all match) and typing `tag:` suggests the tags in use;
   the list, pinned first, then grouped *Today*, *Yesterday*, *Previous 7 days*, *Older* by `updated_at`,
   each row with its title only (as in Open WebUI), the open one highlighted, `⋯` shown on hover, focus,
-  the open row and the row whose menu is open (on a touch screen, `hover: none`, always); at the bottom the
-  theme control, a *Show hidden* toggle and the note "Deleted sessions are kept in the run archive."
+  the open row and the row whose menu is open (on a touch screen, `hover: none`, always); at the bottom a
+  *Show hidden* toggle and the note "Deleted sessions are kept in the run archive."
 - **Row menu (`⋯`):** a popover anchored to the button, one open at a time; it closes on a click outside,
   Escape, choosing an item, opening a session or *New chat*; Escape and a choice return focus to its `⋯` (a
   click outside leaves it where the click put it); arrow keys move between items. *Rename* (inline in the

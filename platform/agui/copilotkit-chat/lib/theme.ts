@@ -1,4 +1,4 @@
-// The sidebar's theme choice (kept in `localStorage`, key `spe.theme`) and what it resolves to.
+// The theme toggle's choice (kept in `localStorage`, key `spe.theme`) and what it resolves to.
 // The inline script in app/layout.tsx applies the choice before paint; it can't import this
 // module (it runs as a plain <script>, before any bundle), so it re-parses the same three values
 // by hand — keep the two in step if the values ever change.

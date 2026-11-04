@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { argumentRows, cardState, commandOf, groupState, readResult } from "./tool-card.ts";
+import { argumentRows, cardState, commandOf, groupState, readResult, toolSummary } from "./tool-card.ts";
 
 test("argumentRows: one row per key, strings as they are, everything else as JSON", () => {
   assert.deepEqual(argumentRows({ path: "/home/x", recursive: true, depth: 2, opts: { a: 1 }, none: null }), [
@@ -89,4 +89,12 @@ test("groupState: running while any call runs, else failed if any failed, else d
   assert.equal(groupState(["done", "running", "failed"]), "running");
   assert.equal(groupState(["done", "failed"]), "failed");
   assert.equal(groupState(["done", "done"]), "done");
+});
+
+test("toolSummary: each name once in first-call order, counted when called more than once", () => {
+  assert.equal(toolSummary(["run_command"]), "run_command");
+  assert.equal(toolSummary(["run_command", "run_command"]), "2 run_command");
+  assert.equal(toolSummary(["list_files", "run_command", "list_files", "run_command", "run_command"]),
+    "2 list_files, 3 run_command");
+  assert.equal(toolSummary(["read_file", "list_files", "read_file"]), "2 read_file, list_files");
 });

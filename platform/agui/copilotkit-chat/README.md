@@ -10,7 +10,7 @@ Next.js 16.4.1 + CopilotKit 1.79.0 (v2 API), a thin client for the SPE agent.
   first request, so the build needs neither.
 - `app/page.tsx`: `CopilotChat` (`@copilotkit/react-core/v2`) beside the sidebar; every tool call is
   a collapsible card (`useDefaultRenderTool`, `app/tool-calls.tsx`, after Open WebUI's `ToolCallDisplay`):
-  a status icon and "Executing `<name>`…" / "View Result from `<name>`" / "`<name>` failed", then the
+  a status icon and "Executing `<name>`…" / "`<name>`" / "`<name>` failed", then the
   arguments as rows (`run_command`'s as a `$ <command>` line) and the first 40 lines or 4000 characters
   of the result, rendered as text (`lib/tool-card.ts`). Several calls in one assistant message share a
   group header. Run errors appear in a bar above the chat. A
@@ -62,8 +62,7 @@ The journals hold whatever participants typed and tools returned, canary values 
 volume like the agent's run log.
 
 **Sidebar.** `app/sidebar.tsx`, in Open WebUI's layout and colours: *New chat*,
-the sessions by title only, grouped and filtered by `lib/sidebar-view.ts` (below), a theme control in the
-footer (System / Light / Dark), and a button that collapses the sidebar. Each row has a `⋯` menu
+the sessions by title only, grouped and filtered by `lib/sidebar-view.ts` (below), and a button that collapses the sidebar. Each row has a `⋯` menu
 (`app/row-menu.tsx`): rename (also a double-click on the
 title; Enter, Tab or a click outside saves, Escape cancels), pin, tags, hide, and delete after a confirmation
 (`app/delete-dialog.tsx`; the journal is kept and archived). The menu closes on a click outside, Escape or a choice;

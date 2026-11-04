@@ -22,7 +22,6 @@ import { Popover } from "./popover";
 import { RenameInput, RowMenu } from "./row-menu";
 import { HiddenToggle, SearchBox } from "./session-filters";
 import { TagEditor } from "./tag-editor";
-import { ThemeControl } from "./theme-control";
 
 type SidebarProps = {
   sessions: SessionMeta[];
@@ -356,7 +355,6 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
         )}
       </div>
       <div className="spe-sidebar-foot">
-        <ThemeControl />
         <HiddenToggle showHidden={filter.showHidden} onChange={(showHidden) => { end(); setFilter({ ...filter, showHidden }); }} />
       </div>
 

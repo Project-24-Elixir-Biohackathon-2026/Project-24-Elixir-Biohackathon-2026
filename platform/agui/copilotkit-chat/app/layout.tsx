@@ -4,8 +4,8 @@ import "@copilotkit/react-core/v2/styles.css";
 import "./globals.css";
 
 export const metadata: Metadata = { title: "SPE agent" };
-// Light or dark, as the system or the sidebar's theme control is set (globals.css holds both
-// palettes, keyed off the `data-theme` attribute the script below and the theme control set).
+// Light or dark, as the system or the theme toggle is set (globals.css holds both
+// palettes, keyed off the `data-theme` attribute the script below and the theme toggle set).
 export const viewport: Viewport = { colorScheme: "light dark" };
 
 // Applied before paint, so there is no flash of the wrong theme. A plain <script> can't import
