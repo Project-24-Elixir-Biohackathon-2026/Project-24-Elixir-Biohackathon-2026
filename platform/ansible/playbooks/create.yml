@@ -11,10 +11,12 @@
           - spe_instance is string and spe_instance | length > 0
           - spe_seed is not none
           - spe_provision in ['openstack', 'existing']
-          - spe_frontend | default('', true) in ['', 'none', 'openwebui', 'agui']
+          - spe_frontends is sequence and spe_frontends is not string
+          - spe_frontends | difference(['openwebui', 'agui']) | length == 0
         fail_msg: >-
           set spe_instance and spe_seed (pass -e @instances/<name>.yml); spe_provision is
-          openstack or existing; spe_frontend is none, openwebui or agui
+          openstack or existing; spe_frontends is a list of openwebui and/or agui (both by
+          default, [] for none)
   roles:
     - { role: os_provision, tags: [always], when: spe_provision == 'openstack' }
     - { role: existing_host, tags: [always], when: spe_provision == 'existing' }
@@ -122,7 +124,7 @@
       ansible.builtin.import_role:
         name: sandbox
       tags: [frontend]
-      when: spe_frontend in ['openwebui', 'agui']
+      when: spe_frontends | length > 0
 
     - name: Stack sources and image builds in the background
       ansible.builtin.import_role:
@@ -135,7 +137,7 @@
         name: agui
         tasks_from: build
       tags: [frontend]
-      when: spe_frontend == 'agui'
+      when: "'agui' in spe_frontends"
 
     - name: Data copy and seeding
       ansible.builtin.import_role:
@@ -163,17 +165,40 @@
         name: trs_install
       tags: [trs]
 
-    - name: OpenWebUI frontend
+    # The frontends: each writes its configuration, one `spe-apply up` starts them
+    # all with the shared sandbox, then each sets up what needs it running.
+    - name: Open WebUI configuration
+      ansible.builtin.import_role:
+        name: openwebui
+        tasks_from: config
+      tags: [frontend]
+      when: "'openwebui' in spe_frontends"
+
+    - name: AG-UI configuration
+      ansible.builtin.import_role:
+        name: agui
+        tasks_from: config
+      tags: [frontend]
+      when: "'agui' in spe_frontends"
+
+    - name: Frontend containers up
+      ansible.builtin.import_role:
+        name: sandbox
+        tasks_from: up
+      tags: [frontend]
+      when: spe_frontends | length > 0
+
+    - name: Open WebUI frontend
       ansible.builtin.import_role:
         name: openwebui
       tags: [frontend]
-      when: spe_frontend == 'openwebui'
+      when: "'openwebui' in spe_frontends"
 
     - name: AG-UI frontend
       ansible.builtin.import_role:
         name: agui
       tags: [frontend]
-      when: spe_frontend == 'agui'
+      when: "'agui' in spe_frontends"
 
     - name: Hand-off files
       ansible.builtin.import_role:

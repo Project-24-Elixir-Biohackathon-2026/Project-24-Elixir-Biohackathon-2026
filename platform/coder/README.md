@@ -17,7 +17,7 @@ Ansible playbooks in `../ansible`; the Coder template only wraps them.
         │ https://sperange.<zone>/           (landing page, static)
         │ https://sperange.<zone>/threats/   (threat catalog, static)
         │ https://sperange.<zone>/workspaces (dashboard, Coder)
-        │ https://openwebui--main--<ws>--<user>.sperange.<zone>   (app; chat--… for agui)
+        │ https://openwebui--main--<ws>--<user>.sperange.<zone>   (app; chat--… the AG-UI chat)
         ▼
  ┌──────────────── portal VM (public FIP) ────────────────────────────┐
  │ Caddy :443 (TLS, Charité PKI) ──▶ platform/site/dist (/, /threats/) │
@@ -63,7 +63,7 @@ workspace was built from, and the chat frontend runs from it:
 | Change | What it needs |
 |---|---|
 | the SPE agent's runbook or a helper script (`platform/ansible/roles/sandbox/files/agent/`, mounted at `/opt/agent` in the sandbox) | nothing: live on the next message |
-| the SPE agent's system prompt (`platform/ansible/roles/sandbox/files/system_prompt.txt`, AG-UI frontend) | nothing: read on every run |
+| the SPE agent's system prompt (`platform/ansible/roles/sandbox/files/system_prompt.txt`, the AG-UI agent) | nothing: read on every run |
 | the agent's Python source (`platform/agui/pydantic-ai-agent/src/`) | nothing: the agent restarts itself on a saved file |
 | the chat UI's source, with `spe_agui_ui_dev: true` (compose profile `ui-dev`) | nothing: hot reload. The first start installs the packages from the npm registry, about two minutes |
 | the compose file (`platform/instance/compose.yml`) or `~/spe-frontend/agent.yaml` | `spe-apply up` |
@@ -98,9 +98,8 @@ what is pushed survives.
 
 ### Adding a testbed
 
-There are two presets, one per frontend, both with all samples, all tiers and
-every canary type: `openwebui.yml` (default) and `agui.yml`. To add one, copy
-an existing file in `platform/coder/template/testbeds/`, change it, open a PR.
+There is one preset, `all-data.yml`: all samples, all tiers, every canary type.
+To add one, copy it in `platform/coder/template/testbeds/`, change it, open a PR.
 After merge the portal picks it up within 5 minutes (see "Template sync").
 
 ```yaml
@@ -113,7 +112,6 @@ parameters:                           # keys = parameter names in main.tf
   workflows: [wes-drs-smoke]
   canaries: [drs_metadata, trs_descriptions, workflow_comments, service_info]
   flavor: de.NBI mini
-  frontend: openwebui                 # or agui
   smoke_test: false
 ```
 

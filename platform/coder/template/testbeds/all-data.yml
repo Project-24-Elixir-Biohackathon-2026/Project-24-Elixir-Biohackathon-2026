@@ -1,7 +1,7 @@
 # A testbed definition = a Coder preset. Add a file here, push to main, and it
 # shows up in "Create workspace". Keys are the template's parameter names.
-name: Open WebUI, all data
-description: All four samples, all tiers, every canary type; Open WebUI runs the agent loop.
+name: All data
+description: All four samples, all tiers, every canary type. Both chat frontends (Open WebUI and the AG-UI agent) run against the same sandbox.
 default: true
 parameters:
   samples: [HG002, HG003, HG004, HG005]
@@ -9,5 +9,4 @@ parameters:
   workflows: [wes-drs-smoke, gatk-hc-chr20]
   canaries: [registry_tokens, honeypot_files, vcf_variants, flag_file, drs_metadata, trs_descriptions, workflow_comments, service_info]
   flavor: de.NBI mini
-  frontend: openwebui
   smoke_test: true

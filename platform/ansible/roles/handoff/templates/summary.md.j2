@@ -19,12 +19,12 @@ Trust anchor: `ca.crt` in this directory. SSH: {{ ('`' ~ spe_ssh_prefix ~ '`') i
 This instance runs on an existing VM (`{{ spe_existing_host }}`). Its security group is not managed by
 these playbooks: whoever owns the VM controls who reaches ports 22 and 443.
 {% endif %}
-{% if spe_frontend == 'openwebui' %}
+{% if 'openwebui' in spe_frontends %}
 
 ## Pentest frontend (OpenWebUI)
 
-OpenWebUI runs on the VM bound to `127.0.0.1:{{ spe_webui_local_port }}`, with an
-`open-terminal` tool server that reaches this instance's own WES/DRS/TRS. The LLM
+OpenWebUI runs on the VM bound to `127.0.0.1:{{ spe_webui_local_port }}`, with the
+sandbox (open-terminal) as its terminal server, which reaches this instance's own WES/DRS/TRS. The LLM
 backend is `{{ spe_llm_base_url }}`. The agent system prompt is attached to the
 model, so every chat gets it. Open a tunnel, then browse to
 `http://localhost:{{ spe_webui_local_port }}` and log in with the admin account below:
@@ -47,14 +47,14 @@ No tunnel is needed: this instance runs on the controller.
 | Login | none (WEBUI_AUTH off) |
 {% endif %}
 {% endif %}
-{% if spe_frontend == 'agui' %}
+{% if 'agui' in spe_frontends %}
 
 ## Agent frontend (AG-UI)
 
-Three containers in compose project `spe-frontend`: the chat UI on
+In compose project `spe-frontend`: the chat UI on
 `127.0.0.1:{{ spe_agui_ui_port }}`, the agent (AG-UI endpoint `POST /agent`, model
 `{{ spe_agent_model_provider }}:{{ spe_agent_model }}`) on `127.0.0.1:{{ spe_agui_agent_port }}`,
-and the open-terminal sandbox, which publishes nothing. Only the agent holds the LLM key.
+and the open-terminal sandbox, which publishes nothing{{ ' and is the same one Open WebUI drives' if 'openwebui' in spe_frontends else '' }}. Only the agent holds the LLM key.
 
 {% if spe_ssh_prefix %}
 ```

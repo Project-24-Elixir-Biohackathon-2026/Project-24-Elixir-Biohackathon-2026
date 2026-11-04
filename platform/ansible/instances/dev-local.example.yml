@@ -9,7 +9,7 @@ spe_existing_api_ip: 100.96.0.2      # this VM's own IP: hostname -I | cut -d' '
 spe_manage_docker: false             # agentvm runs Docker (data-root /storage/docker); leave it alone
 spe_source_data_root: /home/agentvm/spe-dummy-data
 spe_workflows: [wes-drs-smoke]       # gatk-hc-chr20 needs real genomes
-spe_frontend: agui
+spe_frontends: [agui]              # both frontends by default; this VM runs only the AG-UI one
 # The model is this development VM's choice, not a requirement: the de.NBI endpoint
 # is internal, so this VM uses Anthropic, with the cheap claude-haiku-5-5 to keep test
 # spend low. Your setup may use any OpenAI-compatible API instead

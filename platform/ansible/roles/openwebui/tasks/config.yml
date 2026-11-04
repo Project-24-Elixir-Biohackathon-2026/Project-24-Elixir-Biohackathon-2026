@@ -1,0 +1,21 @@
+---
+# Open WebUI's configuration: the secret env file. Written before role sandbox
+# (up.yml) starts the containers; main.yml does what needs Open WebUI running.
+- name: de.NBI LLM API key present
+  ansible.builtin.assert:
+    that:
+      - (spe_denbi_api_key | default('', true)) | length > 0
+    fail_msg: >-
+      spe_denbi_api_key is empty. Export the key on the controller before
+      running, e.g.
+      export DENBI_LLM_API_KEY=$(grep '^OPENAI_API_KEY=' ~/agent-stack/webui.env | cut -d= -f2-)
+      or pass -e spe_denbi_api_key=... (do not commit it to the repo).
+
+- name: Secret-bearing env file
+  ansible.builtin.template:
+    src: webui.env.j2
+    dest: "{{ spe_frontend_dir }}/webui.env"
+    owner: "{{ spe_ssh_user }}"
+    group: "{{ spe_ssh_user }}"
+    mode: "0600"
+  no_log: true
