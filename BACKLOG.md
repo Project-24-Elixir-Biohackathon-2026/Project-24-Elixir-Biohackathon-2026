@@ -32,6 +32,11 @@ start reads this section; keep it short.
   track's slice 2/2 merges, before the *Upstream: port the AG-UI package* item. Approved by the user (2026-11-03):
   instances and paid model calls for this test need no further OK, but at most one instance at a time (a Coder
   workspace counts; stop it before step 3's `create.yml`), destroyed when done.
+- de.NBI: redeploy `denbi-agui-01` from `main` with #29 and try it: a new session gets a model title (one qwen
+  call; also check its `type: "title"` run-log line, i.e. whether `title.max_tokens: 64` is enough for qwen's
+  reasoning), a rename sticks, the sidebar drags, the theme toggles without a flash on reload. From #29's *Checks*;
+  waits on the user: an OK for the redeploy and its paid calls (#29's handoff said it was approved here, but no
+  approval was recorded).
 - AG-UI chat: tool-call cards like Open WebUI's `ToolCallDisplay` — chat UI only (`ToolCard`,
   `app/page.tsx:73`, and its CSS): a status icon (spinner + shimmer while running, check when done, ✕ on
   error) instead of the "preparing…/running…/done" text; "Executing `<name>`…" while running and "View
