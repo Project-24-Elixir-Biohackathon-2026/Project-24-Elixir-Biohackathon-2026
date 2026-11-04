@@ -33,7 +33,7 @@ from pydantic_ai.models.wrapper import WrapperModel
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import RunContext
 from pydantic_ai.usage import RunUsage, UsageLimits
-# Private in pydantic-ai 2.56.0 (pinned): the payload and type pydantic-ai's AG-UI adapter reads back
+# Private in pydantic-ai 2.66.0 (pinned; unchanged since 2.56.0): the payload and type pydantic-ai's AG-UI adapter reads back
 # into a CompactionPart.
 from pydantic_ai.ui._adapter import compaction_payload
 from pydantic_ai.ui.ag_ui._utils import COMPACTION_ACTIVITY_TYPE

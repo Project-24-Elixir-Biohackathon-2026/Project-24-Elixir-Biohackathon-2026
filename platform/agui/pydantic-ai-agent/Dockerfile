@@ -1,11 +1,11 @@
 # The SPE agent: FastAPI + Pydantic AI over AG-UI on port 8100.
 # Built from the frozen uv.lock; the offline test suite runs in the `test` stage and the
 # final image depends on it, so a failing test fails the build.
-FROM ghcr.io/astral-sh/uv:0.12.17 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.7 AS uv
 
-FROM python:3.13-slim AS build
+FROM python:3.14-slim AS build
 COPY --from=uv /uv /usr/local/bin/uv
-ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never UV_PYTHON=/usr/local/bin/python3.13
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never UV_PYTHON=/usr/local/bin/python3.14
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
@@ -19,7 +19,7 @@ RUN uv sync --frozen --no-install-project \
  && PYTHONPATH=/app/src PYDANTIC_AI_NO_BANNER=1 .venv/bin/python -m pytest -q -p no:cacheprovider \
  && touch /tests-passed
 
-FROM python:3.13-slim
+FROM python:3.14-slim
 COPY --from=test /tests-passed /tmp/tests-passed
 RUN useradd --uid 10001 --user-group --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin spe \
  && install -d -o spe -g spe -m 0700 /var/lib/spe-agent \
