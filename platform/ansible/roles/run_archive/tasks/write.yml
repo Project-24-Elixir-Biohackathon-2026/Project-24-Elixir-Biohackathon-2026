@@ -29,7 +29,7 @@
       weskit_commit: "{{ spe_weskit_commit }}"
       model: "{{ spe_webui_model_id }}"
       llm_base_url: "{{ spe_llm_base_url }}"
-      frontend: "{{ spe_frontend }}"
+      frontends: "{{ spe_frontends }}"
 
 - name: Canary record
   ansible.builtin.copy:
@@ -38,18 +38,6 @@
     mode: "0644"
   loop: [canaries.json, canaries.json.age, canaries.manifest.sha256]
   when: (spe_output_dir ~ '/' ~ item) is file
-
-- name: Chats, notes and report
-  ansible.builtin.command:
-    argv:
-      - "{{ ansible_playbook_python }}"
-      - "{{ role_path }}/files/write_run.py"
-      - "{{ spe_output_dir }}/archive-bundle.json"
-      - "{{ spe_run_dir }}"
-      - "{{ spe_report_title }}"
-  when: (spe_output_dir ~ '/archive-bundle.json') is file
-  register: write_out
-  changed_when: true
 
 - name: AG-UI chat sessions bundle
   ansible.builtin.stat:
@@ -75,19 +63,21 @@
         argv: [tar, -xzf, "{{ spe_output_dir }}/archive-bundle-agui.tar.gz", -C, "{{ spe_output_dir }}/archive-bundle-agui"]
       changed_when: true
 
-- name: AG-UI journals and the agent's run log, raw, in the run directory
+# AG-UI's part of the run lives in agui/ (journals, run log, rendered chats), apart
+# from Open WebUI's chats/ and index.md: both frontends run on one instance.
+- name: AG-UI journals and the agent's run log, raw, in agui/ of the run directory
   when: agui_bundle.stat.exists
   block:
     - name: Journals directory
       ansible.builtin.file:
-        path: "{{ spe_run_dir }}/agui-journals"
+        path: "{{ spe_run_dir }}/agui/agui-journals"
         state: directory
         mode: "0700"
 
     - name: The journals, untouched (hidden and deleted sessions included; *.jsonl only, not other files there)
       ansible.builtin.copy:
         src: "{{ item }}"
-        dest: "{{ spe_run_dir }}/agui-journals/"
+        dest: "{{ spe_run_dir }}/agui/agui-journals/"
         mode: "0600"
       loop: "{{ query('ansible.builtin.fileglob', spe_output_dir ~ '/archive-bundle-agui/agui-journals/*.jsonl') }}"
       loop_control:
@@ -96,23 +86,35 @@
     - name: The agent's run log, when a run reached the agent
       ansible.builtin.copy:
         src: "{{ spe_output_dir }}/archive-bundle-agui/agent-runs.jsonl"
-        dest: "{{ spe_run_dir }}/agent-runs.jsonl"
+        dest: "{{ spe_run_dir }}/agui/agent-runs.jsonl"
         mode: "0600"
       when: (spe_output_dir ~ '/archive-bundle-agui/agent-runs.jsonl') is file
 
-- name: AG-UI chats, rendered from the exported bundle as an Open WebUI run
+- name: AG-UI chats, rendered from the exported bundle as an Open WebUI run, in agui/
   ansible.builtin.command:
     argv:
       - "{{ ansible_playbook_python }}"
       - "{{ role_path }}/files/write_run.py"
       - "{{ spe_output_dir }}/archive-bundle-agui/bundle.json"
-      - "{{ spe_run_dir }}"
+      - "{{ spe_run_dir }}/agui"
       - "{{ spe_report_title }}"
   when: agui_bundle.stat.exists
   register: write_agui_out
   changed_when: true
 
-- name: Overview without a chat export (no frontend)
+- name: Chats, notes and report
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - "{{ role_path }}/files/write_run.py"
+      - "{{ spe_output_dir }}/archive-bundle.json"
+      - "{{ spe_run_dir }}"
+      - "{{ spe_report_title }}"
+  when: (spe_output_dir ~ '/archive-bundle.json') is file
+  register: write_out
+  changed_when: true
+
+- name: Overview without an Open WebUI export
   ansible.builtin.copy:
     dest: "{{ spe_run_dir }}/index.md"
     mode: "0644"
@@ -120,9 +122,12 @@
       # Run {{ spe_run_dir | basename }}
 
       - Archived: {{ spe_archive_time }}
-      - Frontend: {{ spe_frontend }}; no chat export (no frontend ran on this instance)
+      - Frontends: {{ spe_frontends | join(", ") or "none" }}; no Open WebUI export (chats, notes, report)
+      {% if agui_bundle.stat.exists %}
+      - AG-UI chat sessions: [agui/](agui/index.md)
+      {% endif %}
       - Parameters and canary record: [run.yml](run.yml), canaries.json
-  when: not ((spe_output_dir ~ '/archive-bundle.json') is file) and not agui_bundle.stat.exists
+  when: not ((spe_output_dir ~ '/archive-bundle.json') is file)
 
 - name: Remove the staged exports
   ansible.builtin.file:
@@ -135,4 +140,6 @@
 
 - name: Archived
   ansible.builtin.debug:
-    msg: "Run saved to {{ spe_run_dir }} ({{ write_out.stdout | default(write_agui_out.stdout | default('no chat export')) }})"
+    msg: >-
+      Run saved to {{ spe_run_dir }} ({{ [write_out.stdout | default(''), write_agui_out.stdout | default('')]
+      | select | join('; ') or 'no chat export' }})

@@ -280,3 +280,15 @@ in the parts it amends.
     *Cost if wrong:* the `ui-dev` profile has no archive and no chat-ui hardening check yet. Upstream also folded pasted text (TM-005) into indirect prompt
     injection (TM-003) and dropped `python-frontmatter` from the validator. *Amends:* §5's example `agent.yaml`, §6
     *Storage*, §7 *Role `agui`* and its variables, §13's threat reference, decision 18's check. *Status:* folded.
+
+23. **Both frontends run on every instance, and the AG-UI part of a run is archived in `agui/`** (2026-11-04; the
+    merge of kraatz #16, `d2a6232`). Upstream made the single-valued `spe_frontend` a list,
+    `spe_frontends`, by default `[openwebui, agui]`, both driving one sandbox; the portal has no frontend parameter
+    any more and the old `spe_frontend` is still read when set. The archive exports each frontend that is on, and
+    `write_run.py` renders the AG-UI bundle into `<run dir>/agui/` (its `index.md`, `chats/`, the bundle, the raw
+    journals `agui-journals/` and the run log `agent-runs.jsonl`), because rendered into the run directory itself it
+    would replace Open WebUI's `chats/` and `index.md`. The top `index.md` links `agui/index.md`. *Reason:* upstream runs
+    both frontends; a separate `agui/` keeps `write_run.py` from clearing Open WebUI's `chats/` and `index.md`. *Cost if wrong:* a run from an
+    AG-UI-only instance has its sessions one directory down, and a tool reading `<run>/agui-journals/` must read
+    `<run>/agui/agui-journals/`. *Amends:* §1 *Goal*, §3's container table intro, §7's variables, §9's condition,
+    §14 *Export* and *Write*, decisions 15's and 30's checks. *Status:* folded.

@@ -18,9 +18,8 @@
                                         └────────────────────────────────┘
 ```
 
-Three containers in one compose project, `spe-frontend` (the same project
-name as the Open WebUI role, so switching `spe_frontend` replaces one stack
-with the other on a VM):
+Three containers in one compose project, `spe-frontend`, the same project as the Open WebUI
+role's; the sandbox is shared with Open WebUI when both frontends are on (clarification 23):
 
 | Container | Holds | Never holds |
 |---|---|---|

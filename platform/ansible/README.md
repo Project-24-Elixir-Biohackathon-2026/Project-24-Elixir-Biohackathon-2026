@@ -123,13 +123,13 @@ the job it needs right before it needs it (the `wait` task files).
    file, the sandbox mounts `roles/sandbox/files/agent` as `/opt/agent`, the agent
    mounts its prompt and Python source. `spe-apply` (linked on the PATH) rebuilds
    the images from it; the frontend roles end with `spe-apply up`.
-   **sandbox** (a frontend is set): starts the build of the `open-terminal`
+   **sandbox** (`spe_frontends` not empty): starts the build of the `open-terminal`
    image carrying this instance's own CA, from the clone's `Dockerfile.terminal`.
 7. **workflow_stack** (`build.yml`): clones the four repositories at the
    configured revisions and starts the image builds (`weskit-api:<commit>`,
    drs-filer, trs-filer).
-8. **agui** (`build.yml`, only when `spe_frontend == agui`): stages the agent
-   and chat UI sources and starts their image builds.
+8. **agui** (`build.yml`, when `agui` is in `spe_frontends`): checks the agent
+   settings and starts the agent and chat UI image builds from the clone.
 9. **spe_data**: rsync of the reference tier and the selected samples from the
    controller, then (after the seeding tools are in) `spe_seed.py` renames
    samples to `<prefix>-000n`, rewrites CRAM headers, regenerates the registry,
@@ -143,16 +143,18 @@ the job it needs right before it needs it (the `wait` task files).
     the checksums computed in the background.
 12. **trs_install**: installs the workflows listed in `spe_workflows` from
     `catalog/workflows/`.
-13. **openwebui** (only when `spe_frontend == openwebui`): joins the sandbox
-    build and the image pull, then runs OpenWebUI + open-terminal in a
-    `spe-frontend` compose project. OpenWebUI is bound to `127.0.0.1:8080` and
-    uses the de.NBI LLM endpoint; the operator reaches it through the Coder
-    portal or an SSH tunnel. It runs without a login (`spe_webui_auth: false`),
-    LLM tag generation is off, and the pinned note "Run report" is created
-    from `reports/run_report.md.j2`.
-    **agui** (only when `spe_frontend == agui`): joins the sandbox and the
-    agent and chat UI builds, then runs the same sandbox, our own agent over
-    AG-UI and a CopilotKit chat in the same compose project (see below).
+13. **The frontends** (`spe_frontends`, both by default): **openwebui** and
+    **agui** each write their configuration (`config.yml`); **sandbox**
+    (`up.yml`) writes the sandbox's env file, joins the sandbox build, the image
+    pull and the agent and chat UI builds, and starts everything in the
+    `spe-frontend` compose project with one `spe-apply up`: the shared sandbox,
+    OpenWebUI, our agent and its chat UI. Then **openwebui** attaches the
+    system prompt and the terminal to the model and creates the pinned note
+    "Run report" from `reports/run_report.md.j2` (OpenWebUI is bound to
+    `127.0.0.1:8080`, uses the de.NBI LLM endpoint, runs without a login,
+    `spe_webui_auth: false`, LLM tag generation off; the operator reaches it
+    through the Coder portal or an SSH tunnel), and **agui** runs its checks
+    (see below).
 14. **handoff**: writes `output/<instance>/` (see below).
 15. **verify**: endpoint checks and a WES smoke run with a DRS input.
 
@@ -218,19 +220,25 @@ workflow files next to it. List every file under `files:` with its TRS
 `file_type`; the `PRIMARY_DESCRIPTOR` becomes the `workflow_url` reported in
 `trs-installed.json`.
 
-## Pentest frontend (OpenWebUI)
+## The frontends
 
-Each instance runs a chat frontend on the API VM so an operator can drive an LLM
-agent against that instance's own SPE and probe for canary leakage. It is on by
-default (`spe_frontend: openwebui`); set `spe_frontend` to `none` (or any other
-value) to skip it, or to `agui` for the agent frontend below. The role deploys two containers in a `spe-frontend` compose
-project under `spe_frontend_dir`:
+Each instance runs chat frontends on the API VM so an operator can drive an LLM
+agent against that instance's own SPE and probe for canary leakage. `spe_frontends`
+lists them: `[openwebui, agui]` by default (the portal always deploys both), one of
+them to run only that one, `[]` for none. They share the `spe-frontend` compose
+project under `spe_frontend_dir` and one sandbox:
+
+- **sandbox** — the open-terminal image built with this instance's own
+  self-signed CA and the `WES_BASE`/`DRS_BASE`/`TRS_BASE` of the same VM
+  (role `sandbox`). Every command the agent runs, from either chat, runs here,
+  calling the three APIs with TLS verification on. One home directory, so a
+  file left behind in one chat is there in the other.
+
+### Pentest frontend (OpenWebUI)
 
 - **open-webui** — the chat UI, bound to `127.0.0.1:8080` on the VM, using the
-  de.NBI LLM endpoint (`spe_llm_base_url`) as its model backend.
-- **open-terminal** — an OpenWebUI tool server built with this instance's own
-  self-signed CA and the `WES_BASE`/`DRS_BASE`/`TRS_BASE` of the same VM. The
-  agent uses it to call the three APIs with TLS verification on.
+  de.NBI LLM endpoint (`spe_llm_base_url`) as its model backend, with the sandbox
+  as its terminal server (on in every new chat).
 
 The LLM API key is never stored in the repo. Export it on the controller before
 running (or pass `-e spe_denbi_api_key=...`):
@@ -247,12 +255,11 @@ ssh -i output/INSTANCE/ssh_key -L 8080:127.0.0.1:8080 ubuntu@FLOATING_IP
 # then open http://localhost:8080; no login by default (spe_webui_auth: false)
 ```
 
-## Agent frontend (AG-UI)
+### Agent frontend (AG-UI)
 
-`spe_frontend: agui` runs a Pydantic AI agent we own instead of Open WebUI's
-agent loop (`platform/agui/pydantic-ai-agent/`, `platform/agui/copilotkit-chat/`, spec `docs/specs/2026-10-15-agui-frontend-design/`).
-Three containers in compose project `spe-frontend`, so switching `spe_frontend`
-replaces one frontend with the other (its volumes, `open-webui-data` included, stay):
+`agui` runs a Pydantic AI agent we own next to Open WebUI's agent loop
+(`platform/agui/pydantic-ai-agent/`, `platform/agui/copilotkit-chat/`, spec `docs/specs/2026-10-15-agui-frontend-design/`).
+Two more containers in compose project `spe-frontend`, driving the same sandbox:
 
 - **chat-ui** — Next.js + CopilotKit on `127.0.0.1:3000`; shows every tool call.
   Holds only the agent's bearer key, server side.
@@ -274,7 +281,6 @@ replaces one frontend with the other (its volumes, `open-webui-data` included, s
   session's first completed run, the agent asks the model for a title from the
   first exchange, unless the session already has one: `spe_agent_title_generation`
   (true), rendered as `agent.yaml`'s `title.enabled`, which `verify.yml` shows.
-- **sandbox** — the open-terminal image from role `sandbox`; publishes nothing.
 
 The role builds `spe-agent:local` and `spe-chat-ui:local` on the instance from
 the repository clone (`spe-apply build`; Docker's layer cache makes a build with
@@ -300,7 +306,7 @@ the instance runs on the controller.
 
 Tested on our development VM on 2026-10-15 (which uses `anthropic`/`claude-haiku-5-5`):
 create, a second converge without rebuilds or restarts, `verify.yml`, and switching
-to Open WebUI and back; then, with the model, the smoke run (`-e spe_agui_smoke=true`) and a
+to Open WebUI and back (then still one frontend at a time); then, with the model, the smoke run (`-e spe_agui_smoke=true`) and a
 two-turn chat in the browser, both passing.
 
 ### On an existing de.NBI VM

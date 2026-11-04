@@ -1,12 +1,13 @@
 ---
 # The agent's sandbox: the open-terminal image with this instance's own CA, built
-# from the clone's Dockerfile. Shared by the openwebui and agui frontends. Also
-# prepares the frontend directory: the .env that selects the frontend and the
-# link to the compose file in the clone; each frontend role adds its secret env
-# files and then runs `spe-apply up`. The runbook, the helper scripts and the
-# system prompt are not copied anywhere: the containers mount them from the
-# clone. Runs right after role tls (the CA) and starts the build in the
-# background (a 5.7 GB base image); the frontend role joins it (wait.yml).
+# from the clone's Dockerfile. One container, driven by both frontends (Open WebUI
+# as its terminal server, our agent as its tool surface). Also prepares the
+# frontend directory: the .env that selects the frontends and the link to the
+# compose file in the clone; each frontend role adds its configuration and secret
+# env files (config.yml), then up.yml starts everything with one `spe-apply up`.
+# The runbook, the helper scripts and the system prompt are not copied anywhere:
+# the containers mount them from the clone. Runs right after role tls (the CA)
+# and starts the build in the background (a 5.7 GB base image); up.yml joins it.
 - name: Frontend directory
   ansible.builtin.file:
     path: "{{ spe_frontend_dir }}"
@@ -15,7 +16,7 @@
     group: "{{ spe_ssh_user }}"
     mode: "0750"
 
-- name: Frontend selection and images (.env, read by docker compose and spe-apply)
+- name: Frontend selection, images and ports (.env, read by docker compose and spe-apply)
   ansible.builtin.template:
     src: frontend.env.j2
     dest: "{{ spe_frontend_dir }}/.env"

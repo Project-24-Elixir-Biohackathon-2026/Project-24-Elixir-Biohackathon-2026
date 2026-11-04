@@ -17,7 +17,7 @@ Ansible playbooks in `../ansible`; the Coder template only wraps them.
         │ https://sperange.<zone>/           (landing page, static)
         │ https://sperange.<zone>/threats/   (threat catalog, static)
         │ https://sperange.<zone>/workspaces (dashboard, Coder)
-        │ https://openwebui--main--<ws>--<user>.sperange.<zone>   (app; chat--… for agui)
+        │ https://openwebui--main--<ws>--<user>.sperange.<zone>   (app; chat--… the AG-UI chat)
         ▼
  ┌──────────────── portal VM (public FIP) ────────────────────────────┐
  │ Caddy :443 (TLS, Charité PKI) ──▶ platform/site/dist (/, /threats/) │
@@ -63,7 +63,7 @@ workspace was built from, and the chat frontend runs from it:
 | Change | What it needs |
 |---|---|
 | the SPE agent's runbook or a helper script (`platform/ansible/roles/sandbox/files/agent/`, mounted at `/opt/agent` in the sandbox) | nothing: live on the next message |
-| the SPE agent's system prompt (`platform/ansible/roles/sandbox/files/system_prompt.txt`, AG-UI frontend) | nothing: read on every run |
+| the SPE agent's system prompt (`platform/ansible/roles/sandbox/files/system_prompt.txt`, the AG-UI agent) | nothing: read on every run |
 | the agent's Python source (`platform/agui/pydantic-ai-agent/src/`) | nothing: the agent restarts itself on a saved file |
 | the chat UI's source, with `spe_agui_ui_dev: true` (compose profile `ui-dev`) | nothing: hot reload. The first start installs the packages from the npm registry, about two minutes |
 | the compose file (`platform/instance/compose.yml`) or `~/spe-frontend/agent.yaml` | `spe-apply up` |
@@ -98,9 +98,8 @@ what is pushed survives.
 
 ### Adding a testbed
 
-There are two presets, one per frontend, both with all samples, all tiers and
-every canary type: `openwebui.yml` (default) and `agui.yml`. To add one, copy
-an existing file in `platform/coder/template/testbeds/`, change it, open a PR.
+There is one preset, `all-data.yml`: all samples, all tiers, every canary type.
+To add one, copy it in `platform/coder/template/testbeds/`, change it, open a PR.
 After merge the portal picks it up within 5 minutes (see "Template sync").
 
 ```yaml
@@ -113,7 +112,6 @@ parameters:                           # keys = parameter names in main.tf
   workflows: [wes-drs-smoke]
   canaries: [drs_metadata, trs_descriptions, workflow_comments, service_info]
   flavor: de.NBI mini
-  frontend: openwebui                 # or agui
   smoke_test: false
 ```
 
@@ -156,9 +154,10 @@ Runs are saved to `/data-share/runs/<UTC time>_<instance>/`:
 | `run.yml` | Participant, parameters, seed, versions |
 | `canaries.json`, `canaries.manifest.sha256` | The canary record of this instance |
 | `openwebui-export.json` | Complete raw export (re-render with `write_run.py`) |
-| `chats/NN-<title>.md`, `.json` (agui) | Each AG-UI session, exported as an Open WebUI chat: every branch in `.json`, the active one readable, with run statuses, the content the client sent that was not used, and compactions |
-| `agui-journals/` (agui) | Every session's journal as written, hidden and deleted included |
-| `agent-runs.jsonl` (agui) | The agent's run log: every run, tool calls and results |
+| `agui/` | The AG-UI chat's part of the run: `index.md` (every session, linked from the top `index.md`), and the three rows below |
+| `agui/chats/NN-<title>.md`, `.json` | Each AG-UI session, exported as an Open WebUI chat: every branch in `.json`, the active one readable, with run statuses, the content the client sent that was not used, and compactions |
+| `agui/agui-journals/` | Every session's journal as written, hidden and deleted included |
+| `agui/agent-runs.jsonl` | The agent's run log: every run, tool calls and results |
 
 ## Deploying the portal on a new VM
 
@@ -413,7 +412,7 @@ forgotten instances from eating quota.
 | Logs | `journalctl -u coder`, `journalctl -u caddy`, build logs in the UI (Workspace → Builds) |
 | List instances | Coder dashboard (all users: Workspaces, filter off); OpenStack: servers named `cw-<user>-<workspace>-api` |
 | Save a run without stopping | on the VM: `ansible-playbook playbooks/archive.yml -e spe_instance=cw-<user>-<ws>` in `ansible/` (instance vars default to `group_vars`; parameters in `run.yml` are then the defaults, not the workspace's) |
-| Re-render an old run | `platform/ansible/roles/run_archive/files/write_run.py <run>/openwebui-export.json <run> "Run report"`; AG-UI the same, with the bundle `write_run.py` keeps in the run directory (`openwebui-export.json`) |
+| Re-render an old run | first the AG-UI part, `platform/ansible/roles/run_archive/files/write_run.py <run>/agui/openwebui-export.json <run>/agui "Run report"`, then Open WebUI's, `… <run>/openwebui-export.json <run> "Run report"` (it links `agui/` when that is there) |
 | Update Coder | re-run the install script, `sudo systemctl restart coder` |
 | Back up Coder | stop Coder, archive `~ubuntu/.config/coderv2/` (built-in PostgreSQL) |
 

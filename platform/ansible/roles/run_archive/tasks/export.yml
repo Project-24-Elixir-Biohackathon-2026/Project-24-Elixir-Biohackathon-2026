@@ -7,7 +7,7 @@
 # (spe_archive_final, destroy.yml): chat-ui, then the agent, stopped first so that no
 # run is in progress or unjournaled; they are not started again.
 - name: Export OpenWebUI
-  when: spe_frontend == 'openwebui'
+  when: "'openwebui' in spe_frontends"
   block:
     - name: Exporter script
       ansible.builtin.copy:
@@ -42,7 +42,7 @@
       loop: [/tmp/spe-export-openwebui.py, /tmp/spe-openwebui-export.json]
 
 - name: Export the AG-UI journals and the agent's run log
-  when: spe_frontend == 'agui'
+  when: "'agui' in spe_frontends"
   vars:
     agui_compose: [docker, compose, -p, spe-frontend, -f, "{{ spe_frontend_dir }}/docker-compose.yml"]
     agui_final: "{{ spe_archive_final | bool }}"

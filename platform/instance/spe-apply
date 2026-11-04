@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Apply the repository clone to this SPE instance's chat frontend.
 #
-#   spe-apply              build what the active frontend needs, then up
+#   spe-apply              build what the active frontends need, then up
 #   spe-apply build [c..]  build images: agent, chat-ui, sandbox (default: what the
-#                          active frontend needs; chat-ui is skipped in ui-dev mode)
+#                          active frontends need; chat-ui is skipped in ui-dev mode)
 #   spe-apply up           (re)create the containers from the compose file and wait
 #                          until they answer
 #   spe-apply status       containers and health
@@ -29,7 +29,8 @@
 # template.
 #
 # Configuration: SPE_FRONTEND_DIR (default /home/ubuntu/spe-frontend) holds the
-# .env written by Ansible (SPE_REPO_DIR, COMPOSE_PROFILES, image names, ports),
+# .env written by Ansible (SPE_REPO_DIR, COMPOSE_PROFILES: the frontends that run,
+# both by default, with the shared sandbox; image names, ports),
 # the secret env files and agent.yaml, and docker-compose.yml, a link to
 # platform/instance/compose.yml in the clone. Secrets never appear in the output.
 set -euo pipefail
@@ -88,8 +89,8 @@ wait_http() {  # url, tries
 
 up() {
   echo "== up (profiles: $COMPOSE_PROFILES)"
-  # Containers of services outside the active profiles (the other frontend, or the
-  # other chat UI mode) are not orphans to compose and would keep their ports: remove them.
+  # Containers of services outside the active profiles (a frontend switched off, or
+  # the other chat UI mode) are not orphans to compose and would keep their ports: remove them.
   local active inactive
   active=$("${compose[@]}" config --services)
   inactive=$(COMPOSE_PROFILES='*' "${compose[@]}" config --services | grep -vxF -f <(echo "$active") || true)

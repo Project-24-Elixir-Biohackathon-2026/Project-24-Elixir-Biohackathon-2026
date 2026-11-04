@@ -1,6 +1,6 @@
 ## 9. Checks (role end and `verify.yml`)
 
-`verify.yml` runs these when `spe_frontend == 'agui'` (from the instance
+`verify.yml` runs these when `'agui' in spe_frontends` (from the instance
 file passed with `-e`, as for every other parameter):
 
 1. `GET 127.0.0.1:{{ spe_agui_agent_port }}/healthz` → 200.

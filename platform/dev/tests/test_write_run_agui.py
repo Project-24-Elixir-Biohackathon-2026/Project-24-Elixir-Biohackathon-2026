@@ -322,3 +322,50 @@ def test_write_run_still_renders_an_openwebui_bundle(tmp_path):
     assert proc.stdout.strip() == "1 chats, report filled in"
     assert "| [First](chats/01-first.md) | exfil |  | 1 | 2025-10-29 10:00 UTC |" in (out / "index.md").read_text()
     assert (out / "report.md").read_text() == "found it"
+
+
+def test_both_frontends_share_one_run_directory(tmp_path):
+    """tasks/write.yml renders the AG-UI bundle into <run>/agui/ first, then Open WebUI's into <run>: neither
+    replaces the other's chats/ or index.md, and the top index links agui/index.md (clarification 23)."""
+    src, out = prepare(tmp_path)
+    run_dir = tmp_path / "2026-11-04T100000Z_cw-theo-both"
+    agui = run_dir / "agui"
+    run_dir.mkdir()
+    out.rename(agui)
+    run(src, agui)
+    owui = tmp_path / "owui.json"
+    owui.write_text(json.dumps({
+        "exported_at": 1761732000, "tags": [], "notes": [],
+        "chats": [{"title": "First", "created_at": 1761732000, "updated_at": 1761732000, "meta": {"tags": []},
+                   "chat": {"messages": [{"role": "user", "content": "hi", "timestamp": 1761732000}]}}],
+    }))
+    run(owui, run_dir)
+    top = (run_dir / "index.md").read_text()
+    assert "- AG-UI chat sessions: [agui/](agui/index.md)" in top.splitlines()
+    assert sorted(p.name for p in (run_dir / "chats").iterdir()) == ["01-first.json", "01-first.md"]
+    assert {p.name for p in (agui / "chats").iterdir()} >= {NAMES[TOOLS] + ".md", NAMES[TOOLS] + ".json"}
+    sub = (agui / "index.md").read_text().splitlines()
+    assert sub[0] == "# Run 2026-11-04T100000Z_cw-theo-both, AG-UI chat"
+    assert "- Parameters and canary record: [run.yml](../run.yml), ../canaries.json" in sub
+    assert "- Session journals as stored (hidden and deleted included): [agui-journals/](agui-journals/)" in sub
+
+
+def test_openwebui_index_has_no_agui_link_without_agui(tmp_path):
+    bundle = tmp_path / "bundle.json"
+    bundle.write_text(json.dumps({"exported_at": 1761732000, "tags": [], "notes": [], "chats": []}))
+    run(bundle, tmp_path / "run")
+    assert "agui/" not in (tmp_path / "run" / "index.md").read_text()
+
+
+def test_an_agui_bundle_does_not_replace_an_openwebui_export(tmp_path):
+    """The guard in main(): a re-render that points the AG-UI bundle at the run directory itself stops."""
+    src, _ = prepare(tmp_path)
+    out = tmp_path / "owui-run"
+    owui = tmp_path / "owui.json"
+    owui.write_text(json.dumps({"exported_at": 1761732000, "tags": [], "notes": [], "chats": []}))
+    run(owui, out)
+    kept = (out / "openwebui-export.json").read_bytes()
+    proc = subprocess.run([sys.executable, str(WRITE_RUN), str(src), str(out), "Run report"],
+                          capture_output=True, text=True)
+    assert proc.returncode != 0 and "renders into <run>/agui" in proc.stderr
+    assert (out / "openwebui-export.json").read_bytes() == kept

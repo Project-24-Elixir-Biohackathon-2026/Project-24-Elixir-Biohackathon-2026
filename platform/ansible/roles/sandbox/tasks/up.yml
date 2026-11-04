@@ -1,0 +1,42 @@
+---
+# Starts the frontend containers: the sandbox and every frontend in spe_frontends,
+# in one `spe-apply up` (the step the workspace's Rebuild button ends with). Runs
+# after the frontend roles wrote their configuration (openwebui and agui,
+# config.yml) and joins the image builds and pulls started earlier. The
+# frontend roles' main.yml then set up what needs a running frontend.
+- name: Sandbox env file (the API key and the three GA4GH bases)
+  ansible.builtin.template:
+    src: terminal.env.j2
+    dest: "{{ spe_frontend_dir }}/terminal.env"
+    owner: "{{ spe_ssh_user }}"
+    group: "{{ spe_ssh_user }}"
+    mode: "0600"
+  no_log: true
+
+- name: Sandbox image built (started by main.yml)
+  ansible.builtin.import_tasks: wait.yml
+
+- name: Images pulled (started by role prefetch)
+  ansible.builtin.import_role:
+    name: prefetch
+    tasks_from: wait
+
+- name: Agent and chat UI images built (started by role agui, build.yml)
+  ansible.builtin.async_status:
+    jid: "{{ agui_build_job.ansible_job_id }}"
+  register: agui_builds
+  until: agui_builds.finished
+  retries: 720
+  delay: 5
+  when: "'agui' in spe_frontends"
+
+- name: Validate compose file
+  ansible.builtin.command: docker compose -f docker-compose.yml config --quiet
+  args:
+    chdir: "{{ spe_frontend_dir }}"
+  changed_when: false
+
+- name: Frontend containers up (spe-apply up)
+  ansible.builtin.command: spe-apply up
+  register: frontend_apply
+  changed_when: "'Created' in frontend_apply.stdout or 'Recreated' in frontend_apply.stdout or 'Started' in frontend_apply.stdout"

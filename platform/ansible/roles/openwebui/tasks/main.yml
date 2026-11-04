@@ -1,57 +1,9 @@
 ---
-# Deploy the OpenWebUI pentest frontend inside the SPE VM.
-# OpenWebUI (chat) + open-terminal (tool server holding the SPE CA and the
-# WES/DRS/TRS bases) run in their own compose project. Bound to 127.0.0.1;
-# operators reach it over an SSH tunnel. Runs after the workflow stack so the
-# three APIs already exist; the sandbox image build and the OpenWebUI image
-# pull were started earlier in the background and are joined here.
-- name: de.NBI LLM API key present
-  ansible.builtin.assert:
-    that:
-      - (spe_denbi_api_key | default('', true)) | length > 0
-    fail_msg: >-
-      spe_denbi_api_key is empty. Export the key on the controller before
-      running, e.g.
-      export DENBI_LLM_API_KEY=$(grep '^OPENAI_API_KEY=' ~/agent-stack/webui.env | cut -d= -f2-)
-      or pass -e spe_denbi_api_key=... (do not commit it to the repo).
-
-- name: Sandbox image built (started by role sandbox)
-  ansible.builtin.import_role:
-    name: sandbox
-    tasks_from: wait
-
-- name: Images pulled (started by role prefetch)
-  ansible.builtin.import_role:
-    name: prefetch
-    tasks_from: wait
-
-- name: Secret-bearing env files
-  ansible.builtin.template:
-    src: "{{ item.src }}"
-    dest: "{{ spe_frontend_dir }}/{{ item.dest }}"
-    owner: "{{ spe_ssh_user }}"
-    group: "{{ spe_ssh_user }}"
-    mode: "0600"
-  loop:
-    - { src: webui.env.j2, dest: webui.env }
-    - { src: terminal.env.j2, dest: terminal.env }
-  loop_control:
-    label: "{{ item.dest }}"
-  no_log: true
-
-- name: Validate compose file
-  ansible.builtin.command: docker compose -f docker-compose.yml config --quiet
-  args:
-    chdir: "{{ spe_frontend_dir }}"
-  changed_when: false
-
-# The compose file is the clone's platform/instance/compose.yml (role sandbox linked
-# it); same project as the agui role, so --remove-orphans replaces its containers.
-- name: Frontend stack up (spe-apply up)
-  ansible.builtin.command: spe-apply up
-  register: webui_apply
-  changed_when: "'Created' in webui_apply.stdout or 'Recreated' in webui_apply.stdout or 'Started' in webui_apply.stdout"
-
+# Set up the Open WebUI frontend inside the SPE VM. Open WebUI (chat) drives the
+# shared sandbox (role sandbox) as its terminal server; it is bound to 127.0.0.1
+# and reached through the Coder portal or an SSH tunnel. config.yml wrote its env
+# file and role sandbox (up.yml) started the containers; this part waits for
+# Open WebUI and attaches the system prompt, the terminal and the run report.
 - name: Wait for OpenWebUI to answer
   ansible.builtin.uri:
     url: "http://127.0.0.1:{{ spe_webui_local_port }}/health"
@@ -96,7 +48,7 @@
   changed_when: false
   no_log: true
 
-- name: Attach the agent system prompt to the model (applies to every chat)
+- name: Attach the agent system prompt and the terminal to the model (apply to every chat)
   ansible.builtin.uri:
     url: "http://127.0.0.1:{{ spe_webui_local_port }}/api/v1/models/import"
     method: POST
@@ -108,7 +60,8 @@
         - id: "{{ spe_webui_model_id }}"
           base_model_id: null
           name: "{{ spe_webui_model_id }}"
-          meta: {}
+          meta:
+            terminalId: spe-open-terminal   # the terminal server from TERMINAL_SERVER_CONNECTIONS: on in every new chat
           params:
             system: "{{ lookup('ansible.builtin.file', role_path ~ '/../sandbox/files/system_prompt.txt') }}"
           is_active: true

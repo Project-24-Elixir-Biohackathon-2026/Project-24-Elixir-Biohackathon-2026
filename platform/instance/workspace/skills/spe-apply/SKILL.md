@@ -8,7 +8,7 @@ description: Apply changes in the repository clone to this SPE instance - the ch
 Run on this VM, as the workspace user:
 
 ```bash
-spe-apply            # build what the active frontend needs, then up; the usual choice
+spe-apply            # build what the active frontends need, then up; the usual choice
 spe-apply up         # only recreate containers: compose file or agent.yaml changed
 spe-apply build agent    # one image (agent, chat-ui, sandbox); then `spe-apply up`
 spe-apply status     # containers and the agent's health
