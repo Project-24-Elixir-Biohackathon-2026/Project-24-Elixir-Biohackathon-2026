@@ -21,8 +21,9 @@ start reads this section; keep it short.
   `files/agent/AGENTS.md`, images `:local` via `.env`); slice 5:562 names TM-001 "sensitive data access" (now
   `-exposure`). Rewrite those tasks with a ruling in the plan — from #35's methodology review (finding 1, 6); not done
   in #35 because the ladder's PR #3 is open on that plan; due: before slice 2.
-- AG-UI via Coder, before any upstream PR (`upstream/main`, with its clone-on-VM layout, merged in #35): (1) redeploy
-  `denbi-agui-01` from `main` and re-run the all-features check; (2) test end to end in a workspace from the
+- AG-UI via Coder, before any upstream PR (`upstream/main`, with its clone-on-VM layout, merged in #35): (1) done
+  (#36, 2026-11-04: `denbi-agui-01` on the clone-on-VM layout from `main`, all-features check 17/17, live archive
+  agrees; needed #37); (2) test end to end in a workspace from the
   portal's main template: `~/sperange` fetches our fork's branch, `spe-apply all`, then in the chat: several sessions open at once, switching between them (also
   mid-run), new / rename / delete, reload and reopen, automatic compaction, `/compact` with and without a focus,
   stop mid-run and send again at once (no "Thread already running"), the live archive; (3) the archive on stop runs from the portal's upstream checkout, so test it with
