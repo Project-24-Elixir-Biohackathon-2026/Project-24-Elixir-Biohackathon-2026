@@ -18,7 +18,7 @@ entry-points:
   web-content: A page the agent, or a command in its sandbox, fetches from the internet
   tool-output: What the agent's tools return (API responses, run logs, files it reads)
   mcp-server: Tool descriptions and results from a tool server the user connected (MCP or OpenAPI)
-  client-history: The conversation history the chat client sends with each run (AG-UI, chat completions)
+  client-history: The conversation history the chat client sends with each run (AG-UI, chat completions), and the rest of that run input (tools, state, context)
 
 assets:
   user-records: Personal or account data of end users
