@@ -58,6 +58,8 @@ cd .claude/worktrees/contrib-<slug>
 
 Upstream has neither `.methodology/` nor `.claude/settings.json`, so a session started in this worktree runs no
 hooks (no context budget): work on it from a session started in the main checkout.
+`next-session.sh` cannot chain such a unit's sessions from either place; hand off on `main` and have the user
+start the next session (`docs/knowledge/contrib-unit-chaining.md`).
 
 Never open an upstream PR from `main` or from a `change/`, `spec/`, `plan/` or `impl/` branch: they carry the
 fork-only files. Upstream once merged our methodology adoption PR that way (kraatz #8) and had to revert it
