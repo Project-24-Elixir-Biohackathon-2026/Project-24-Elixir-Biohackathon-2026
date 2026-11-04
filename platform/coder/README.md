@@ -412,7 +412,7 @@ forgotten instances from eating quota.
 | Logs | `journalctl -u coder`, `journalctl -u caddy`, build logs in the UI (Workspace → Builds) |
 | List instances | Coder dashboard (all users: Workspaces, filter off); OpenStack: servers named `cw-<user>-<workspace>-api` |
 | Save a run without stopping | on the VM: `ansible-playbook playbooks/archive.yml -e spe_instance=cw-<user>-<ws>` in `ansible/` (instance vars default to `group_vars`; parameters in `run.yml` are then the defaults, not the workspace's) |
-| Re-render an old run | `platform/ansible/roles/run_archive/files/write_run.py <run>/openwebui-export.json <run> "Run report"`; AG-UI the same, with the bundle `write_run.py` keeps in the run directory (`openwebui-export.json`) |
+| Re-render an old run | first the AG-UI part, `platform/ansible/roles/run_archive/files/write_run.py <run>/agui/openwebui-export.json <run>/agui "Run report"`, then Open WebUI's, `… <run>/openwebui-export.json <run> "Run report"` (it links `agui/` when that is there) |
 | Update Coder | re-run the install script, `sudo systemctl restart coder` |
 | Back up Coder | stop Coder, archive `~ubuntu/.config/coderv2/` (built-in PostgreSQL) |
 

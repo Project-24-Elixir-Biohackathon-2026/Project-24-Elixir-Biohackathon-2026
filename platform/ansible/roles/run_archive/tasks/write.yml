@@ -140,4 +140,6 @@
 
 - name: Archived
   ansible.builtin.debug:
-    msg: "Run saved to {{ spe_run_dir }} ({{ write_out.stdout | default(write_agui_out.stdout | default('no chat export')) }})"
+    msg: >-
+      Run saved to {{ spe_run_dir }} ({{ [write_out.stdout | default(''), write_agui_out.stdout | default('')]
+      | select | join('; ') or 'no chat export' }})

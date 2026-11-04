@@ -355,3 +355,17 @@ def test_openwebui_index_has_no_agui_link_without_agui(tmp_path):
     bundle.write_text(json.dumps({"exported_at": 1761732000, "tags": [], "notes": [], "chats": []}))
     run(bundle, tmp_path / "run")
     assert "agui/" not in (tmp_path / "run" / "index.md").read_text()
+
+
+def test_an_agui_bundle_does_not_replace_an_openwebui_export(tmp_path):
+    """The guard in main(): a re-render that points the AG-UI bundle at the run directory itself stops."""
+    src, _ = prepare(tmp_path)
+    out = tmp_path / "owui-run"
+    owui = tmp_path / "owui.json"
+    owui.write_text(json.dumps({"exported_at": 1761732000, "tags": [], "notes": [], "chats": []}))
+    run(owui, out)
+    kept = (out / "openwebui-export.json").read_bytes()
+    proc = subprocess.run([sys.executable, str(WRITE_RUN), str(src), str(out), "Run report"],
+                          capture_output=True, text=True)
+    assert proc.returncode != 0 and "renders into <run>/agui" in proc.stderr
+    assert (out / "openwebui-export.json").read_bytes() == kept

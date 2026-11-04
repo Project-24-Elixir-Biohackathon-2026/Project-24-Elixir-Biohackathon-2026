@@ -5,7 +5,7 @@
 
 Can be re-run on an archived run to re-render it with a newer version of
 this script: write_run.py <run dir>/openwebui-export.json <run dir> "Run report",
-and for the AG-UI part, <run dir>/agui/openwebui-export.json <run dir>/agui. Render
+and for the AG-UI part, <run dir>/agui/openwebui-export.json <run dir>/agui "Run report". Render
 agui/ first: Open WebUI's index.md links it when it is there.
 
 Writes report.md (the participant's "Run report" note), chats/NN-<title>.md
@@ -407,6 +407,12 @@ def main(argv):
     tag_names = {t["id"]: t["name"] for t in b.get("tags") or []}
     os.makedirs(run_dir, exist_ok=True)
     raw = os.path.join(run_dir, "openwebui-export.json")
+    if os.path.isfile(raw) and not os.path.samefile(bundle_path, raw):
+        with open(raw) as f:
+            kept = json.load(f)
+        if ("spe_archive_mode" in kept) != ("spe_archive_mode" in b):
+            # An AG-UI bundle into Open WebUI's run directory (or the reverse) would replace its only raw export.
+            sys.exit(f"write_run.py: {raw} is the other frontend's export; the AG-UI part renders into <run>/agui")
     if not (os.path.exists(raw) and os.path.samefile(bundle_path, raw)):  # re-rendering in place
         shutil.copy(bundle_path, raw)
 
