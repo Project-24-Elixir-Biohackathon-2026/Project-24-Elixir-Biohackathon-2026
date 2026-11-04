@@ -52,6 +52,15 @@
       (docker compose -p spe-frontend logs chat-ui agent), then run destroy.yml again; a service
       already stopped is not checked again.
   block:
+    - name: Not the ui-dev profile (its chat-ui-dev has no exporter yet)
+      ansible.builtin.assert:
+        that: not spe_agui_ui_dev | bool
+        fail_msg: >-
+          The AG-UI archive needs the built chat-ui; this instance runs the ui-dev profile
+          (spe_agui_ui_dev). Switch to the built UI and spe-apply first, or pass
+          -e spe_archive_skip=true to destroy without archiving the chats.
+        quiet: true
+
     # slice 3's: unchanged.
     - name: The chat-ui container exists (stopping a missing one would succeed silently)
       ansible.builtin.command:

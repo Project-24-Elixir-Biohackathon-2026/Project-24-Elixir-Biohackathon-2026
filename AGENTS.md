@@ -236,7 +236,8 @@ Private instance files and `platform/ansible/output/` exist only in the main che
 not in a worktree. An instance runs the chat frontend from a clone of this repository
 on its VM (`~/sperange`), checked out at `spe_repo_ref`, by default the commit the
 controller's checkout is at, so that commit must be pushed. `spe_repo_url` defaults to
-upstream (`kraatz`), which lacks our commits: our instance files set it to our fork. To
+upstream (`kraatz`), which lacks our commits: every instance file used from our checkout sets
+`spe_repo_url: https://github.com/thodkatz/elixir-biohackathon-2026-test.git` (the `*.example.yml` files do not). To
 deploy a topic branch before it is merged, push it and run Ansible from the main checkout
 with `-e spe_repo_ref=<branch>`, and with `-i <worktree>/platform/ansible/inventory/hosts.yml`
 if the branch changes `group_vars` (`docs/knowledge/agui-worktree-deploy-inventory.md`).

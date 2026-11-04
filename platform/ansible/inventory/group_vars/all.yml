@@ -165,6 +165,12 @@ spe_local_vars:
   - spe_agent_model
   - spe_agent_base_url
   - spe_agent_allowed_models
+  - spe_agent_total_tokens_limit
+  - spe_agent_compaction_enabled
+  - spe_agent_context_window_tokens
+  - spe_agent_compaction_trigger_ratio
+  - spe_agent_compaction_summary_max_tokens
+  - spe_agent_title_generation
   - spe_webui_auth
 spe_local_vars_extra: []     # instance files add their own overrides here
 spe_frontend_webui_image: ghcr.io/open-webui/open-webui:v0.11.3

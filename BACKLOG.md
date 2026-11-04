@@ -52,7 +52,8 @@ start reads this section; keep it short.
 <!-- - <item> — from <PR #n / review thread / spec Inputs for>, waits because <reason>. -->
 
 - The AG-UI `ui-dev` profile (`spe_agui_ui_dev: true`, `chat-ui-dev`, upstream's hot-reload chat) has no archive:
-  `run_archive`'s export copies and stops `chat-ui` and runs the exporter from its image; `checks.yml` skips the
+  `run_archive`'s export copies and stops `chat-ui` and runs the exporter from its image, so it refuses `ui-dev`,
+  and `destroy.yml` there needs `-e spe_archive_skip=true` (the chats are lost); `checks.yml` skips the
   hardening check there and scans `chat-ui-dev`'s sessions. From the 2026-11-04 upstream merge (#35); waits because
   no workspace runs `ui-dev` for a recorded run yet.
 - AG-UI archive: the `## Compacted` line "From here the model saw this summary instead of the messages above." omits that the model also kept the latest request from before the marker (`compaction.py`, `_head`); reword it in `write_run.py` and `test_write_run_agui.py` with a clarification to the compaction spec (decision text, §archive) — from PR #18's local review, waits because the line is the approved spec's wording and changing it needs a spec clarification.
