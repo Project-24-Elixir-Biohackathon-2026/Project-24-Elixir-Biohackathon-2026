@@ -21,7 +21,7 @@ its own, `archive.yml` is live. `destroy.yml` checks its own preconditions (the 
 hand-off, and on an existing VM `spe_confirm_reset`) before that archive, so a destroy it would refuse never
 leaves the services stopped.
 
-`tasks/export.yml`, the block for `spe_frontend == 'agui'`:
+`tasks/export.yml`, the block for `'agui' in spe_frontends` (after Open WebUI's, when that is on too):
 
 1. **Barrier, final archive only.** `docker compose -p spe-frontend stop -t 30 chat-ui`, then `… stop -t 30
    agent`. On `SIGTERM` the chat UI refuses new runs, stops every run in progress (each ends `cancelled`),
@@ -88,21 +88,25 @@ Fields starting with `spe_` are ours; Open WebUI itself never writes them, so it
 
 ### Write
 
-`tasks/write.yml` unpacks the bundle and runs `files/write_run.py` on it, as for an Open WebUI run:
+`tasks/write.yml` unpacks the bundle and runs `files/write_run.py` on it, as for an Open WebUI run, into
+`agui/` of the run directory, so that Open WebUI's `chats/` and `index.md` beside it stay its own (clarification
+23). The run's top `index.md` (Open WebUI's, or an overview when Open WebUI did not run) links `agui/index.md`:
 
 ```
 <run dir>/
-  run.yml                     as for every run
-  index.md                    sessions table `# | Session | Tags | Created | Runs | Compactions | State`; says
-                              that the AG-UI frontend has no run report, and whether the archive was live
-                              (incomplete runs may still have been going) or final
-  openwebui-export.json       the bundle, copied as for Open WebUI; an in-place re-render reads it back
-  chats/NN-<slug>.md          the active branch along currentId: user and assistant text, each tool call with
-                              fenced arguments and result, plus the three additions below; then every message on
-                              other branches, each naming the message it follows (clarification 8)
-  chats/NN-<slug>.json        the exported chat
-  agui-journals/<uuid>.jsonl  the raw journals, untouched
-  agent-runs.jsonl            the agent's run log, when a run reached it
+  run.yml                          as for every run
+  index.md                         Open WebUI's, or an overview when it did not run; links agui/index.md
+  agui/index.md                    sessions table `# | Session | Tags | Created | Runs | Compactions | State`;
+                                   says that the AG-UI frontend has no run report, and whether the archive
+                                   was live (incomplete runs may still have been going) or final
+  agui/openwebui-export.json       the bundle, copied as for Open WebUI; an in-place re-render reads it back
+  agui/chats/NN-<slug>.md          the active branch along currentId: user and assistant text, each tool call
+                                   with fenced arguments and result, plus the three additions below; then
+                                   every message on other branches, each naming the message it follows
+                                   (clarification 8)
+  agui/chats/NN-<slug>.json        the exported chat
+  agui/agui-journals/<uuid>.jsonl  the raw journals, untouched
+  agui/agent-runs.jsonl            the agent's run log, when a run reached it
 ```
 
 `write_run.py` also renders the three things only the AG-UI record has (decision 16): a run's status when it

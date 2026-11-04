@@ -79,7 +79,7 @@ host:
 ### Variables (added to `group_vars/all.yml`)
 
 ```yaml
-spe_frontend: openwebui              # unchanged default; set agui to use this
+spe_frontends: [openwebui, agui]     # both by default, one shared sandbox (clarification 23)
 spe_agui_ui_port: 3000               # 127.0.0.1 on the VM
 spe_agui_agent_port: 8100            # 127.0.0.1 on the VM
 spe_agui_smoke: false                # true: one LLM-backed AG-UI run in the checks (paid; off by default)

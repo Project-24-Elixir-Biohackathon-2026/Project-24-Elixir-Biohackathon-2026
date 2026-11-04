@@ -15,7 +15,7 @@ directory is that of the single file it replaced: `git log -- docs/specs/2026-10
 Context and reasoning: the biohackathon knowledge repository, records 0001–0005
 (0005 is the playground this is sub-project 1 of).
 
-**Who reads it:** whoever changes the AG-UI stack (`spe_frontend: agui`): the agent
+**Who reads it:** whoever changes the AG-UI stack (`agui` in `spe_frontends`): the agent
 (`platform/agui/pydantic-ai-agent/`), the chat (`platform/agui/copilotkit-chat/`, "`chat-ui`"), the `agui` and
 `run_archive` Ansible roles; and whoever analyses archived AG-UI runs and needs to know what the model was sent
 and what the participant tried to send.
@@ -132,7 +132,7 @@ can still change decision 33 (a "Compaction requested" line instead).
 
 | File | What it contains | Read when |
 |---|---|---|
-| [`01-goal.md`](01-goal.md) | §1 Goal: what an instance runs with `spe_frontend: agui`, and what success means | you need the purpose |
+| [`01-goal.md`](01-goal.md) | §1 Goal: what an instance runs with `agui` in `spe_frontends`, and what success means | you need the purpose |
 | [`02-non-goals.md`](02-non-goals.md) | §2 Non-goals | you wonder whether something is in scope |
 | [`03-architecture.md`](03-architecture.md) | §3 Architecture: the three containers, the key boundary, why the agent needs a bearer key | you change what a container holds or who talks to whom |
 | [`04-layout.md`](04-layout.md) | §4 Layout in the repository (as of 2026-10-15) | you look for where a piece lived |

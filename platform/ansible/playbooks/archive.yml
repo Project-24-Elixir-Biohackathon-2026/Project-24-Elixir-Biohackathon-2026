@@ -88,7 +88,7 @@
       ansible.builtin.include_role:
         name: run_archive
         tasks_from: export
-      when: spe_frontend in ['openwebui', 'agui']
+      when: spe_frontends | length > 0
 
 - name: Write the run directory
   hosts: localhost

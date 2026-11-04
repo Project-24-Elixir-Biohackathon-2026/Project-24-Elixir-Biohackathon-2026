@@ -1,0 +1,55 @@
+---
+# The AG-UI frontend's configuration: agent.yaml and the secret env files of the
+# agent (the only holder of the LLM key) and the chat UI. Written before role
+# sandbox (up.yml) joins the image builds (build.yml) and starts the containers.
+- name: Agent configuration (serialised, not interpolated)
+  ansible.builtin.set_fact:
+    agui_agent_config:
+      model: >-
+        {{ {'provider': spe_agent_model_provider, 'name': spe_agent_model}
+           | combine({'base_url': spe_agent_base_url} if spe_agent_model_provider == 'openai_compatible' else {})
+           | combine({'allowed_models': spe_agent_allowed_models} if spe_agent_allowed_models | length > 0 else {}) }}
+      prompt:
+        # roles/sandbox/files of the clone, mounted as a directory: edits are read per run.
+        file: /etc/spe-agent/sandbox/system_prompt.txt
+        include_sandbox_prompt: "{{ spe_agent_include_sandbox_prompt | bool }}"
+      tools:
+        surface: "{{ spe_agent_tool_surface }}"
+        sandbox_url: http://sandbox:8000
+        sandbox_operations: "{{ spe_agent_sandbox_operations }}"
+        max_output_bytes: "{{ spe_agent_max_output_bytes | int }}"
+      limits: >-
+        {{ {'request_limit': spe_agent_request_limit | int, 'tool_calls_limit': spe_agent_tool_calls_limit | int}
+           | combine({'total_tokens_limit': spe_agent_total_tokens_limit | int}
+                     if spe_agent_total_tokens_limit is not none else {}) }}
+      compaction: >-
+        {{ {'enabled': spe_agent_compaction_enabled | bool,
+            'context_window_tokens': (spe_agent_context_window_tokens | int)
+                                     if spe_agent_context_window_tokens is not none else none,
+            'trigger_ratio': spe_agent_compaction_trigger_ratio | float,
+            'summary_max_tokens': spe_agent_compaction_summary_max_tokens | int} }}
+      title: >-
+        {{ {'enabled': spe_agent_title_generation | bool} }}
+
+- name: agent.yaml
+  ansible.builtin.copy:
+    content: "# Managed by spe-ansible (role: agui).\n{{ agui_agent_config | to_nice_yaml(sort_keys=false) }}"
+    dest: "{{ spe_frontend_dir }}/agent.yaml"
+    owner: "{{ spe_ssh_user }}"
+    group: "{{ spe_ssh_user }}"
+    mode: "0644"
+
+- name: Secret-bearing env files
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ spe_frontend_dir }}/{{ item.dest }}"
+    owner: "{{ spe_ssh_user }}"
+    group: "{{ spe_ssh_user }}"
+    mode: "0600"
+  loop:
+    - { src: agent.env.j2, dest: agent.env }
+    - { src: chat-ui.env.j2, dest: chat-ui.env }
+  loop_control:
+    label: "{{ item.dest }}"
+  no_log: true
+

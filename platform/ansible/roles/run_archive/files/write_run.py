@@ -4,7 +4,9 @@
     write_run.py <bundle.json> <run dir> <report note title>
 
 Can be re-run on an archived run to re-render it with a newer version of
-this script: write_run.py <run dir>/openwebui-export.json <run dir> "Run report".
+this script: write_run.py <run dir>/openwebui-export.json <run dir> "Run report",
+and for the AG-UI part, <run dir>/agui/openwebui-export.json <run dir>/agui. Render
+agui/ first: Open WebUI's index.md links it when it is there.
 
 Writes report.md (the participant's "Run report" note), chats/NN-<title>.md
 and .json (active branch of each chat, with tags), notes/ for any other
@@ -367,13 +369,18 @@ def write_agui(b, run_dir):
 
     mode = b.get("spe_archive_mode")
     log = os.path.join(run_dir, "agent-runs.jsonl")
+    # The archive renders into <run>/agui/, beside Open WebUI's part; run.yml is then one level up.
+    name = os.path.basename(run_dir.rstrip("/"))
+    up = "../" if name == "agui" else ""
+    if up:
+        name = os.path.basename(os.path.dirname(run_dir.rstrip("/"))) + ", AG-UI chat"
     index = [
-        f"# Run {os.path.basename(run_dir.rstrip('/'))}",
+        f"# Run {name}",
         "",
         "- Frontend: agui (CopilotKit chat). The AG-UI frontend has no run report.",
         f"- Archive: {ARCHIVE_MODES.get(mode) or md_inline(mode)}",
         f"- Exported: {when(b.get('exported_at'))}",
-        "- Parameters and canary record: [run.yml](run.yml), canaries.json",
+        f"- Parameters and canary record: [run.yml]({up}run.yml), {up}canaries.json",
     ]
     if os.path.isdir(os.path.join(run_dir, "agui-journals")):
         index.append("- Session journals as stored (hidden and deleted included): [agui-journals/](agui-journals/)")
@@ -458,6 +465,8 @@ def main(argv):
         f"- Exported: {when(b.get('exported_at'))}",
         f"- Report: [report.md](report.md), {report_state}",
         "- Parameters and canary record: [run.yml](run.yml), canaries.json",
+        *(["- AG-UI chat sessions: [agui/](agui/index.md)"]
+          if os.path.isfile(os.path.join(run_dir, "agui", "index.md")) else []),
         "",
         "| Chat | Tags | Archived | Messages | Created |",
         "|---|---|---|---|---|",

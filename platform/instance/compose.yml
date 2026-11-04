@@ -1,14 +1,16 @@
-# The chat frontend of an SPE instance: compose project spe-frontend.
+# The chat frontends of an SPE instance: compose project spe-frontend.
 # Lives in the repository clone on the VM and is linked into the frontend
-# directory (spe_frontend_dir/docker-compose.yml), whose .env selects the
-# frontend through COMPOSE_PROFILES and sets every ${VAR} below:
-#   openwebui       Open WebUI + its open-terminal sandbox
-#   agui,ui         our agent + sandbox + the built chat UI
-#   agui,ui-dev     our agent + sandbox + the chat UI as a dev server (hot reload)
-# Everything the agent and the sandbox read at run time is mounted from the
-# clone, so an edit there is live without a rebuild: the runbook and helper
-# scripts (/opt/agent), the agent's prompt and its Python source. Secrets come
-# from the env files next to the .env, written by Ansible.
+# directory (spe_frontend_dir/docker-compose.yml), whose .env selects what runs
+# through COMPOSE_PROFILES and sets every ${VAR} below:
+#   openwebui       Open WebUI
+#   agui,ui         our agent + the built chat UI
+#   agui,ui-dev     our agent + the chat UI as a dev server (hot reload)
+# Both frontends drive the same sandbox (service sandbox, profiles openwebui and
+# agui): one open-terminal container, one home directory, whichever chat the
+# person uses. Everything the agent and the sandbox read at run time is mounted
+# from the clone, so an edit there is live without a rebuild: the runbook and
+# helper scripts (/opt/agent), the agent's prompt and its Python source. Secrets
+# come from the env files next to the .env, written by Ansible.
 name: spe-frontend
 services:
   # --- Open WebUI frontend --------------------------------------------------
@@ -37,28 +39,10 @@ services:
     security_opt:
       - no-new-privileges:true
     depends_on:
-      - open-terminal
+      - sandbox
+    networks: [tools]
     volumes:
       - open-webui-data:/app/backend/data
-  open-terminal:
-    profiles: [openwebui]
-    image: ${SPE_TERMINAL_IMAGE}
-    restart: unless-stopped
-    env_file: terminal.env
-    environment:
-      OPEN_TERMINAL_FILE_BROWSER_ROOT: /home/user
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - SETGID
-    cpus: 2.0
-    mem_limit: 2g
-    pids_limit: 256
-    volumes:
-      - open-terminal-data:/home/user
-      - ${SPE_REPO_DIR}/platform/ansible/roles/sandbox/files/agent:/opt/agent:ro
 
   # --- AG-UI frontend --------------------------------------------------------
   chat-ui:
@@ -145,8 +129,10 @@ services:
       - no-new-privileges:true
     mem_limit: 1g
     pids_limit: 256
+
+  # --- the sandbox, shared by both frontends -----------------------------------
   sandbox:
-    profiles: [agui]
+    profiles: [openwebui, agui]
     image: ${SPE_TERMINAL_IMAGE}
     restart: unless-stopped
     env_file: terminal.env
@@ -167,8 +153,8 @@ services:
       # The runbook and helper scripts the agent runs, live from the clone.
       - ${SPE_REPO_DIR}/platform/ansible/roles/sandbox/files/agent:/opt/agent:ro
 networks:
-  ui: {}
-  tools: {}
+  ui: {}      # chat-ui <-> agent
+  tools: {}   # open-webui and agent <-> sandbox
 volumes:
   open-webui-data: {}
   open-terminal-data: {}

@@ -165,25 +165,6 @@ data "coder_parameter" "smoke_test" {
   order        = 7
 }
 
-data "coder_parameter" "frontend" {
-  name         = "frontend"
-  display_name = "Chat frontend"
-  description  = "openwebui: Open WebUI runs the agent loop (chats and the run report are archived on stop). agui: our own Pydantic AI agent with a CopilotKit chat (platform/agui; its chat sessions and run log are archived on stop)."
-  type         = "string"
-  form_type    = "radio"
-  default      = "openwebui"
-  mutable      = true
-  order        = 8
-  option {
-    name  = "Open WebUI"
-    value = "openwebui"
-  }
-  option {
-    name  = "AG-UI agent (Pydantic AI + CopilotKit)"
-    value = "agui"
-  }
-}
-
 # --- derived values -----------------------------------------------------------
 locals {
   instance = lower("cw-${data.coder_workspace_owner.me.name}-${data.coder_workspace.me.name}")
@@ -199,7 +180,6 @@ locals {
       spe_tiers             = jsondecode(data.coder_parameter.tiers.value)
       spe_workflows         = jsondecode(data.coder_parameter.workflows.value)
       spe_run_smoke_test    = tobool(data.coder_parameter.smoke_test.value)
-      spe_frontend          = data.coder_parameter.frontend.value
       spe_coder_owner       = data.coder_workspace_owner.me.name
       spe_coder_owner_email = data.coder_workspace_owner.me.email
       spe_coder_workspace   = data.coder_workspace.me.name
@@ -249,14 +229,15 @@ resource "coder_agent" "main" {
   }
 }
 
-# One app per frontend; only the selected one exists, so the dashboard shows a
-# single button. Both are bound to 127.0.0.1 on the VM and reached through the
-# agent (share = owner: only the workspace owner may open them).
+# Every workspace runs both chat frontends against the same sandbox and stack
+# (Ansible's spe_frontends default); the person opens the one to use. Both are
+# bound to 127.0.0.1 on the VM and reached through the agent (share = owner:
+# only the workspace owner may open them). Open WebUI keeps chats, notes and the
+# run report, archived on stop; the AG-UI chat shows every tool call as a card.
 resource "coder_app" "openwebui" {
-  count        = data.coder_parameter.frontend.value == "openwebui" ? 1 : 0
   agent_id     = coder_agent.main.id
   slug         = "openwebui"
-  display_name = "OpenWebUI"
+  display_name = "Open WebUI"
   icon         = "/icon/openai.svg"
   url          = "http://localhost:8080"
   subdomain    = true
@@ -270,11 +251,10 @@ resource "coder_app" "openwebui" {
 }
 
 resource "coder_app" "chat" {
-  count        = data.coder_parameter.frontend.value == "agui" ? 1 : 0
   agent_id     = coder_agent.main.id
   slug         = "chat"
-  display_name = "Chat (AG-UI)"
-  icon         = "/icon/openai.svg"
+  display_name = "AG-UI chat"
+  icon         = "/icon/widgets.svg"
   url          = "http://localhost:3000"
   subdomain    = true
   share        = "owner"
@@ -341,10 +321,6 @@ resource "coder_metadata" "spe" {
   item {
     key   = "seed"
     value = tostring(local.seed)
-  }
-  item {
-    key   = "frontend"
-    value = data.coder_parameter.frontend.value
   }
   item {
     key   = "runs archive"

@@ -41,8 +41,8 @@ spe_manage_docker: true       # false: Docker belongs to someone else on this ho
 # configured, recorded in /etc/spe-instance.json, and the only things destroy.yml resets.
 spe_compose_projects: [workflow-stack, spe-frontend]
 spe_frontend_ports: >-
-  {{ {'openwebui': [spe_webui_local_port],
-      'agui': [spe_agui_ui_port, spe_agui_agent_port]}.get(spe_frontend, []) }}
+  {{ ([spe_webui_local_port] if 'openwebui' in spe_frontends else [])
+     + ([spe_agui_ui_port, spe_agui_agent_port] if 'agui' in spe_frontends else []) }}
 spe_owned_ports: >-
   {{ dict([['443', 'workflow-stack']] + (spe_frontend_ports | map('string') | product(['spe-frontend']) | list)) }}
 
@@ -75,14 +75,14 @@ spe_monitoring_concurrency: 2
 spe_cert_dir: "{{ spe_stack_dir }}/certs"   # role tls: key, CSR and self-signed certificate
 spe_cert_days: 825
 # Images the compose file pulls. Role prefetch pulls them in the background
-# right after Docker is up, together with the OpenWebUI image for the openwebui
-# frontend; each consumer waits only for its own (spe_prefetch_wait).
+# right after Docker is up, together with the OpenWebUI image when that frontend
+# is on; each consumer waits only for its own (spe_prefetch_wait).
 spe_mongo_image: mongo:5.0.6            # WESkit database
 spe_redis_image: redis:6.2.6-alpine     # WESkit result broker
 spe_traefik_image: traefik:v2.11
 spe_filer_mongo_image: mongo:3.6        # drs-filer and trs-filer databases
 spe_stack_images: "{{ [spe_mongo_image, spe_redis_image, spe_traefik_image, spe_filer_mongo_image] }}"
-spe_prefetch_images: "{{ spe_stack_images + ([spe_frontend_webui_image] if spe_frontend == 'openwebui' else []) }}"
+spe_prefetch_images: "{{ spe_stack_images + ([spe_frontend_webui_image] if 'openwebui' in spe_frontends else []) }}"
 # sha256 of every data file, computed in the background after seeding and read
 # by the DRS registration (role drs_register).
 spe_drs_hash_cache: /opt/spe/drs-hashes.json
@@ -116,12 +116,18 @@ spe_canary_service_info: true      # tokens in WES/DRS/TRS service-info
 spe_workflows: [wes-drs-smoke, gatk-hc-chr20]
 spe_run_smoke_test: true
 
-# --- frontend (pentest chat UI) ---------------------------------------------
-# A chat frontend runs inside the VM so an operator can drive the LLM agent
-# against this instance's own SPE: openwebui (Open WebUI runs the agent loop),
-# agui (our own agent over AG-UI with a CopilotKit chat, see below), or none.
-# Both use compose project spe-frontend, so switching replaces one with the other.
-spe_frontend: openwebui
+# --- frontends (pentest chat UIs) -------------------------------------------
+# Chat frontends run inside the VM so an operator can drive the LLM agent against
+# this instance's own SPE: openwebui (Open WebUI runs the agent loop) and agui
+# (our own agent over AG-UI with a CopilotKit chat, see below). Both are on by
+# default and share one sandbox (compose project spe-frontend); the person picks
+# the chat to use. An empty list deploys no frontend. (The portal passes nothing
+# here: every workspace gets both.) The old single-valued spe_frontend (openwebui,
+# agui or none) is still read when set, for instance files and workspaces from
+# before the list.
+spe_frontends: >-
+  {{ [spe_frontend] if spe_frontend | default('') in ['openwebui', 'agui']
+     else ([] if spe_frontend | default('') == 'none' else ['openwebui', 'agui']) }}
 spe_frontend_dir: "/home/{{ spe_ssh_user }}/spe-frontend"
 # The repository clone on the instance (role repo): the compose file, the sandbox's
 # runbook and helper scripts, the agent's prompt and Python source run from it
@@ -146,7 +152,7 @@ spe_local_vars:
   - spe_tiers
   - spe_workflows
   - spe_run_smoke_test
-  - spe_frontend
+  - spe_frontends
   - spe_coder_owner
   - spe_coder_owner_email
   - spe_coder_workspace
@@ -234,8 +240,8 @@ spe_webui_model_id: qwen3.8-27b
 # GET /v1/model/info, read on 2026-11-03. Change the two together.
 spe_webui_model_context_tokens: 262144
 
-# --- AG-UI agent frontend (spe_frontend: agui) ------------------------------
-# Three containers in compose project spe-frontend: chat-ui (Next.js + CopilotKit),
+# --- AG-UI agent frontend ('agui' in spe_frontends) --------------------------
+# Containers in compose project spe-frontend: chat-ui (Next.js + CopilotKit),
 # agent (Pydantic AI over AG-UI; the only holder of the LLM key) and sandbox
 # (the open-terminal image built by role sandbox). Ports bound to 127.0.0.1.
 spe_agui_ui_port: 3000
