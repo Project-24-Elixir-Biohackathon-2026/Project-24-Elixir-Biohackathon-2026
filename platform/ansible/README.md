@@ -276,10 +276,10 @@ replaces one frontend with the other (its volumes, `open-webui-data` included, s
   (true), rendered as `agent.yaml`'s `title.enabled`, which `verify.yml` shows.
 - **sandbox** — the open-terminal image from role `sandbox`; publishes nothing.
 
-The role copies only the files git tracks under `platform/agui/pydantic-ai-agent/` and `platform/agui/copilotkit-chat/` to
-`spe_frontend_dir/build/` and builds `spe-agent:<hash>` and `spe-chat-ui:<hash>`
-from them (the hash covers the build context, so unchanged sources do not
-rebuild). Model: `spe_agent_model_provider: openai_compatible` with
+The role builds `spe-agent:local` and `spe-chat-ui:local` on the instance from
+the repository clone (`spe-apply build`; Docker's layer cache makes a build with
+unchanged sources take seconds, and the chat UI is not built with
+`spe_agui_ui_dev`). Model: `spe_agent_model_provider: openai_compatible` with
 `spe_agent_base_url` (default: the de.NBI endpoint, as Open WebUI), which works with any
 OpenAI-compatible API; or `anthropic`. The key comes from `SPE_LLM_API_KEY` on the
 controller (or, as before, `DENBI_LLM_API_KEY` / `ANTHROPIC_API_KEY`). Optionally,

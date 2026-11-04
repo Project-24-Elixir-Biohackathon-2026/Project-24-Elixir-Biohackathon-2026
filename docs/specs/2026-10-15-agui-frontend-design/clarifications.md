@@ -250,8 +250,9 @@ in the parts it amends.
 20. **The frontend runs from a clone of the repository on the VM** (2026-11-04; the fork's merge of `upstream/main`,
     PR #35). Upstream replaced the role's rendered compose file and content-hashed images with the clone-on-VM
     layout: `platform/instance/compose.yml` with compose profiles, images tagged `:local` built by `spe-apply`,
-    the prompt and the agent's source bind-mounted from the clone; `spe_agui_source_dir` is gone and a branch is
+    the prompt (`/etc/spe-agent/sandbox/system_prompt.txt`, read per run) and the agent's source bind-mounted from the clone; `spe_agui_source_dir` is gone and a branch is
     deployed with `-e spe_repo_ref=<branch>`. The `chat-sessions` volume moved into that compose file, mounted in
     `chat-ui` and in the `ui-dev` profile's `chat-ui-dev`. *Reason:* upstream's layout, taken in the merge.
-    *Cost if wrong:* the `ui-dev` profile has no archive and no chat-ui hardening check yet. *Amends:* §6
-    *Storage*, §7 *Role `agui`* and its variables. *Status:* folded.
+    *Cost if wrong:* the `ui-dev` profile has no archive and no chat-ui hardening check yet. Upstream also folded pasted text (TM-005) into indirect prompt
+    injection (TM-003) and dropped `python-frontmatter` from the validator. *Amends:* §5's example `agent.yaml`, §6
+    *Storage*, §7 *Role `agui`* and its variables, §13's threat reference, decision 18's check. *Status:* folded.

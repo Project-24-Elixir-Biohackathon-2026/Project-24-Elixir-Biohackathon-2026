@@ -115,7 +115,7 @@ an error):
 
 ```yaml
 model: { provider: openai_compatible, name: qwen3.8-27b, base_url: https://…/v1 }   # key comes from env
-prompt: { file: /etc/spe-agent/system_prompt.txt, include_sandbox_prompt: true }
+prompt: { file: /etc/spe-agent/sandbox/system_prompt.txt, include_sandbox_prompt: true }   # read per run
 tools:
   surface: shell            # shell | typed (typed: reserved, rejected for now)
   sandbox_url: http://sandbox:8000

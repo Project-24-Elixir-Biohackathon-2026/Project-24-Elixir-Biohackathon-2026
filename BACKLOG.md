@@ -16,6 +16,11 @@ start reads this section; keep it short.
   and plan as 0014's findings were (clarifications, tasks rewritten) — from the user's comment on #3
   (2026-10-23, "check 0015 review point as well"); waits on the user: 0015 is `proposed`, accept it first;
   due: before the ladder's slice 5 (agent suite), whose plan 0015 reviews.
+- Canary ladder plan: slices 2, 3, 6 and 8 (and README.md:118) name `roles/agui/templates/docker-compose.yml.j2` and
+  `roles/sandbox/files/AGENTS.md`, gone or moved in the 2026-11-04 upstream merge (#35: `platform/instance/compose.yml`,
+  `files/agent/AGENTS.md`, images `:local` via `.env`); slice 5:562 names TM-001 "sensitive data access" (now
+  `-exposure`). Rewrite those tasks with a ruling in the plan — from #35's methodology review (finding 1, 6); not done
+  in #35 because the ladder's PR #3 is open on that plan; due: before slice 2.
 - AG-UI via Coder, before any upstream PR (`upstream/main`, with its clone-on-VM layout, merged in #35): (1) redeploy
   `denbi-agui-01` from `main` and re-run the all-features check; (2) test end to end in a workspace from the
   portal's main template: `~/sperange` fetches our fork's branch, `spe-apply all`, then in the chat: several sessions open at once, switching between them (also

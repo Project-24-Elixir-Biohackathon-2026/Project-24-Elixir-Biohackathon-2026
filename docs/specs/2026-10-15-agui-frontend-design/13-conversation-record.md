@@ -177,5 +177,5 @@ Two paths stay outside it and are stated, not solved:
 
 The threat entry (decision 18) describes the attack independently of the frontend: the injected content claims
 to be the agent's own words or the environment's (a tool result), which makes it stronger than pasted text
-(TM-005). Open WebUI's request path is closed the same way, but its stored chat is editable by design (its
+(TM-003). Open WebUI's request path is closed the same way, but its stored chat is editable by design (its
 message edit and history merge endpoints), so there the entry's mitigation is partial.
