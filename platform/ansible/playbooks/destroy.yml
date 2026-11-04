@@ -160,6 +160,10 @@
     - name: Compose stacks down, with their volumes
       ansible.builtin.command:
         argv: [docker, compose, -p, "{{ item.name }}", -f, "{{ item.file }}", down, -v, --remove-orphans]
+      # Every profile, not only the .env's: a service started by hand under another one (ui-dev) is
+      # still taken down, as spe-apply removes inactive services.
+      environment:
+        COMPOSE_PROFILES: "*"
       loop: "{{ spe_reset.projects }}"
       loop_control:
         label: "{{ item.name }}"

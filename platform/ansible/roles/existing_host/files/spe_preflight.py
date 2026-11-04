@@ -20,7 +20,9 @@ and the output {"problems": [...], "paths": [...], "projects": [{name, file}]}
 names exactly what may be removed: the marker and the manifest must name this
 instance and mode, every path must be the one recorded, safe, not a symlink,
 not a mount or holding one, clear of Docker's data root and the shared paths,
-and every compose project must be recorded and built from its own file.
+and every compose project must be recorded and built from its own file. A
+project's file is the path given (a link is kept, so Compose reads the .env
+beside it); the checks use its resolved target.
 """
 from __future__ import annotations
 
@@ -257,7 +259,9 @@ def reset_plan(cfg: dict, host) -> dict:
             problems.append(f"compose project {name} has containers from {', '.join(foreign)}, not {file}")
             continue
         if os.path.isfile(real):
-            projects.append({"name": name, "file": real})
+            # Taken down through the path given, a link included: Compose reads the .env beside it
+            # (COMPOSE_PROFILES), and the resolved file's directory has none.
+            projects.append({"name": name, "file": file})
         elif built_from or name in host.running_projects():
             problems.append(f"compose project {name} has containers but its file {file} is missing")
 
