@@ -30,6 +30,7 @@
     version: "{{ spe_repo_ref }}"
     update: true
     force: false
+    recursive: false   # a fork's submodules (e.g. a private one) are not the instance's to clone
   when: not spe_local_apply
 
 # --- local re-apply: the instance can run these roles against itself ----------
