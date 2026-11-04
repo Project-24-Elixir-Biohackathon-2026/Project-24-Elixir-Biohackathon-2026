@@ -3,7 +3,7 @@
 A Pydantic AI pentest agent for one SPE instance, served over AG-UI. It holds the
 LLM key and calls the open-terminal sandbox, where model-chosen commands run; it
 runs no commands itself. Deployed by the `agui` Ansible role next to the sandbox and
-the chat UI (`docs/specs/2026-10-15-agui-frontend-design.md`).
+the chat UI (`docs/specs/2026-10-15-agui-frontend-design/`).
 
 ```bash
 uv run --group dev pytest -q                   # offline tests: no LLM, no network
@@ -47,6 +47,28 @@ in `load_secrets` (`config.py`), build its model in `build_model` (`agent.py`), 
 extra to `pydantic-ai-slim[...]` in `pyproject.toml`, and allow it in the role's check and
 in `platform/ansible/roles/agui/templates/agent.env.j2`.
 
+**Compaction.** The `compaction` block (all keys optional):
+
+    compaction:
+      enabled: true                 # false: neither trigger acts, as before compaction existed
+      context_window_tokens: null   # the model's context window; null: only the reactive trigger
+      trigger_ratio: 0.8            # compact at this share of the window, in (0, 1)
+      summary_max_tokens: 4096      # the summary request's output cap
+
+Before each model request the agent estimates what it would send (the latest
+response's usage plus three characters a token for what came after it); at
+`trigger_ratio` × `context_window_tokens` or more it compacts first. Whatever the
+window, a request the provider rejects as too long (Anthropic's, OpenAI's, vLLM's or a
+LiteLLM proxy's wording) is compacted and sent once more. Compacting asks the same model, without
+tools, for a summary of the history (`compaction_prompt.md`; tool results cut to their
+first and last 1000 characters), then sends the system prompt, the summary framed as a
+record rather than the participant's words, the latest user request and what follows.
+The summary request counts towards the run's usage and limits. At most one compaction
+per model request and three per run; past that the run fails with "The conversation is
+still too long after compacting it. Start a new chat." Set `context_window_tokens` to
+the window the server enforces: too high and only the reactive trigger acts, too low
+and it compacts early.
+
 **Prompt.** `prompt.file`, then a newline, then the sandbox's `/system` prompt (when
 `prompt.include_sandbox_prompt` and `/api/config` lists `features.system`). That is
 Open WebUI v0.11.3's order (commit `2a960a5`): `utils/middleware.py` appends the
@@ -58,11 +80,19 @@ stripped (`manage_system_prompt='server'`); the agent's prompt is reinjected.
 
 **Runs.** Each request builds its history from the request alone (AG-UI
 `RunAgentInput.messages`, including earlier tool calls and results); nothing is
-shared between requests. The AG-UI thread id is sent to the sandbox as
-`X-Session-Id`, as Open WebUI sends its chat id. Per run, `UsageLimits` caps model
-requests (`limits.request_limit`, 50), tool calls (`tool_calls_limit`, 100) and total
-tokens (`total_tokens_limit`, 400000). These are per-run caps, not a spend budget:
-the provider account's spend limit is the aggregate cap.
+shared between requests. When that history nears the model's context window
+(`compaction.context_window_tokens` × `trigger_ratio`), or the provider rejects a
+request as too long, the agent asks the same model for a summary and sends it in
+place of the older messages; the summary goes into the stream as an assistant message
+whose id starts with `spe-compaction-`, so the chat keeps it, and later runs cut the
+history there. The run log's `compactions` lists each one. The AG-UI thread id is
+sent to the sandbox as `X-Session-Id`, as Open WebUI sends its chat id. Per run,
+`UsageLimits` caps model requests (`limits.request_limit`, 50) and tool calls
+(`tool_calls_limit`, 100). These are per-run caps, not a spend budget: the provider
+account's spend limit is the aggregate cap. `total_tokens_limit` can also cap a run's
+tokens, but is unset (no cap) by default: it sums the tokens of every model request
+in the run, and each request resends the whole conversation, so a long chat hit
+400000 where Open WebUI, which has no such cap, went on.
 
 A run ends with exactly one terminal event: `RUN_FINISHED`, or `RUN_ERROR` for a
 provider error, an exceeded limit or any other failure. The error message has the

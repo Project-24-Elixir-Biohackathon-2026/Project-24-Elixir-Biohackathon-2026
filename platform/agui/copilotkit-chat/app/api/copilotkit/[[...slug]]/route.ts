@@ -3,6 +3,8 @@
 // environment variables (never NEXT_PUBLIC_*) and are sent only to the agent.
 import { HttpAgent } from "@ag-ui/client";
 import { CopilotRuntime, createCopilotRuntimeHandler } from "@copilotkit/runtime/v2";
+import { SessionRecorder } from "../../../../lib/recorder.ts";
+import { defaultJournals } from "../../../../lib/sessions.ts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,9 +20,13 @@ function getHandler(): Handler {
     if (!url || !key) {
       throw new Error("AGENT_URL and AGENT_API_KEY must be set");
     }
-    const copilotRuntime = new CopilotRuntime({
-      agents: { spe: new HttpAgent({ url, headers: { Authorization: `Bearer ${key}` } }) },
-    });
+    // Keeps every run in its session's journal (lib/recorder.ts): the agent is sent the journal's history,
+    // not the client's. The runtime clones `spe` per request and the clone keeps the recorder and its fetch,
+    // through which the recorder closes the agent request of a run it ends.
+    const recorder = new SessionRecorder(defaultJournals);
+    const spe = new HttpAgent({ url, headers: { Authorization: `Bearer ${key}` }, fetch: recorder.fetch });
+    spe.use(recorder);
+    const copilotRuntime = new CopilotRuntime({ agents: { spe } });
     handler = createCopilotRuntimeHandler({ runtime: copilotRuntime, basePath: "/api/copilotkit" });
   }
   return handler;

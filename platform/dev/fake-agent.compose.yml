@@ -1,0 +1,14 @@
+# Development only: runs platform/dev/fake_agent.py (scripted model, fake sandbox, no LLM
+# call) in place of an instance's agent, with the agent's key, port and run-log volume.
+#   SPE_DEV_PLATFORM=<checkout>/platform docker compose -p spe-frontend \
+#     -f <frontend dir>/docker-compose.yml -f platform/dev/fake-agent.compose.yml up -d agent
+# `up -d agent` without this file puts the real agent back.
+# SPE_FAKE_SLOW_STEP_SECONDS=6 makes a "slow" run last about a minute.
+services:
+  agent:
+    command: ["python", "/src/platform/dev/fake_agent.py", "--host", "0.0.0.0", "--port", "8100",
+              "--run-log", "/var/lib/spe-agent/runs.jsonl"]
+    environment:
+      SPE_FAKE_SLOW_STEP_SECONDS: ${SPE_FAKE_SLOW_STEP_SECONDS:-1.0}
+    volumes:
+      - ${SPE_DEV_PLATFORM:?set SPE_DEV_PLATFORM to a checkout's platform directory}:/src/platform:ro

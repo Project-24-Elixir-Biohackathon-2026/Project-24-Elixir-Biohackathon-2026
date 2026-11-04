@@ -1,0 +1,28 @@
+{"type":"created","at":"2026-11-03T11:00:00.000Z","version":1,"id":"00000000-0000-4000-8000-000000000006"}
+{"type":"run_start","at":"2026-11-03T11:00:00.010Z","run_id":"r6-1","anchor":null,"messages":[{"id":"u1","role":"user","content":"What have we covered so far?"}],"ignored":[],"request":{"tools":[],"context":[],"state":{},"forwardedProps":{}},"source":"chat"}
+{"type":"event","at":"2026-11-03T11:00:00.100Z","run_id":"r6-1","event":{"type":"RUN_STARTED","threadId":"00000000-0000-4000-8000-000000000006","runId":"r6-1"}}
+{"type":"event","at":"2026-11-03T11:00:00.200Z","run_id":"r6-1","event":{"type":"TEXT_MESSAGE_START","messageId":"a1","role":"assistant"}}
+{"type":"event","at":"2026-11-03T11:00:00.210Z","run_id":"r6-1","event":{"type":"TEXT_MESSAGE_CONTENT","messageId":"a1","delta":"We discussed the setup and ran two commands."}}
+{"type":"event","at":"2026-11-03T11:00:00.220Z","run_id":"r6-1","event":{"type":"TEXT_MESSAGE_END","messageId":"a1"}}
+{"type":"event","at":"2026-11-03T11:00:00.300Z","run_id":"r6-1","event":{"type":"RUN_FINISHED","threadId":"00000000-0000-4000-8000-000000000006","runId":"r6-1"}}
+{"type":"run_end","at":"2026-11-03T11:00:00.310Z","run_id":"r6-1","status":"completed","error":null}
+{"type":"run_start","at":"2026-11-03T11:01:00.000Z","run_id":"r6-2","anchor":"a1","messages":[],"ignored":[],"request":{"tools":[],"context":[],"state":{},"forwardedProps":{}},"source":"chat","command":{"name":"compact","focus":null,"message_id":"u2"}}
+{"type":"event","at":"2026-11-03T11:01:00.100Z","run_id":"r6-2","event":{"type":"RUN_STARTED","threadId":"00000000-0000-4000-8000-000000000006","runId":"r6-2"}}
+{"type":"event","at":"2026-11-03T11:01:00.200Z","run_id":"r6-2","event":{"type":"RUN_ERROR","message":"Compaction is turned off on this instance.","code":"model_error"}}
+{"type":"run_end","at":"2026-11-03T11:01:00.210Z","run_id":"r6-2","status":"failed","error":"Compaction is turned off on this instance."}
+{"type":"run_start","at":"2026-11-03T11:02:00.000Z","run_id":"r6-3","anchor":"a1","messages":[],"ignored":[],"request":{"tools":[],"context":[],"state":{},"forwardedProps":{}},"source":"chat","command":{"name":"compact","focus":"keep the ```` canary paths","message_id":"u3"}}
+{"type":"event","at":"2026-11-03T11:02:00.100Z","run_id":"r6-3","event":{"type":"RUN_STARTED","threadId":"00000000-0000-4000-8000-000000000006","runId":"r6-3"}}
+{"type":"event","at":"2026-11-03T11:02:00.200Z","run_id":"r6-3","event":{"type":"TEXT_MESSAGE_START","messageId":"spe-compaction-manual-r6-3","role":"assistant"}}
+{"type":"event","at":"2026-11-03T11:02:00.210Z","run_id":"r6-3","event":{"type":"TEXT_MESSAGE_CONTENT","messageId":"spe-compaction-manual-r6-3","delta":"Kept the canary paths in view."}}
+{"type":"event","at":"2026-11-03T11:02:00.220Z","run_id":"r6-3","event":{"type":"TEXT_MESSAGE_END","messageId":"spe-compaction-manual-r6-3"}}
+{"type":"event","at":"2026-11-03T11:02:00.300Z","run_id":"r6-3","event":{"type":"RUN_FINISHED","threadId":"00000000-0000-4000-8000-000000000006","runId":"r6-3"}}
+{"type":"run_end","at":"2026-11-03T11:02:00.310Z","run_id":"r6-3","status":"completed","error":null}
+{"type":"run_start","at":"2026-11-03T11:03:00.000Z","run_id":"r6-4","anchor":null,"messages":[],"ignored":[],"request":{"tools":[],"context":[],"state":{},"forwardedProps":{}},"source":"chat","command":{"name":"compact","focus":null,"message_id":"u4"}}
+{"type":"run_end","at":"2026-11-03T11:03:00.010Z","run_id":"r6-4","status":"refused","error":"Nothing to compact yet."}
+{"type":"run_start","at":"2026-11-03T11:04:00.000Z","run_id":"r6-5","anchor":"spe-compaction-manual-r6-3","messages":[{"id":"u5","role":"user","content":"What should I focus on next?"}],"ignored":[],"request":{"tools":[],"context":[],"state":{},"forwardedProps":{}},"source":"chat"}
+{"type":"event","at":"2026-11-03T11:04:00.100Z","run_id":"r6-5","event":{"type":"RUN_STARTED","threadId":"00000000-0000-4000-8000-000000000006","runId":"r6-5"}}
+{"type":"event","at":"2026-11-03T11:04:00.200Z","run_id":"r6-5","event":{"type":"TEXT_MESSAGE_START","messageId":"a5","role":"assistant"}}
+{"type":"event","at":"2026-11-03T11:04:00.210Z","run_id":"r6-5","event":{"type":"TEXT_MESSAGE_CONTENT","messageId":"a5","delta":"Focus on finishing the canary checks."}}
+{"type":"event","at":"2026-11-03T11:04:00.220Z","run_id":"r6-5","event":{"type":"TEXT_MESSAGE_END","messageId":"a5"}}
+{"type":"event","at":"2026-11-03T11:04:00.300Z","run_id":"r6-5","event":{"type":"RUN_FINISHED","threadId":"00000000-0000-4000-8000-000000000006","runId":"r6-5"}}
+{"type":"run_end","at":"2026-11-03T11:04:00.310Z","run_id":"r6-5","status":"completed","error":null}

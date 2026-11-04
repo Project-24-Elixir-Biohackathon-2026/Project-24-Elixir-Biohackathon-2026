@@ -86,7 +86,8 @@ Tested on the agentvm development VM (dummy dataset, spe_manage_docker: false), 
 down with their volumes, the stack, frontend and data directories, the CA
 anchor, the manifest and `/etc/spe-instance` removed — and only with
 `-e spe_confirm_reset=<instance>` on a host whose marker and manifest name
-that instance. Before anything is removed it checks that `output/<instance>/hosts.yml`
+that instance; the confirmation and the hand-off are checked before the final
+archive, which leaves an AG-UI instance's chat stopped. Before anything is removed it checks that `output/<instance>/hosts.yml`
 records the same instance and `spe_provision` (so an edited instance file
 cannot turn a reset into an OpenStack deletion, or the reverse), and that
 every path is the one recorded at creation, is not a symlink, a mount point
@@ -162,15 +163,16 @@ Created through the Coder portal, the instance also gets the Coder agent
 
 ## Run archive
 
-`destroy.yml` first runs `archive.yml`, which saves the run to
-`<spe_runs_root>/<UTC time>_<instance>/` (default `/data-share/runs`): `run.yml`
-with the parameters, the canary record and, for the `openwebui` frontend, every
-chat (readable Markdown with tool calls and results, plus raw JSON) with its
-tags, the "Run report" note and any other notes. For the `agui` frontend the
-chat UI keeps no history and the agent's run log stays in its volume, so only
-the parameters and the canary record are archived today. If the archive fails,
-nothing is deleted or reset; `-e spe_archive_skip=true` skips it. The file
-layout is described in `../coder/README.md`.
+`archive.yml` saves the run to `<spe_runs_root>/<UTC time>_<instance>/` (default `/data-share/runs`): `run.yml`
+with the parameters, the canary record and, for the `openwebui` frontend, every chat (readable Markdown with tool
+calls and results, plus raw JSON) with its tags, the "Run report" note and any other notes. For the `agui`
+frontend it copies every journal (hidden and deleted sessions included) and the agent's run log from the running
+containers, interrupting nothing, so it can be run at any time as a backup; the journals are exported as Open
+WebUI chats and rendered like them (`write_run.py`), and `index.md` says whether the copy was live (a run still
+going shows as `incomplete`) or final. `destroy.yml` first runs `archive.yml` as the final archive
+(`spe_archive_final: true`): it stops `chat-ui`, which ends every run in progress `cancelled` and journals it,
+then the agent, and does not start them again. If the archive fails, nothing is deleted or reset;
+`-e spe_archive_skip=true` skips it. The file layout is described in `../coder/README.md`.
 
 ## Output directory
 
@@ -256,7 +258,7 @@ ssh -i output/INSTANCE/ssh_key -L 8080:127.0.0.1:8080 ubuntu@FLOATING_IP
 ### Agent frontend (AG-UI)
 
 `agui` runs a Pydantic AI agent we own next to Open WebUI's agent loop
-(`platform/agui/pydantic-ai-agent/`, `platform/agui/copilotkit-chat/`, spec `docs/specs/2026-10-15-agui-frontend-design.md`).
+(`platform/agui/pydantic-ai-agent/`, `platform/agui/copilotkit-chat/`, spec `docs/specs/2026-10-15-agui-frontend-design/`).
 Two more containers in compose project `spe-frontend`, driving the same sandbox:
 
 - **chat-ui** — Next.js + CopilotKit on `127.0.0.1:3000`; shows every tool call.
@@ -264,12 +266,26 @@ Two more containers in compose project `spe-frontend`, driving the same sandbox:
 - **agent** — `POST /agent` (AG-UI) and `GET /healthz` on `127.0.0.1:8100`. The
   only holder of the LLM key; requires `Authorization: Bearer <spe_agent_api_key>`.
   Tools are generated from the sandbox's OpenAPI as Open WebUI does. Per-run
-  limits: 50 model requests, 100 tool calls, 400000 tokens. Run log in volume
-  `agent-runs` (player input and canaries: private).
-The role copies only the files git tracks under `platform/agui/pydantic-ai-agent/` and `platform/agui/copilotkit-chat/` to
-`spe_frontend_dir/build/` and builds `spe-agent:<hash>` and `spe-chat-ui:<hash>`
-from them (the hash covers the build context, so unchanged sources do not
-rebuild). Model: `spe_agent_model_provider: openai_compatible` with
+  limits: 50 model requests, 100 tool calls; a token cap only when
+  `spe_agent_total_tokens_limit` is set (default null, no cap). Run log in volume
+  `agent-runs` (player input and canaries: private). When a conversation nears the
+  model's context window the agent compacts it (summarises the older part with the
+  same model; the chat shows a divider, the archive a `## Compacted` section, the run
+  log a `compactions` entry): `spe_agent_compaction_enabled` (true),
+  `spe_agent_context_window_tokens`, `spe_agent_compaction_trigger_ratio` (0.8) and
+  `spe_agent_compaction_summary_max_tokens` (4096), rendered as `agent.yaml`'s
+  `compaction` block, which `verify.yml` shows. The window defaults to the de.NBI
+  model's (`spe_webui_model_context_tokens`, the gateway's `max_input_tokens`) while
+  `spe_agent_model` is `spe_webui_model_id`, and to null otherwise: set it for another
+  model, or only a provider's "too long" error triggers a compaction. After a
+  session's first completed run, the agent asks the model for a title from the
+  first exchange, unless the session already has one: `spe_agent_title_generation`
+  (true), rendered as `agent.yaml`'s `title.enabled`, which `verify.yml` shows.
+
+The role builds `spe-agent:local` and `spe-chat-ui:local` on the instance from
+the repository clone (`spe-apply build`; Docker's layer cache makes a build with
+unchanged sources take seconds, and the chat UI is not built with
+`spe_agui_ui_dev`). Model: `spe_agent_model_provider: openai_compatible` with
 `spe_agent_base_url` (default: the de.NBI endpoint, as Open WebUI), which works with any
 OpenAI-compatible API; or `anthropic`. The key comes from `SPE_LLM_API_KEY` on the
 controller (or, as before, `DENBI_LLM_API_KEY` / `ANTHROPIC_API_KEY`). Optionally,

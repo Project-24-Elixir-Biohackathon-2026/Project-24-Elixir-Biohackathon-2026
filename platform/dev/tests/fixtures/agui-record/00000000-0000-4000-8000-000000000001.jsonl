@@ -1,0 +1,24 @@
+{"type":"created","at":"2026-11-03T10:00:00.000Z","version":1,"id":"00000000-0000-4000-8000-000000000001"}
+{"type":"run_start","at":"2026-11-03T10:00:00.010Z","run_id":"r1-1","anchor":null,"messages":[{"id":"u1","role":"user","content":"List the home directory"}],"ignored":[],"request":{"tools":[],"context":[],"state":{},"forwardedProps":{}},"source":"chat"}
+{"type":"event","at":"2026-11-03T10:00:00.100Z","run_id":"r1-1","event":{"type":"RUN_STARTED","threadId":"00000000-0000-4000-8000-000000000001","runId":"r1-1"}}
+{"type":"event","at":"2026-11-03T10:00:00.200Z","run_id":"r1-1","event":{"type":"REASONING_MESSAGE_START","messageId":"think-1","role":"reasoning"}}
+{"type":"event","at":"2026-11-03T10:00:00.210Z","run_id":"r1-1","event":{"type":"REASONING_MESSAGE_CONTENT","messageId":"think-1","delta":"The user wants `ls ~`."}}
+{"type":"event","at":"2026-11-03T10:00:00.220Z","run_id":"r1-1","event":{"type":"REASONING_MESSAGE_END","messageId":"think-1"}}
+{"type":"event","at":"2026-11-03T10:00:00.300Z","run_id":"r1-1","event":{"type":"TOOL_CALL_START","toolCallId":"call-1","toolCallName":"run_command","parentMessageId":"a1"}}
+{"type":"event","at":"2026-11-03T10:00:00.310Z","run_id":"r1-1","event":{"type":"TOOL_CALL_ARGS","toolCallId":"call-1","delta":"{\"command\": \"ls ~\"}"}}
+{"type":"event","at":"2026-11-03T10:00:00.320Z","run_id":"r1-1","event":{"type":"TOOL_CALL_END","toolCallId":"call-1"}}
+{"type":"event","at":"2026-11-03T10:00:01.000Z","run_id":"r1-1","event":{"type":"TOOL_CALL_RESULT","messageId":"t1","toolCallId":"call-1","content":"notes.txt\n```\nthree\n````\nfour\n``````\nsix","role":"tool"}}
+{"type":"event","at":"2026-11-03T10:00:01.100Z","run_id":"r1-1","event":{"type":"TEXT_MESSAGE_START","messageId":"a2","role":"assistant"}}
+{"type":"event","at":"2026-11-03T10:00:01.110Z","run_id":"r1-1","event":{"type":"TEXT_MESSAGE_CONTENT","messageId":"a2","delta":"There is one file: "}}
+{"type":"event","at":"2026-11-03T10:00:01.110Z","run_id":"r1-1","event":{"type":"TEXT_MESSAGE_CONTENT","messageId":"a2","delta":"notes.txt."}}
+{"type":"event","at":"2026-11-03T10:00:01.130Z","run_id":"r1-1","event":{"type":"TEXT_MESSAGE_END","messageId":"a2"}}
+{"type":"event","at":"2026-11-03T10:00:01.200Z","run_id":"r1-1","event":{"type":"RUN_FINISHED","threadId":"00000000-0000-4000-8000-000000000001","runId":"r1-1"}}
+{"type":"run_end","at":"2026-11-03T10:00:01.210Z","run_id":"r1-1","status":"completed","error":null}
+{"type":"meta","at":"2026-11-03T10:01:00.000Z","tags":["exfil","dns"],"pinned":true}
+{"type":"run_start","at":"2026-11-03T10:02:00.000Z","run_id":"r1-2","anchor":"a2","messages":[{"id":"u2","role":"user","content":"Read notes.txt"}],"ignored":[],"request":{"tools":[],"context":[],"state":{},"forwardedProps":{}},"source":"chat"}
+{"type":"event","at":"2026-11-03T10:02:00.100Z","run_id":"r1-2","event":{"type":"RUN_STARTED","threadId":"00000000-0000-4000-8000-000000000001","runId":"r1-2"}}
+{"type":"event","at":"2026-11-03T10:02:00.200Z","run_id":"r1-2","event":{"type":"TEXT_MESSAGE_START","messageId":"a3","role":"assistant"}}
+{"type":"event","at":"2026-11-03T10:02:00.210Z","run_id":"r1-2","event":{"type":"TEXT_MESSAGE_CONTENT","messageId":"a3","delta":"It says hello."}}
+{"type":"event","at":"2026-11-03T10:02:00.220Z","run_id":"r1-2","event":{"type":"TEXT_MESSAGE_END","messageId":"a3"}}
+{"type":"event","at":"2026-11-03T10:02:00.300Z","run_id":"r1-2","event":{"type":"RUN_FINISHED","threadId":"00000000-0000-4000-8000-000000000001","runId":"r1-2"}}
+{"type":"run_end","at":"2026-11-03T10:02:00.310Z","run_id":"r1-2","status":"completed","error":null}

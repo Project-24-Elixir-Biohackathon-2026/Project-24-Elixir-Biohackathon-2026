@@ -3,4 +3,9 @@
 !package-lock.json
 !next.config.mjs
 !tsconfig.json
+!instrumentation.ts
 !app/
+!lib/
+lib/*.test.ts
+lib/test-*.ts
+!scripts/export-journals.ts

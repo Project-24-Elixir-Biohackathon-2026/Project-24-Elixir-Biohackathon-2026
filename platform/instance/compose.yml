@@ -52,6 +52,9 @@ services:
     ports:
       - "127.0.0.1:${SPE_AGUI_UI_PORT}:3000"
     env_file: chat-ui.env
+    volumes:
+      # Chat sessions, one append-only journal each (/data/sessions/<id>.jsonl); private like agent-runs.
+      - chat-sessions:/data
     networks: [ui]
     read_only: true
     tmpfs:
@@ -74,7 +77,8 @@ services:
       - sh
       - -c
       - >-
-        chown node:node /app/node_modules /app/.next &&
+        mkdir -p /data/sessions &&
+        chown node:node /app/node_modules /app/.next /data /data/sessions &&
         exec su -s /bin/sh node -c
         'npm install --no-audit --no-fund && exec npm run dev -- --hostname 0.0.0.0 --port 3000'
     ports:
@@ -94,6 +98,8 @@ services:
       - ${SPE_REPO_DIR}/platform/agui/copilotkit-chat:/app
       - chat-ui-node-modules:/app/node_modules
       - chat-ui-next:/app/.next
+      # The same sessions as the built chat UI, so switching profiles keeps them.
+      - chat-sessions:/data
   agent:
     profiles: [agui]
     image: ${SPE_AGENT_IMAGE}
@@ -153,5 +159,6 @@ volumes:
   open-webui-data: {}
   open-terminal-data: {}
   agent-runs: {}
+  chat-sessions: {}
   chat-ui-node-modules: {}
   chat-ui-next: {}

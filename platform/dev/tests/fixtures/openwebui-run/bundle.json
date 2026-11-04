@@ -1,0 +1,54 @@
+{
+ "exported_at": 1793700000,
+ "report_template_md": "# Run report\n\n- What did you try?\n",
+ "tags": [{"id": "exfil", "name": "Exfil"}, {"id": "dns", "name": "DNS"}],
+ "notes": [
+  {"title": "Run report", "data": {"content": {"md": "# Run report\n\n- What did you try? The DNS trick.\n"}}},
+  {"title": "Scratch | notes", "data": {"content": {"md": "free text\n"}}}
+ ],
+ "chats": [
+  {
+   "id": "c2", "title": "Second | chat [b]", "created_at": 1793700300, "updated_at": 1793700400000,
+   "archived": true, "meta": {"tags": []},
+   "chat": {
+    "history": {"currentId": null, "messages": {}},
+    "messages": [
+     {"id": "m1", "role": "user", "content": "plain fallback list", "timestamp": 1793700300},
+     {"id": "m2", "role": "assistant", "model": "qwen", "content": "  answer  ", "timestamp": 1793700301}
+    ]
+   }
+  },
+  {
+   "id": "c1", "title": "List the home directory", "created_at": 1793700000, "updated_at": 1793700100,
+   "archived": false, "meta": {"tags": ["exfil", "dns", "unknown-tag"]},
+   "chat": {
+    "history": {
+     "currentId": "a2",
+     "messages": {
+      "u1": {"id": "u1", "parentId": null, "childrenIds": ["a1", "a1b"], "role": "user", "content": "List ~",
+             "timestamp": 1793700000},
+      "a1b": {"id": "a1b", "parentId": "u1", "childrenIds": [], "role": "assistant", "model": "qwen",
+              "content": "an abandoned branch", "timestamp": 1793700005},
+      "a1": {"id": "a1", "parentId": "u1", "childrenIds": ["u2"], "role": "assistant", "model": "qwen",
+             "content": "not shown: output is set", "timestamp": 1793700010,
+             "output": [
+              {"type": "reasoning", "id": "r1", "content": [{"type": "output_text", "text": "Use ls."}]},
+              {"type": "function_call", "id": "f1", "call_id": "c1", "name": "run_command",
+               "arguments": "{\"command\": \"ls ~\"}"},
+              {"type": "function_call_output", "id": "o1", "call_id": "c1",
+               "output": [{"type": "input_text", "text": "notes.txt\n```\nx\n````"}]},
+              {"type": "function_call", "id": "f2", "call_id": "c2", "name": "broken", "arguments": "not json"},
+              {"type": "message", "id": "m1", "role": "assistant",
+               "content": [{"type": "output_text", "text": "One file: **notes.txt**."}]},
+              {"type": "web_search_call", "id": "w1", "status": "completed"}
+             ]},
+      "u2": {"id": "u2", "parentId": "a1", "childrenIds": ["a2"], "role": "user", "content": "Thanks",
+             "timestamp": 1793700020},
+      "a2": {"id": "a2", "parentId": "u2", "childrenIds": [], "role": "assistant", "content": "You're welcome.",
+             "timestamp": 1793700030}
+     }
+    }
+   }
+  }
+ ]
+}

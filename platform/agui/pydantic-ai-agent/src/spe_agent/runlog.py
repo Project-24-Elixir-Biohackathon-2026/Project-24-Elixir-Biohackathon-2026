@@ -10,6 +10,7 @@ import json
 import os
 import threading
 import time
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,7 @@ from ag_ui.core import (
     ToolCallStartEvent,
 )
 
+from .compaction import MARKER_PREFIX
 from .sandbox import truncate
 
 REDACTED = "[redacted]"
@@ -98,6 +100,7 @@ class RunRecorder:
             "answer": "",
             "usage": None,
             "error": None,
+            "compactions": [],
         }
         self._calls: dict[str, dict] = {}
         self._ended_at: dict[str, float] = {}
@@ -118,13 +121,21 @@ class RunRecorder:
             if event.tool_call_id in self._ended_at:
                 call["duration_s"] = round(time.monotonic() - self._ended_at[event.tool_call_id], 3)
         elif isinstance(event, TextMessageContentEvent):
-            self.record["answer"] += event.delta
+            if not event.message_id.startswith(MARKER_PREFIX):  # a compaction marker is not the answer
+                self.record["answer"] += event.delta
         elif isinstance(event, RunErrorEvent):
             self.record["error"] = event.message
+
+    def command_input(self, text: str) -> None:
+        """A command run's `input` is the command, not the history's last user message (§15)."""
+        self.record["input"] = text
 
     def usage(self, usage: Any) -> None:
         self.record["usage"] = {k: getattr(usage, k, None)
                                 for k in ("requests", "tool_calls", "input_tokens", "output_tokens")}
+
+    def compactions(self, records: list) -> None:
+        self.record["compactions"] = [asdict(r) for r in records]
 
     def finish(self, status: str) -> dict:
         self.record["status"] = status
