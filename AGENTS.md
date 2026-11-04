@@ -63,10 +63,11 @@ pinned commit; move the pin there after the push.
 ```bash
 uv run --with pyyaml python validate.py              # threat catalog
 uv run --with pyyaml --with mkdocs-material python platform/site/build.py   # landing page + catalog -> platform/site/dist/
-uv run --with pytest --with pyyaml --with mkdocs-material pytest platform/dev/tests -q   # dataset generator, host preflight, site build
+uv run --with pytest --with pyyaml --with mkdocs-material pytest platform/dev/tests -q   # dataset generator, host preflight, site build, archive
 (cd platform/agui/pydantic-ai-agent && uv run --group dev pytest -q)   # agent
 (cd platform/promptfoo-evals && uv run --group dev pytest -q)          # promptfoo provider and assertions
 (cd platform/agui/copilotkit-chat && npm ci && npm run build)          # chat UI (type check)
+(cd platform/agui/copilotkit-chat && npm ci && npm test)               # chat UI (sessions, recorder, API)
 cd platform/ansible && ansible-playbook playbooks/create.yml -e @instances/NAME.yml </dev/null
 ```
 
@@ -85,7 +86,7 @@ fresh workspace before they are merged.
 ## AG-UI agent frontend
 
 Built from plan `docs/plans/2026-10-15-agui-frontend.md` and spec
-`docs/specs/2026-10-15-agui-frontend-design.md` (§12: what implementation verified
+`docs/specs/2026-10-15-agui-frontend-design/` (§12: what implementation verified
 and changed) on branch `agent-agui-frontend`. The record of the work, every
 deviation from the plan with its cost if wrong, and the acceptance evidence is
 [`docs/plans/2026-10-15-agui-frontend-progress.md`](docs/plans/2026-10-15-agui-frontend-progress.md).
@@ -93,6 +94,9 @@ How to deploy and use it: [`docs/getting-started.md`](docs/getting-started.md).
 
 All 13 tasks are done, including the model-backed checks on the development VM
 (Anthropic `claude-haiku-5-5`) and on de.NBI (`qwen3.8-27b`). Merged into `main`
-on 2026-10-19 together with the Coder portal, which offers it as the `agui`
-frontend. Not done yet: archiving its chats on stop (the run archive exports
-Open WebUI only) and a run-report equivalent in the CopilotKit chat.
+on 2026-10-19 together with the Coder portal, which runs it on every instance
+next to Open WebUI (`spe_frontends`). Since then the spec, now a directory with
+one file per section, has grown chat sessions (§6), the conversation record that
+`chat-ui` owns (§13, threat TM-007), the archive of AG-UI chats (§14) and
+compaction with `/compact` (§15); its `clarifications.md` records each change.
+Not done yet: a run-report equivalent in the CopilotKit chat.
