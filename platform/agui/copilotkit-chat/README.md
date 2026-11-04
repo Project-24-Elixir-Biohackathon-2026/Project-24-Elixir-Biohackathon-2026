@@ -1,6 +1,6 @@
 # SPE chat UI
 
-Next.js 16.4.1 + CopilotKit 1.79.0 (v2 API), a thin client for the SPE agent.
+Next.js 16.4.5 + CopilotKit 1.84.1 (v2 API), a thin client for the SPE agent.
 
 - `app/api/copilotkit/[[...slug]]/route.ts`: `CopilotRuntime` (`@copilotkit/runtime/v2`) in
   multi-route mode (`/api/copilotkit/info`, `/api/copilotkit/agent/spe/run`, …) via
@@ -102,7 +102,7 @@ npm ci && npm run build                       # type-checks too
 SPE_SESSIONS_DIR=$(mktemp -d) AGENT_URL=http://127.0.0.1:18100/agent AGENT_API_KEY=TEST_KEY PORT=3000 NEXT_MANUAL_SIG_HANDLE=true \
   node .next/standalone/server.js
 #   (copy .next/static to .next/standalone/.next/static first; the Dockerfile does)
-docker build -t spe-chat-ui .                 # node:24-slim, user node, port 3000
+docker build -t spe-chat-ui .                 # node:26-slim, user node, port 3000
 npm test                                      # lib/*.test.ts with node --test (no model, no network)
 node scripts/check-built-server.mjs           # after npm run build: the built server against fake_agent.py
 ```
