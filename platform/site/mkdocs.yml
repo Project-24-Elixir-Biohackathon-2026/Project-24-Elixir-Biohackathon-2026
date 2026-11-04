@@ -1,0 +1,54 @@
+# The threat catalog site, built by build.py with Material for MkDocs.
+# docs_dir is the catalog itself; hooks.py validates it, generates the
+# overview and vocabulary pages, and shows each entry's frontmatter.
+site_name: SPE Range
+site_description: The threat model catalog for AI agents in Secure Processing Environments.
+site_url: https://sperange.bihealth.org/threats/
+repo_url: https://github.com/kraatz/elixir-biohackathon-2026-test
+repo_name: kraatz/elixir-biohackathon-2026-test
+edit_uri: blob/main/threats/
+docs_dir: ../../threats
+site_dir: dist/threats
+exclude_docs: |
+  TEMPLATE.md
+hooks:
+  - hooks.py
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.expand
+    - navigation.top
+    - navigation.footer
+    - search.highlight
+    - toc.follow
+extra:
+  homepage: /
+  generator: false
+extra_css:
+  - assets/catalog/catalog.css
+extra_javascript:
+  - assets/catalog/catalog.js
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - md_in_html
+  - tables
+  - toc
+plugins:
+  - search

@@ -93,7 +93,7 @@ spe_agent_request_limit: 50
 spe_agent_tool_calls_limit: 100
 spe_agent_total_tokens_limit: null   # or a number: a per-run token cap
 spe_agent_api_key: "{{ (spe_seed | string ~ ':agent-api') | hash('sha256') }}"
-spe_agui_source_dir: "{{ playbook_dir }}/../../agui"   # platform/agui on the controller
+spe_agui_ui_dev: false               # true: the chat UI runs from its source with hot reload (profile ui-dev)
 ```
 
 `spe_frontend_terminal_image`, `spe_terminal_api_key`, `spe_llm_base_url`
@@ -102,16 +102,17 @@ and `spe_denbi_api_key` are reused as they are.
 ### Role `agui` (runs where `openwebui` runs in `create.yml`)
 
 1. Assert the LLM key is present (same message as the `openwebui` role).
-2. Include role `sandbox` (builds the open-terminal image with CA and
-   runbook).
-3. Sync `agent/` and `chat-ui/` to `{{ spe_frontend_dir }}/build/` and build
-   `spe-agent:<content hash>` and `spe-chat-ui:<content hash>`; rebuild only
-   when the content changed.
+2. Role `repo` (before it) cloned the repository on the VM at `spe_repo_ref` (`~/sperange`); the
+   compose file is the clone's `platform/instance/compose.yml`, linked into `{{ spe_frontend_dir }}`,
+   whose `.env` picks the services through `COMPOSE_PROFILES` (`agui,ui` or `agui,ui-dev`).
+3. Build `spe-agent:local` and `spe-chat-ui:local` from the clone with `spe-apply build` (Docker's
+   layer cache makes an unchanged build take seconds; the chat UI is not built in `ui-dev`). The
+   agent's prompt and Python source are bind mounts from the clone, read live.
 4. Render `agent.yaml`, `agent.env` (LLM, agent and sandbox keys; mode
    `0600`, `no_log`), `chat-ui.env` (agent URL and key; `0600`),
-   `terminal.env` (as today), `docker-compose.yml`.
-5. Compose up (`community.docker.docker_compose_v2`), recreating on
-   changed config or images — the pattern of the `openwebui` role.
+   `terminal.env` (as today).
+5. `spe-apply up`, recreating on changed config or images; the workspace's Rebuild button runs the same
+   step.
 6. Checks (§9). Fail the play on any failure.
 
 If the VM previously ran the Open WebUI stack, step 5 replaces it (same

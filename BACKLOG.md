@@ -16,10 +16,9 @@ start reads this section; keep it short.
   and plan as 0014's findings were (clarifications, tasks rewritten) — from the user's comment on #3
   (2026-10-23, "check 0015 review point as well"); waits on the user: 0015 is `proposed`, accept it first;
   due: before the ladder's slice 5 (agent suite), whose plan 0015 reviews.
-- AG-UI via Coder, before any upstream PR: (1) merge `upstream/main` into our `main`, moving our AG-UI work onto
-  its clone-on-VM layout (`platform/instance/compose.yml`, `spe-apply`; `roles/agui/templates/docker-compose.yml.j2`
-  is gone upstream); (2) test end to end in a workspace from the portal's main template: `~/sperange` fetches our
-  fork's branch, `spe-apply all`, then in the chat: several sessions open at once, switching between them (also
+- AG-UI via Coder, before any upstream PR (`upstream/main`, with its clone-on-VM layout, merged in #35): (1) redeploy
+  `denbi-agui-01` from `main` and re-run the all-features check; (2) test end to end in a workspace from the
+  portal's main template: `~/sperange` fetches our fork's branch, `spe-apply all`, then in the chat: several sessions open at once, switching between them (also
   mid-run), new / rename / delete, reload and reopen, automatic compaction, `/compact` with and without a focus,
   stop mid-run and send again at once (no "Thread already running"), the live archive; (3) the archive on stop runs from the portal's upstream checkout, so test it with
   `create.yml`/`destroy.yml` from our checkout. Passes when, on the AG-UI route: long conversations (several
@@ -47,6 +46,10 @@ start reads this section; keep it short.
 
 <!-- - <item> — from <PR #n / review thread / spec Inputs for>, waits because <reason>. -->
 
+- The AG-UI `ui-dev` profile (`spe_agui_ui_dev: true`, `chat-ui-dev`, upstream's hot-reload chat) has no archive:
+  `run_archive`'s export copies and stops `chat-ui` and runs the exporter from its image; `checks.yml` skips the
+  hardening check there and scans `chat-ui-dev`'s sessions. From the 2026-11-04 upstream merge (#35); waits because
+  no workspace runs `ui-dev` for a recorded run yet.
 - AG-UI archive: the `## Compacted` line "From here the model saw this summary instead of the messages above." omits that the model also kept the latest request from before the marker (`compaction.py`, `_head`); reword it in `write_run.py` and `test_write_run_agui.py` with a clarification to the compaction spec (decision text, §archive) — from PR #18's local review, waits because the line is the approved spec's wording and changing it needs a spec clarification.
 - AG-UI archive Markdown: bare URLs in titles and tags become links under GFM autolinks: `write_run.py`'s `md_inline` (slice 2 of the conversation record plan, `docs/superpowers/plans/2026-11-03-agui-conversation-record/slice-2-export.md`) escapes table and Markdown syntax in a session's title and tags but leaves a bare `https://…` or `www.…`, which GitHub-flavoured Markdown renders as a link in `index.md` — from PR #20's local review (finding 7), waits because a link forges no structure of the run directory (Review Focus 5 holds) and the plan's slices come first.
 - AG-UI chat: branching, editing or regenerating messages in the chat, plus export from the UI, full-text search over messages and folders (Open WebUI features not asked for) — from the living AG-UI spec's `docs/specs/2026-10-15-agui-frontend-design/out-of-scope.md` (PR #19); waits until someone asks for them.

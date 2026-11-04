@@ -12,7 +12,7 @@ import copy
 import json
 import re
 import uuid
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
 from dataclasses import dataclass, field, replace
 from importlib.resources import files
@@ -338,11 +338,14 @@ class Compaction(AbstractCapability[Any]):
     (then sends it once more, compacted)."""
 
     cfg: CompactionCfg
-    system_prompt: str
+    system_prompt: str | Callable[[], str]
+
+    def _prompt(self) -> str:
+        return self.system_prompt() if callable(self.system_prompt) else self.system_prompt
 
     def _estimate(self, messages: list[ModelMessage], request_context: ModelRequestContext) -> int:
         has_system = any(isinstance(p, SystemPromptPart) for p in (messages[0].parts if messages else []))
-        extra = _tool_chars(request_context) + (0 if has_system else len(self.system_prompt))
+        extra = _tool_chars(request_context) + (0 if has_system else len(self._prompt()))
         return estimate_tokens(messages, extra)
 
     async def wrap_model_request(self, ctx: RunContext[Any], *, request_context: ModelRequestContext,

@@ -1,9 +1,11 @@
 ---
 # AG-UI agent frontend: chat-ui (Next.js + CopilotKit), agent (Pydantic AI over AG-UI,
 # the only holder of the LLM key) and sandbox (open-terminal) in compose project
-# spe-frontend. Runs after the workflow stack, like the openwebui role. The
-# settings checks, the staging of the sources and the image builds happened
-# earlier (build.yml, in the background) and are joined here.
+# spe-frontend, defined in the clone's platform/instance/compose.yml. Runs after
+# the workflow stack, like the openwebui role. The settings checks and the image
+# builds happened earlier (build.yml, in the background) and are joined here;
+# this role writes the configuration and the secret env files and runs
+# `spe-apply up`, the same step the workspace's Rebuild button ends with.
 - name: Sandbox image built (started by role sandbox)
   ansible.builtin.import_role:
     name: sandbox
@@ -11,10 +13,7 @@
 
 - name: Agent and chat UI images built (started by build.yml)
   ansible.builtin.async_status:
-    jid: "{{ item.ansible_job_id }}"
-  loop: "{{ agui_build_jobs.results }}"
-  loop_control:
-    label: "{{ item.item.image }}"
+    jid: "{{ agui_build_job.ansible_job_id }}"
   register: agui_builds
   until: agui_builds.finished
   retries: 720
@@ -29,7 +28,8 @@
            | combine({'base_url': spe_agent_base_url} if spe_agent_model_provider == 'openai_compatible' else {})
            | combine({'allowed_models': spe_agent_allowed_models} if spe_agent_allowed_models | length > 0 else {}) }}
       prompt:
-        file: /etc/spe-agent/system_prompt.txt
+        # roles/sandbox/files of the clone, mounted as a directory: edits are read per run.
+        file: /etc/spe-agent/sandbox/system_prompt.txt
         include_sandbox_prompt: "{{ spe_agent_include_sandbox_prompt | bool }}"
       tools:
         surface: "{{ spe_agent_tool_surface }}"
@@ -49,13 +49,6 @@
       title: >-
         {{ {'enabled': spe_agent_title_generation | bool} }}
 
-- name: Hash of what the agent reads from bind mounts
-  ansible.builtin.set_fact:
-    agui_config_hash: >-
-      {{ ((agui_agent_config | to_json(sort_keys=true))
-          ~ lookup('ansible.builtin.file', playbook_dir ~ '/../roles/sandbox/files/system_prompt.txt'))
-         | hash('sha256') }}
-
 - name: agent.yaml
   ansible.builtin.copy:
     content: "# Managed by spe-ansible (role: agui).\n{{ agui_agent_config | to_nice_yaml(sort_keys=false) }}"
@@ -64,18 +57,17 @@
     group: "{{ spe_ssh_user }}"
     mode: "0644"
 
-- name: Secret-bearing env files and compose file
+- name: Secret-bearing env files
   ansible.builtin.template:
     src: "{{ item.src }}"
     dest: "{{ spe_frontend_dir }}/{{ item.dest }}"
     owner: "{{ spe_ssh_user }}"
     group: "{{ spe_ssh_user }}"
-    mode: "{{ item.mode }}"
+    mode: "0600"
   loop:
-    - { src: agent.env.j2, dest: agent.env, mode: "0600" }
-    - { src: chat-ui.env.j2, dest: chat-ui.env, mode: "0600" }
-    - { src: "{{ role_path }}/../openwebui/templates/terminal.env.j2", dest: terminal.env, mode: "0600" }
-    - { src: docker-compose.yml.j2, dest: docker-compose.yml, mode: "0640" }
+    - { src: agent.env.j2, dest: agent.env }
+    - { src: chat-ui.env.j2, dest: chat-ui.env }
+    - { src: "{{ role_path }}/../openwebui/templates/terminal.env.j2", dest: terminal.env }
   loop_control:
     label: "{{ item.dest }}"
   no_log: true
@@ -86,15 +78,12 @@
     chdir: "{{ spe_frontend_dir }}"
   changed_when: false
 
-# Same project as the openwebui role: remove_orphans replaces its containers; its
-# open-webui-data volume is left in place.
-- name: Frontend stack up
-  community.docker.docker_compose_v2:
-    project_src: "{{ spe_frontend_dir }}"
-    files: [docker-compose.yml]
-    state: present
-    remove_orphans: true
-    recreate: auto
+# Same project as the openwebui role: --remove-orphans replaces its containers; its
+# open-webui-data volume is left in place. Waits until the agent and the UI answer.
+- name: Frontend stack up (spe-apply up)
+  ansible.builtin.command: spe-apply up
+  register: agui_apply
+  changed_when: "'Created' in agui_apply.stdout or 'Recreated' in agui_apply.stdout or 'Started' in agui_apply.stdout"
 
 - name: No-cost checks (the verify role repeats them and adds the smoke run)
   ansible.builtin.include_tasks: checks.yml

@@ -217,9 +217,28 @@ locals {
 }
 
 # --- agent + app --------------------------------------------------------------
+locals {
+  owner_name = contains(["", "default"], data.coder_workspace_owner.me.full_name) ? data.coder_workspace_owner.me.name : data.coder_workspace_owner.me.full_name
+}
+
 resource "coder_agent" "main" {
   os   = "linux"
   arch = "amd64"
+  # The home: Coder Agents reads AGENTS.md there, which role repo links to
+  # platform/instance/workspace/AGENTS.md (the workspace guide: what applies
+  # where, the hand-over). A pointer from the clone's AGENTS.md was not followed.
+  # Skills come from ~/.agents/skills. The clone is ~/sperange.
+  dir = "/home/ubuntu"
+
+  # Commits made in the clone (by Coder Agents or over the terminal) carry the
+  # workspace owner's identity: the full name from the account settings, else
+  # the username (Coder reports "default" when no full name is set).
+  env = {
+    GIT_AUTHOR_NAME     = local.owner_name
+    GIT_AUTHOR_EMAIL    = data.coder_workspace_owner.me.email
+    GIT_COMMITTER_NAME  = local.owner_name
+    GIT_COMMITTER_EMAIL = data.coder_workspace_owner.me.email
+  }
 
   display_apps {
     vscode          = false
@@ -255,7 +274,7 @@ resource "coder_app" "chat" {
   agent_id     = coder_agent.main.id
   slug         = "chat"
   display_name = "Chat (AG-UI)"
-  icon         = "/icon/terminal.svg"
+  icon         = "/icon/openai.svg"
   url          = "http://localhost:3000"
   subdomain    = true
   share        = "owner"
@@ -265,6 +284,20 @@ resource "coder_app" "chat" {
     interval  = 10
     threshold = 30
   }
+}
+
+# Rebuild: applies the clone to the running frontend (spe-apply: build the images
+# that changed, recreate the containers, wait for health) in a web terminal.
+# Edits to the runbook, the prompt and the agent's source are live without it;
+# see platform/instance/workspace/AGENTS.md. The web terminal reconnects when
+# its process ends and a reconnect runs the command again, so a bare command
+# would rebuild in a loop: the command ends in a shell instead.
+resource "coder_app" "rebuild" {
+  agent_id     = coder_agent.main.id
+  slug         = "rebuild"
+  display_name = "Rebuild"
+  icon         = "/icon/docker.svg"
+  command      = "spe-apply; echo; echo '== Rebuild finished. Close this tab, or use this shell.'; exec bash -l"
 }
 
 # --- the instance (Ansible) ----------------------------------------------------

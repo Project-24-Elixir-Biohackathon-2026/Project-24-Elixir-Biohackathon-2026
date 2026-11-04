@@ -1,4 +1,4 @@
-output/
+output
 collections
 *.retry
 __pycache__/

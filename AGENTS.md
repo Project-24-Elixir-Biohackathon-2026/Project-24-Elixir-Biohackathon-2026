@@ -199,12 +199,18 @@ is open (`docs/guides/contributing-upstream.md`, step 6).
 Threat models for agents in Secure Processing Environments (SPEs) and the Ansible automation that builds SPE
 evaluation instances.
 
+**On an SPE instance VM** (a portal workspace: `~/spe-frontend/.env` exists and this file sits in `~/sperange`),
+read `platform/instance/workspace/AGENTS.md` first. It says what a change needs there (nothing, `spe-apply`, or a
+new template), how the person tests it, and how a tested change becomes a template.
+
 | Path | What |
 |---|---|
-| `threats/`, `vocabulary.yaml`, `validate.py` | Threat model catalog (`TM-NNN-*.md`), its controlled vocabulary and validator |
+| `threats/`, `vocabulary.yaml`, `validate.py` | Threat model catalog (`TM-NNN-*.md`, new entries start from `threats/TEMPLATE.md`), its controlled vocabulary and validator |
 | `platform/ansible/` | Playbooks that create, verify, archive and destroy one SPE instance (`platform/ansible/README.md`) |
 | `platform/coder/` | The self-service portal (Coder) that runs those playbooks for participants (`platform/coder/README.md`) |
+| `platform/site/` | The landing page and the threat catalog page served next to the portal, built from `threats/` (`platform/site/README.md`) |
 | `platform/agui/` | The AG-UI frontend (`spe_frontend: agui`): `pydantic-ai-agent/` (Pydantic AI agent served over AG-UI) and `copilotkit-chat/` (Next.js + CopilotKit chat) |
+| `platform/instance/` | What runs on an instance from the repository clone there: the frontend's compose file, `spe-apply`, the workspace instructions for Coder Agents (`platform/instance/README.md`) |
 | `platform/promptfoo-evals/` | promptfoo provider, assertions and starter suite against an instance's agent |
 | `platform/dev/` | Development helpers: dummy dataset generator, scripted agent, tests for host-side scripts |
 | `docs/getting-started.md` | Deploying and using an instance by hand, and its private configuration |
@@ -227,10 +233,15 @@ cloned from `kraatz`): a merge there changes what participants get within minute
 an upstream PR (`docs/guides/contributing-upstream.md`).
 
 Private instance files and `platform/ansible/output/` exist only in the main checkout,
-not in a worktree. To deploy a worktree's agent or chat UI before it is merged,
-run Ansible from the main checkout with `-e spe_agui_source_dir=<worktree>/platform/agui`, and with
-`-i <worktree>/platform/ansible/inventory/hosts.yml` if the branch changes `group_vars`
-(`docs/knowledge/agui-worktree-deploy-inventory.md`).
+not in a worktree. An instance runs the chat frontend from a clone of this repository
+on its VM (`~/sperange`), checked out at `spe_repo_ref`, by default the commit the
+controller's checkout is at, so that commit must be pushed. `spe_repo_url` defaults to
+upstream (`kraatz`), which lacks our commits: our instance files set it to our fork. To
+deploy a topic branch before it is merged, push it and run Ansible from the main checkout
+with `-e spe_repo_ref=<branch>`, and with `-i <worktree>/platform/ansible/inventory/hosts.yml`
+if the branch changes `group_vars` (`docs/knowledge/agui-worktree-deploy-inventory.md`).
+Inside a workspace, edits to the clone are live or applied with `spe-apply`
+(`platform/coder/README.md`, "Working in a workspace").
 
 When this repository is a submodule (of `biohackathon`), the parent records the
 pinned commit; move the pin there after the push.
@@ -238,8 +249,9 @@ pinned commit; move the pin there after the push.
 ### Running things
 
 ```bash
-uv run --with pyyaml --with python-frontmatter python validate.py   # threat catalog
-uv run --with pytest pytest platform/dev/tests -q    # dataset generator, host preflight
+uv run --with pyyaml python validate.py              # threat catalog
+uv run --with pyyaml --with mkdocs-material python platform/site/build.py   # landing page + catalog -> platform/site/dist/
+uv run --with pytest --with pyyaml --with mkdocs-material pytest platform/dev/tests -q   # dataset generator, host preflight, site build, archive
 (cd platform/agui/pydantic-ai-agent && uv run --group dev pytest -q)   # agent
 (cd platform/promptfoo-evals && uv run --group dev pytest -q)          # promptfoo provider and assertions
 (cd platform/agui/copilotkit-chat && npm ci && npm run build)          # chat UI (type check)
@@ -255,6 +267,9 @@ Ansible needs a blocking stdin here: always run it with `</dev/null`, from
 `platform/coder/` is a self-service portal (Coder) that runs the playbooks for
 participants, proxies the chat frontend into the browser and archives each run on
 stop (`platform/coder/README.md`). Testbed presets are `platform/coder/template/testbeds/*.yml`.
+A branch named `template/<name>` pushed to upstream (the repository the portal follows) becomes its own portal
+template `spe-<name>` within minutes, for trying creation-time changes (Ansible roles, the template) on a
+fresh workspace before they are merged.
 
 ### AG-UI agent frontend
 

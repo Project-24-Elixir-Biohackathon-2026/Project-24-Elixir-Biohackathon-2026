@@ -14,8 +14,8 @@
   vars:
     spe_manifest:
       instance: "{{ spe_instance }}"
-      provision: "{{ spe_provision }}"
-      paths: "{{ (spe_preflight | default({})).resolved | default({'stack_dir': spe_stack_dir, 'frontend_dir': spe_frontend_dir, 'data_root': spe_data_root}, true) }}"
+      provision: "{{ spe_manifest_provision }}"
+      paths: "{{ (spe_preflight | default({})).resolved | default({'stack_dir': spe_stack_dir, 'frontend_dir': spe_frontend_dir, 'data_root': spe_data_root, 'repo_dir': spe_repo_dir}, true) }}"
       compose_projects: "{{ spe_compose_projects }}"
 
 - name: Detect existing Docker apt source
@@ -46,7 +46,7 @@
 
 - name: Install packages
   ansible.builtin.apt:
-    name: [git, curl, rsync, ca-certificates, python3-yaml, python3-docker]
+    name: [git, curl, rsync, ca-certificates, python3-yaml, python3-docker, ansible-core, python3-cryptography]
     state: present
     update_cache: true
     cache_valid_time: 3600

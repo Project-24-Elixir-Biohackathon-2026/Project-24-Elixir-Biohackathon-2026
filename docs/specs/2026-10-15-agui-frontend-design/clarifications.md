@@ -246,3 +246,12 @@ in the parts it amends.
     *Reason:* asked for by the user on #30 (2026-11-04): the command was undiscoverable and looked like a
     message until sent. *Cost if wrong:* the menu's entry sends `/compact` with no focus, so a participant who
     wanted one has to type it after the command. *Amends:* §15, out-of-scope. *Status:* folded.
+
+20. **The frontend runs from a clone of the repository on the VM** (2026-11-04; the fork's merge of `upstream/main`,
+    PR #35). Upstream replaced the role's rendered compose file and content-hashed images with the clone-on-VM
+    layout: `platform/instance/compose.yml` with compose profiles, images tagged `:local` built by `spe-apply`,
+    the prompt and the agent's source bind-mounted from the clone; `spe_agui_source_dir` is gone and a branch is
+    deployed with `-e spe_repo_ref=<branch>`. The `chat-sessions` volume moved into that compose file, mounted in
+    `chat-ui` and in the `ui-dev` profile's `chat-ui-dev`. *Reason:* upstream's layout, taken in the merge.
+    *Cost if wrong:* the `ui-dev` profile has no archive and no chat-ui hardening check yet. *Amends:* §6
+    *Storage*, §7 *Role `agui`* and its variables. *Status:* folded.

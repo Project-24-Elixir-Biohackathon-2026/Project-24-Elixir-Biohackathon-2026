@@ -25,21 +25,19 @@
     name: prefetch
     tasks_from: wait
 
-- name: Rendered compose and env files
+- name: Secret-bearing env files
   ansible.builtin.template:
     src: "{{ item.src }}"
     dest: "{{ spe_frontend_dir }}/{{ item.dest }}"
     owner: "{{ spe_ssh_user }}"
     group: "{{ spe_ssh_user }}"
-    mode: "0640"
+    mode: "0600"
   loop:
-    - { src: docker-compose.yml.j2, dest: docker-compose.yml }
     - { src: webui.env.j2, dest: webui.env }
     - { src: terminal.env.j2, dest: terminal.env }
   loop_control:
     label: "{{ item.dest }}"
   no_log: true
-  register: rendered
 
 - name: Validate compose file
   ansible.builtin.command: docker compose -f docker-compose.yml config --quiet
@@ -47,14 +45,12 @@
     chdir: "{{ spe_frontend_dir }}"
   changed_when: false
 
-- name: Frontend stack up
-  community.docker.docker_compose_v2:
-    project_src: "{{ spe_frontend_dir }}"
-    files: [docker-compose.yml]
-    state: present
-    # Same project as the agui role: switching frontends removes the other's containers.
-    remove_orphans: true
-    recreate: "{{ 'always' if (rendered.changed or sandbox_image_changed) else 'auto' }}"
+# The compose file is the clone's platform/instance/compose.yml (role sandbox linked
+# it); same project as the agui role, so --remove-orphans replaces its containers.
+- name: Frontend stack up (spe-apply up)
+  ansible.builtin.command: spe-apply up
+  register: webui_apply
+  changed_when: "'Created' in webui_apply.stdout or 'Recreated' in webui_apply.stdout or 'Started' in webui_apply.stdout"
 
 - name: Wait for OpenWebUI to answer
   ansible.builtin.uri:

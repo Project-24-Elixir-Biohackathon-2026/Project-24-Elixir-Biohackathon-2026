@@ -95,6 +95,7 @@
     project_src: "{{ spe_stack_dir }}/deployment"
     files: [compose.install.yaml]
     state: present
+    build: always   # services with a build section (added in a workspace) follow their sources; cached when unchanged
     recreate: "{{ 'always' if rendered.changed or (cert.changed | default(false)) else 'auto' }}"
   register: stack_up
   # weskit-data-init is one-shot (restart: 'no'): every up starts it again and
