@@ -362,14 +362,22 @@ endpoint without touching the dashboard:
 platform/coder/deploy/coder-agents-setup.sh      # on the portal VM, as ubuntu
 ```
 
-It creates (or updates) the provider `denbi` with the base URL and the key from
-`coder.env`, and the model `gemma-4-31b` as the organization's default; it is
-safe to rerun. Not every model on the endpoint works: Coder Agents sends a
+One run per endpoint. With its defaults it creates (or updates) the provider
+`denbi` with the base URL and the key from `coder.env` and the model
+`gemma-4-31b`; the second run in the script's header creates the provider
+`bi-denbi` (the BI de.NBI vLLM endpoint, `BI_DENBI_LLM_*` in `coder.env`) with
+`Qwen3-Coder-Next`, the organization's default model since 2026-11-04: in the
+same task it needed one round where gemma needed three, with no failed edit.
+Both runs are safe to repeat. Not every model works: Coder Agents sends a
 system message in the middle of the conversation, which the chat templates of
-`qwen3.8-27b` and `mistral-medium-3.5` reject ("System message must be at the
-beginning"); `gpt-oss-120b`, `gemma-4-31b` and `glm-5.3` accept it. Everything is a variable (`SPE_LLM_BASE_URL`, `SPE_LLM_MODELS`
-as `model:context_limit:display name` separated by commas, …), see the header
-of the script. The API details it relies on, found in Coder 2.38's dashboard
+the Qwen chat models (`qwen3.8-27b`, `Qwen3.6-35B-A3B`) and `mistral-medium-3.5`
+reject ("System message must be at the beginning"); `Qwen3-Coder-Next`,
+`gpt-oss-120b`, `gemma-4-31b` and `glm-5.3` accept it. Mind the served context
+window: Coder requests 32k output tokens unless `max_output_tokens` caps it, so a
+model behind a 64k window needs that cap (the fourth field of `SPE_LLM_MODELS`).
+Everything is a variable (`SPE_LLM_BASE_URL`, `SPE_LLM_MODELS` as
+`model:context_limit:display name:max_output_tokens` separated by commas, …),
+see the header of the script. The API details it relies on, found in Coder 2.38's dashboard
 client since the docs only show the UI: `POST /api/v2/ai/providers` with type
 `openai-compat` and `api_keys: ["<key>"]`, `PATCH .../providers/<id>` with
 `api_keys: [{"api_key": "<key>"}]`, and
