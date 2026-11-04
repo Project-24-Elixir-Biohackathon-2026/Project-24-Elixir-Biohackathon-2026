@@ -134,6 +134,28 @@ def test_final_archive_and_nothing_recorded(tmp_path):
     assert "0 sessions (0 hidden, 0 deleted), final archive, no run log" in proc.stdout
 
 
+def test_title_calls_are_reported_separately_from_runs(tmp_path):
+    """A title call (`{"type": "title", ...}`) is a model call the agent logs for evaluations, not a run; an
+    unparsable line is tolerated and counted as a run, as every line was before `/title` existed."""
+    src, out = prepare(tmp_path)
+    (out / "agent-runs.jsonl").write_text(
+        '{"run_id": "r1-1"}\n'
+        '{"type": "title", "thread_id": "t1", "title": "A title"}\n'
+        'not json\n'
+        '{"run_id": "r1-2"}\n'
+    )
+    run(src, out)
+    index = (out / "index.md").read_text()
+    assert "- Agent run log: [agent-runs.jsonl](agent-runs.jsonl), 3 runs + 1 title call" in index
+    assert "1 title calls" not in index  # singular: one title call, not "1 title calls"
+
+
+def test_count_run_log_tolerates_unparsable_lines_and_no_titles(tmp_path):
+    log = tmp_path / "runs.jsonl"
+    log.write_text('{"run_id": "r1"}\nnot json\n\n{"run_id": "r2"}\n')
+    assert wr.count_run_log(log) == (3, 0)
+
+
 def test_a_completed_run_shows_no_status_and_the_tools_render_fenced(rendered):
     md = chat(rendered, TOOLS)
     assert "**Run " not in md

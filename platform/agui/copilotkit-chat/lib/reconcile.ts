@@ -77,3 +77,21 @@ export async function reconcile(
     await sleep(RECONCILE_DELAY_MS);
   }
 }
+
+/** Which sessions get a model title asked for: those started in this page load (New chat), once each, after
+ *  a run of theirs that finished (RUN_FINISHED: the only run the server can title from) and was recorded. A
+ *  session that had runs before this page load is never started here, so it is never asked for. */
+export class TitleTrigger {
+  private readonly fresh = new Set<string>();
+
+  started(id: string): void {
+    this.fresh.add(id);
+  }
+
+  /** True once per started session, for its first finished, recorded run; it is then forgotten. */
+  take(id: string, finished: boolean): boolean {
+    if (!finished || !this.fresh.has(id)) return false;
+    this.fresh.delete(id);
+    return true;
+  }
+}

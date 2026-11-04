@@ -72,7 +72,8 @@ export function parsePatch(body: unknown): MetaPatch {
   return patch;
 }
 
-function messageText(message: Message): string {
+// A message's text: its string content, or its text parts joined.
+export function messageText(message: Message): string {
   const content = (message as { content?: unknown }).content;
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
@@ -362,6 +363,28 @@ export class Journals {
       const entry = (await this.ready()).entries.get(id);
       if (!entry || !listed(entry)) return null;
       await this.append(id, { type: "meta", ...patch }, "now");
+      return toMeta(entry);
+    });
+  }
+
+  /** The metadata, and whether a meta line ever set a title (a rename or an earlier model title: autoTitle
+   *  is never journaled); null when missing, deleted, or no run added a message. */
+  async meta(id: string): Promise<{ meta: SessionMeta; titled: boolean } | null> {
+    this.file(id);
+    const entry = (await this.ready()).entries.get(id);
+    if (!entry || !listed(entry)) return null;
+    return { meta: toMeta(entry), titled: entry.title !== null };
+  }
+
+  /** A model-written title, appended as a meta line only if no title is set by then: the check runs under
+   *  the session's queue, so a rename made while the model was writing wins. The metadata after (unchanged
+   *  when a title was already set); null when missing, deleted, or no run added a message. */
+  async titleIfUntitled(id: string, title: string): Promise<SessionMeta | null> {
+    this.file(id);
+    return withSession(id, async () => {
+      const entry = (await this.ready()).entries.get(id);
+      if (!entry || !listed(entry)) return null;
+      if (entry.title === null) await this.append(id, { type: "meta", title }, "now");
       return toMeta(entry);
     });
   }

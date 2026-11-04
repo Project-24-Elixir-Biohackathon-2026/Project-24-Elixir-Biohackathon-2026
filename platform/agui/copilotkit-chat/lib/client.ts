@@ -50,6 +50,18 @@ export async function updateSession(id: string, patch: MetaPatch, f?: Fetch): Pr
   return (await response.json()) as SessionMeta;
 }
 
+// The model-written title, asked for once after a new session's first finished run: the server reads the
+// first message and answer from the journal and writes a title only if none is set. The metadata either way.
+export async function askTitle(id: string, f?: Fetch): Promise<SessionMeta> {
+  const response = await call(f)(`/api/sessions/${encodeURIComponent(id)}/title`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+  if (!response.ok) throw await failure(response, "Titling the session");
+  return (await response.json()) as SessionMeta;
+}
+
 export async function removeSession(id: string, f?: Fetch): Promise<void> {
   const response = await call(f)(`/api/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
   if (!response.ok) throw await failure(response, "Deleting the session");

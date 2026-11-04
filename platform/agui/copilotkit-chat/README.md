@@ -44,14 +44,19 @@ neither read nor migrated.
 - `/api/sessions`: `GET` lists metadata (newest first, at most 1000, deleted ones left out);
   `GET`/`PATCH`/`DELETE /api/sessions/{id}` read one (its latest branch), change `title`, `tags`, `pinned` or
   `hidden` (bodies up to 16 KB; one `meta` line each), or mark it deleted. A deleted session's journal is
-  kept. There is no `POST`: a session is listed once a run has added a message. Errors are `{"error": "<message>"}`.
+  kept. No route creates a session: one is listed once a run has added a message. `POST
+  /api/sessions/{id}/title` asks the agent's `POST /title` (same `AGENT_URL` host and key) for a 2-4 word title
+  from the first completed run's user message and answer, read from the journal, and appends it as a `meta`
+  title only if the session has none (a rename, even one made while the model writes, wins); it answers the
+  metadata, unchanged when nothing was written or the agent failed (logged). Errors are `{"error": "<message>"}`.
 
 The journals hold whatever participants typed and tools returned, canary values included: treat the
 volume like the agent's run log.
 
-**Sidebar.** `app/sidebar.tsx`, in Open WebUI's layout and colours (light and dark follow the system): *New chat*,
-the sessions by title only, grouped and filtered by `lib/sidebar-view.ts` (below), and a button that collapses the
-sidebar. Each row has a `⋯` menu (`app/row-menu.tsx`): rename (also a double-click on the
+**Sidebar.** `app/sidebar.tsx`, in Open WebUI's layout and colours: *New chat*,
+the sessions by title only, grouped and filtered by `lib/sidebar-view.ts` (below), a theme control in the
+footer (System / Light / Dark), and a button that collapses the sidebar. Each row has a `⋯` menu
+(`app/row-menu.tsx`): rename (also a double-click on the
 title; Enter, Tab or a click outside saves, Escape cancels), pin, tags, hide, and delete after a confirmation
 (`app/delete-dialog.tsx`; the journal is kept and archived). The menu closes on a click outside, Escape or a choice;
 on a touch screen every row shows its `⋯`.
@@ -64,7 +69,8 @@ The sidebar's search filters by title (case-insensitive) and, as in Open WebUI, 
 session must have every one; typing `tag:` suggests the tags in use), lists pinned sessions first and then
 *Today*, *Yesterday*, *Previous 7 days* and *Older* by last change, and shows hidden sessions only with *Show
 hidden*. The chat header shows the open session's title, renamable in place, and the same `⋯` menu as its
-row. While a run is in progress, switching session and *New chat* are disabled; after a run the list is
+row; a New chat not yet recorded shows no title. A New chat's first finished run, once listed, makes one title
+call: the row shows the first message until the model's title arrives. While a run is in progress, switching session and *New chat* are disabled; after a run the list is
 fetched until it shows that run (up to 5 retries, 500 ms apart), else the error bar says the session could not
 be saved. If the runtime is not ready within 15 s, the error bar says it is unreachable.
 `platform/dev/e2e/sessions.py` drives all of it in a browser against the scripted agent.

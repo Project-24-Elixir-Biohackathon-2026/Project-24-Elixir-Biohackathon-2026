@@ -9,9 +9,11 @@
 // closes on a press outside it, Escape or a choice, and gives focus back to its ⋯; a rename is saved
 // by Enter or a press outside the row and cancelled by Escape; a tag typed but not added is dropped.
 import { useEffect, useRef, useState } from "react";
+import type { CSSProperties, KeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import type { MouseEvent } from "react";
 import { removeSession, renamePatch, tagSuggestions, updateSession, withTag, withoutTag } from "../lib/client.ts";
 import type { MetaPatch, SessionMeta } from "../lib/sessions.ts";
+import { DEFAULT as DEFAULT_WIDTH, MAX as MAX_WIDTH, MIN as MIN_WIDTH, clampWidth, maxFor, parseWidth, stepWidth } from "../lib/sidebar-width.ts";
 import { filterSessions, sections } from "../lib/sidebar-view.ts";
 import type { ViewFilter } from "../lib/sidebar-view.ts";
 import { DeleteDialog } from "./delete-dialog";
@@ -20,6 +22,7 @@ import { Popover } from "./popover";
 import { RenameInput, RowMenu } from "./row-menu";
 import { HiddenToggle, SearchBox } from "./session-filters";
 import { TagEditor } from "./tag-editor";
+import { ThemeControl } from "./theme-control";
 
 type SidebarProps = {
   sessions: SessionMeta[];
@@ -50,10 +53,44 @@ type Busy =
 
 const errorText = (e: unknown, fallback: string) => (e instanceof Error && e.message ? e.message : fallback);
 
+// The sidebar's width, kept per browser. Read and written in try/catch: the page works without it.
+const WIDTH_KEY = "spe.sidebarWidth";
+const readStoredWidth = (): number => {
+  try {
+    return parseWidth(localStorage.getItem(WIDTH_KEY));
+  } catch {
+    return DEFAULT_WIDTH;
+  }
+};
+const writeStoredWidth = (width: number): void => {
+  try {
+    localStorage.setItem(WIDTH_KEY, String(width));
+  } catch {
+    // no persistence without storage; the width still applies for this render
+  }
+};
+
 
 export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChanged, onDeleted, onError, running, ready }: SidebarProps) {
   const [busy, setBusy] = useState<Busy | null>(null);
   const [collapsed, setCollapsed] = useState(false);
+  // DEFAULT_WIDTH on the server and on the first client render (so there is no hydration
+  // mismatch); the stored width, if any, loads right after in an effect. The stored value itself
+  // is never put through the viewport cap below, so a desktop width survives a visit from a phone.
+  const [width, setWidth] = useState(DEFAULT_WIDTH);
+  // MAX_WIDTH until the viewport is known (effect: there is no window during SSR), then kept live
+  // across a resize. Only used to report and limit the *live* range (aria, drag, keyboard); the
+  // CSS `min(var(--sidebar-width), calc(100vw - 48px))` on `.spe-sidebar` is what actually stops a
+  // wider `--sidebar-width` from causing horizontal page scroll.
+  const [viewportMax, setViewportMax] = useState(MAX_WIDTH);
+  const drag = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null);
+  useEffect(() => setWidth(readStoredWidth()), []);
+  useEffect(() => {
+    const update = () => setViewportMax(maxFor(window.innerWidth));
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
   const triggers = useRef(new Map<string, HTMLButtonElement>());
   const popover = useRef<HTMLDivElement>(null);
   // The session id whose tag change is in flight, until the list is fetched again: each patch is
@@ -194,6 +231,36 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
   };
 
   const newChat = () => { end(); onNew(); };
+
+  // The resize handle: pointer drag (with pointer capture, so leaving the handle mid-drag still
+  // tracks), Left/Right to step, double-click to reset. Every change is clamped (including to the
+  // current viewport, read fresh here rather than trusted from state, in case a resize landed
+  // between renders) and persisted.
+  const resizeTo = (next: number) => {
+    const clamped = Math.min(clampWidth(next), maxFor(window.innerWidth));
+    setWidth(clamped);
+    writeStoredWidth(clamped);
+  };
+  // The rendered width (the CSS cap can show less than `width` on a narrow viewport): a drag or a
+  // key step starts from what is actually on screen, not the stored value, or the first presses do
+  // nothing until the pointer or the steps catch up to it.
+  const shownWidth = Math.min(width, viewportMax);
+  const onResizerPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    drag.current = { pointerId: e.pointerId, startX: e.clientX, startWidth: shownWidth };
+  };
+  const onResizerPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (drag.current?.pointerId !== e.pointerId) return;
+    resizeTo(drag.current.startWidth + (e.clientX - drag.current.startX));
+  };
+  const onResizerPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (drag.current?.pointerId === e.pointerId) drag.current = null;
+  };
+  const onResizerKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "ArrowLeft") { e.preventDefault(); resizeTo(stepWidth(shownWidth, -1)); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); resizeTo(stepWidth(shownWidth, 1)); }
+  };
+
   if (collapsed) {
     return (
       <nav className="spe-sidebar spe-sidebar-collapsed" aria-label="Sessions">
@@ -247,12 +314,31 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
     );
   };
   return (
-    <nav className="spe-sidebar" aria-label="Sessions">
+    <nav className="spe-sidebar" aria-label="Sessions"
+      // Scoped to this nav on purpose, not a shared ancestor: `.spe-sidebar`'s own CSS caps it
+      // against the viewport (globals.css), so setting it anywhere else would need that cap too.
+      style={{ "--sidebar-width": `${width}px` } as CSSProperties}>
       <div className="spe-sidebar-top">
         <span className="spe-brand">SPE agent</span>
         <button type="button" className="spe-icon-button spe-collapse" aria-label="Hide sessions" title="Hide sessions"
           onClick={() => { end(); setCollapsed(true); }}><SidebarToggle /></button>
       </div>
+      <div
+        className="spe-sidebar-resizer"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize sidebar"
+        aria-valuenow={shownWidth}
+        aria-valuemin={MIN_WIDTH}
+        aria-valuemax={viewportMax}
+        tabIndex={0}
+        onPointerDown={onResizerPointerDown}
+        onPointerMove={onResizerPointerMove}
+        onPointerUp={onResizerPointerUp}
+        onPointerCancel={onResizerPointerUp}
+        onKeyDown={onResizerKeyDown}
+        onDoubleClick={() => resizeTo(DEFAULT_WIDTH)}
+      />
       <div className="spe-sidebar-actions">
         <button type="button" className="spe-new" disabled={running || !ready} onClick={newChat}><PencilSquare />New chat</button>
         <SearchBox query={filter.query} knownTags={knownTags} onChange={(query) => setFilter({ ...filter, query })} />
@@ -269,7 +355,10 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
           <p className="spe-empty">{sessions.length === 0 ? "No sessions yet." : "No session matches."}</p>
         )}
       </div>
-      <HiddenToggle showHidden={filter.showHidden} onChange={(showHidden) => { end(); setFilter({ ...filter, showHidden }); }} />
+      <div className="spe-sidebar-foot">
+        <ThemeControl />
+        <HiddenToggle showHidden={filter.showHidden} onChange={(showHidden) => { end(); setFilter({ ...filter, showHidden }); }} />
+      </div>
 
       {busySession && busy?.mode === "menu" && (
         <Popover anchor={triggers.current.get(busy.id)} box={popover} key={`menu-${busy.id}`}>

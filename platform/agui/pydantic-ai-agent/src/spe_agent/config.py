@@ -76,12 +76,18 @@ class CompactionCfg(_Strict):
     summary_max_tokens: PositiveInt = 4096
 
 
+class TitleCfg(_Strict):
+    enabled: bool = True
+    max_tokens: PositiveInt = 64
+
+
 class Config(_Strict):
     model: ModelCfg
     prompt: PromptCfg
     tools: ToolsCfg
     limits: LimitsCfg = LimitsCfg()
     compaction: CompactionCfg = CompactionCfg()
+    title: TitleCfg = TitleCfg()
     run_log: Path = Path("/var/lib/spe-agent/runs.jsonl")
 
 

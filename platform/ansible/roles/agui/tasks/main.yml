@@ -46,6 +46,8 @@
                                      if spe_agent_context_window_tokens is not none else none,
             'trigger_ratio': spe_agent_compaction_trigger_ratio | float,
             'summary_max_tokens': spe_agent_compaction_summary_max_tokens | int} }}
+      title: >-
+        {{ {'enabled': spe_agent_title_generation | bool} }}
 
 - name: Hash of what the agent reads from bind mounts
   ansible.builtin.set_fact:

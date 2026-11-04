@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ApiError, fetchSession, fetchSessions, removeSession, tagSuggestions, updateSession } from "./client.ts";
+import { ApiError, askTitle, fetchSession, fetchSessions, removeSession, tagSuggestions, updateSession } from "./client.ts";
 import type { Fetch } from "./client.ts";
 import type { SessionMeta } from "./sessions.ts";
 
@@ -39,6 +39,18 @@ test("removeSession: 204 resolves, 404 rejects; fetchSessions returns the list",
   await removeSession(ID, fake(204, null));
   await assert.rejects(removeSession(ID, fake(404, { error: "not found" })), ApiError);
   assert.deepEqual(await fetchSessions(fake(200, [meta(ID, "t")])), [meta(ID, "t")]);
+});
+
+test("askTitle: POST .../title, a JSON Content-Type (the route 415s without one), the metadata back; a non-2xx rejects", async () => {
+  const seen: { url?: string; init?: RequestInit } = {};
+  const out = await askTitle(ID, fake(200, meta(ID, "t", { title: "Greeting the agent" }), seen));
+  assert.equal(seen.url, `/api/sessions/${ID}/title`);
+  assert.equal(seen.init?.method, "POST");
+  assert.equal((seen.init?.headers as Record<string, string>)["Content-Type"], "application/json");
+  assert.equal(seen.init?.body, "{}");
+  assert.equal(out.title, "Greeting the agent");
+  await assert.rejects(askTitle(ID, fake(404, { error: "no such session" })),
+    (e: unknown) => e instanceof ApiError && e.status === 404);
 });
 
 test("row menu patches: rename, add and remove a tag", async () => {

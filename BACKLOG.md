@@ -32,12 +32,14 @@ start reads this section; keep it short.
   track's slice 2/2 merges, before the *Upstream: port the AG-UI package* item. Approved by the user (2026-11-03):
   instances and paid model calls for this test need no further OK, but at most one instance at a time (a Coder
   workspace counts; stop it before step 3's `create.yml`), destroyed when done.
-- AG-UI chat minors, asked for by the user (2026-11-03): (1) a model-written initial title, as Open WebUI 0.11.3
-  does (after the first reply, a background task-model call on the last two messages, `{"title": …}` 2–4 words;
-  `ENABLE_TITLE_GENERATION`, `TASK_MODEL`): replaces `autoTitle`'s first 60 characters unless the user renamed it,
-  journaled as a `meta` line, its model call in the run log, off by a switch; (2) a sidebar resizable by dragging its
-  edge (Open WebUI's `sidebarWidth`, default 245), width kept per browser, min/max, keyboard-resizable. (1) changes
-  the agent, record and spec §6 (Full mode or a spec clarification); (2) is a Change. Due: after the `/compact` track.
+- AG-UI chat: tool-call cards like Open WebUI's `ToolCallDisplay` — chat UI only (`ToolCard`,
+  `app/page.tsx:73`, and its CSS): a status icon (spinner + shimmer while running, check when done, ✕ on
+  error) instead of the "preparing…/running…/done" text; "Executing `<name>`…" while running and "View
+  Result from `<name>`" once done, in place of the brief/status spans; the arguments shown as key/value
+  rows instead of a raw JSON dump; the result in a code block; consecutive tool calls grouped under one
+  header; `run_command` shown as a `$ <command>` line; and a distinct error state for a failed call. Asked
+  for by the user (2026-11-03), alongside the model-written titles, resizable sidebar and theme toggle built
+  in PR #29. Due: the next Change after #29.
 
 ## Unscheduled
 

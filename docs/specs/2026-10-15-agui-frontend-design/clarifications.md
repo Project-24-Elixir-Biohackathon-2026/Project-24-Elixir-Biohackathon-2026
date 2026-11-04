@@ -191,3 +191,19 @@ in the parts it amends.
     *Status:* folded. Added in review (#28): the focus is a user part of its own after the transcript's, not text
     appended to it, since a tool output in the transcript could carry the heading and pose as a focus; §15 *The
     agent*, item 3, says so.
+
+16. **Sessions get a model-written title, the sidebar is resizable, and the chat gets a System/Light/Dark
+    theme toggle** (2026-11-04; the fork's PR #29). §6 *Sessions* now says the fallback title (first user
+    message, 60 characters) is replaced by a title the agent writes once the session's first run completes,
+    unless the user already renamed it, journaled the same way a `PATCH` is; the session API table gains
+    `POST /api/sessions/{id}/title`; §6 *The sidebar* now says the sidebar is resized by drag or the
+    Left/Right arrow keys (200–480 px, 260 default, `localStorage` key `spe.sidebarWidth`) and its footer
+    carries the theme control (`spe.theme`, `data-theme`, applied before paint so there is no flash); the
+    README's decision 22 is rewritten for the title rule. §5 *Endpoints* gains `POST /title`, its
+    *Configuration* block gains `title: {enabled, max_tokens}`, and its *Run log* now says a title call is a
+    `{"type": "title", ...}` line, distinct from a run line (no `type`), which a run-log reader skips when
+    counting runs. *Reason:* asked for by the user (2026-11-03): session titles and the sidebar's width were
+    the two items left on the AG-UI chat minors backlog item, and a theme toggle was asked for alongside them.
+    Both the title generation and the theme control are modelled on Open WebUI 0.11.3 (`ENABLE_TITLE_GENERATION`
+    and its model request, and the sidebar's theme setting). *Amends:* §5 *Endpoints*, *Configuration*, *Run
+    log*; §6 *Sessions*, *The sidebar*; README decision 22. *Status:* folded.

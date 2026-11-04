@@ -35,9 +35,14 @@ session id) and one journal (§13).
   filesystem except as a validated UUID.
 - **Metadata.** `title`, `tags`, `pinned`, `hidden` (changed by the browser) and `deleted_at` (set by
   `DELETE`). Each change appends a `meta` line to the journal (§13).
-  - `title`: the first user message's text, whitespace collapsed, cut to 60 characters, until a `PATCH`
-    sets one; `"Untitled"` if it has no text. A later run never changes a title the user set. Titles are at
-    most 200 characters.
+  - `title`: the first user message's text, whitespace collapsed, cut to 60 characters, until a title is
+    set; `"Untitled"` if it has no text. Once the session's first run completes, `chat-ui` asks the agent
+    (`POST /api/sessions/{id}/title`, below) for a short model-written title from that run's first message
+    and answer, and journals it as a `meta` line if no title is set by then; the agent's title never
+    overwrites one the user already set by `PATCH`, and a `PATCH` made after the model title still wins (the
+    check for an existing title runs under the session's own append queue). Modelled on Open WebUI 0.11.3's
+    title generation (clarification 16). A later run never changes a title once one is set, by either path.
+    Titles are at most 200 characters.
   - `tags`: each trimmed, lower-cased, matching `[a-z0-9._-]{1,32}`, at most 20, de-duplicated, kept in the
     order given. An invalid tag makes the whole `PATCH` fail with 400.
   - `updated_at` is the time of the journal's last line; the list is ordered by it, newest first.
@@ -57,6 +62,7 @@ Routes under `app/api/sessions/`, beside `/api/copilotkit`. The browser changes 
 | `GET /api/sessions/{id}` | `200` with `id`, `title`, `tags`, `pinned`, `hidden`, `created_at`, `updated_at` and `messages`: the tip's branch (§13); `404` if missing or deleted. `version`, `title_source` and `last_run_at` are no longer answered: the journal keeps neither of the first two, and the third is a list-only field (clarification 9) |
 | `PATCH /api/sessions/{id}` | body: any of `title`, `tags`, `pinned`, `hidden`; `200` with the new metadata; `400` for an unknown key (`messages`, `runs` and `id` included), a wrong type or an invalid value (nothing changed); `404` if missing or deleted |
 | `DELETE /api/sessions/{id}` | sets `deleted_at`; `204`; `404` if missing or already deleted |
+| `POST /api/sessions/{id}/title` | asks the agent for a model-written title from the session's first completed run and journals it if none is set yet (above); `200` with the metadata (changed or not) whether or not a title was written; `400`/`404` as `GET`; `415` without a JSON `Content-Type` (no body is otherwise needed, and this forces a CORS preflight); never fails on the agent's refusal or a timeout, which leave the metadata unchanged |
 
 The list is served from an index in memory, built at startup with one pass over the journals and updated
 on every append (§13). An id that is not a UUID gets `400`. Bodies over 16 KB get `413`. Error bodies are
@@ -73,16 +79,22 @@ scope).
 Plain React and CSS in `app/` (no new dependencies); all session data is rendered as React text.
 
 - **Look:** Open WebUI's sidebar and chat chrome, finished to the standard of claude.ai and chatgpt.com:
-  its gray scale, type sizes, row and menu geometry and transitions, light and dark
-  (`prefers-color-scheme`), Heroicons-style inline SVG icons; the CopilotKit chat restyled to the same
-  palette.
-- **Layout:** a left sidebar (about 260 px, collapsible) and the chat to its right. Top to bottom: *New
-  chat*; a search box filtering by title (case-insensitive substring, in the browser), where Open WebUI's
+  its gray scale, type sizes, row and menu geometry and transitions, Heroicons-style inline SVG icons; the
+  CopilotKit chat restyled to the same palette. Light and dark follow a **theme control** in the sidebar
+  footer (System / Light / Dark, `localStorage` key `spe.theme`): System tracks `prefers-color-scheme`,
+  Light and Dark set `<html data-theme="light|dark">` to pick the matching palette outright. An inline
+  script in the page `<head>` reads the stored choice and sets `data-theme` before first paint, so there is
+  no flash of the other theme on load.
+- **Layout:** a left sidebar, resizable by dragging its right edge or with the Left/Right arrow keys while
+  it has focus (16 px per step), double-click to reset; the width is clamped to 200–480 px (260 default),
+  further capped against the viewport so it never forces horizontal scroll, and is kept per browser in
+  `localStorage` (`spe.sidebarWidth`); collapsible. The chat sits to its right. Top to bottom: *New chat*; a
+  search box filtering by title (case-insensitive substring, in the browser), where Open WebUI's
   `tag:<name>` terms filter by tag (several must all match) and typing `tag:` suggests the tags in use;
   the list, pinned first, then grouped *Today*, *Yesterday*, *Previous 7 days*, *Older* by `updated_at`,
   each row with its title only (as in Open WebUI), the open one highlighted, `⋯` shown on hover, focus,
-  the open row and the row whose menu is open (on a touch screen, `hover: none`, always); at the bottom a
-  *Show hidden* toggle and the note "Deleted sessions are kept in the run archive."
+  the open row and the row whose menu is open (on a touch screen, `hover: none`, always); at the bottom the
+  theme control, a *Show hidden* toggle and the note "Deleted sessions are kept in the run archive."
 - **Row menu (`⋯`):** a popover anchored to the button, one open at a time; it closes on a click outside,
   Escape, choosing an item, opening a session or *New chat*; Escape and a choice return focus to its `⋯` (a
   click outside leaves it where the click put it); arrow keys move between items. *Rename* (inline in the
@@ -92,9 +104,9 @@ Plain React and CSS in `app/` (no new dependencies); all session data is rendere
   "Delete chat?" with "This removes it from your list. It is kept in the run archive.", *Cancel* and
   *Delete*; Escape cancels, wherever focus is). The page-wide Escape handlers skip a key an earlier handler
   already took (`defaultPrevented`).
-- **Chat header:** a quiet row with the session's title (*New chat* before the first run), renamable in
-  place, and the same `⋯` menu. The note that this is the SPE agent and that every tool call is shown is
-  the muted line under the composer.
+- **Chat header:** a quiet row, no visible title before the first run (a heading for screen readers only),
+  then the session's title, renamable in place, and the same `⋯` menu. The note that this is the SPE agent
+  and that every tool call is shown is the muted line under the composer.
 - **Open session in the URL:** `?session=<id>`. Loading the page with it fetches the session; without it,
   or with an id that answers 404, the page starts a new session (and drops the parameter).
 - **Opening a session:** `GET /api/sessions/{id}`, then CopilotChat's `threadId` set to the id and

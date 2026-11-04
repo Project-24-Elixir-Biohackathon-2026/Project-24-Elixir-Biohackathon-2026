@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from spe_agent.config import CompactionCfg, ConfigError, load_config, load_secrets
+from spe_agent.config import CompactionCfg, ConfigError, TitleCfg, load_config, load_secrets
 
 VALID = {
     "model": {"provider": "openai_compatible", "name": "qwen3.8-27b", "base_url": "https://llm.example/v1"},
@@ -119,3 +119,25 @@ def test_compaction_values(tmp_path):
 def test_compaction_refused(tmp_path, bad):
     with pytest.raises(ConfigError):
         load_config(write(tmp_path, {**VALID, "compaction": bad}))
+
+
+def test_title_defaults(tmp_path):
+    cfg = load_config(write(tmp_path, VALID))
+    assert cfg.title == TitleCfg(enabled=True, max_tokens=64)
+
+
+def test_title_values(tmp_path):
+    data = {**VALID, "title": {"enabled": False, "max_tokens": 16}}
+    cfg = load_config(write(tmp_path, data))
+    assert (cfg.title.enabled, cfg.title.max_tokens) == (False, 16)
+
+
+def test_title_unknown_key_is_an_error(tmp_path):
+    with pytest.raises(ConfigError, match="title"):
+        load_config(write(tmp_path, {**VALID, "title": {"max_token": 16}}))
+
+
+@pytest.mark.parametrize("value", [0, -1])
+def test_title_max_tokens_must_be_positive(tmp_path, value):
+    with pytest.raises(ConfigError, match="max_tokens"):
+        load_config(write(tmp_path, {**VALID, "title": {"max_tokens": value}}))

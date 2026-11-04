@@ -2,10 +2,11 @@
 // The chat header (Open WebUI's navbar): the open session's title, renamable in place (by its menu's
 // Rename or a double-click, as a row), and the same `⋯` menu as its sidebar row: RowMenu, the
 // TagEditor, the DeleteDialog, with the sidebar's close and focus rules. A session not yet recorded
-// (New chat, before its first run ends) shows "New chat" and no menu: PATCH would answer 404. Which
-// session is open is still unknown on first load (before the URL's `?session=` is resolved, while
-// the page's own "Loading…" shows): `session` is `undefined` then, so the header shows no title at
-// all rather than "New chat" while the rest of the page says it is still loading.
+// (New chat, before its first run ends) shows no visible title and no menu (PATCH would answer 404); its
+// page heading "New chat" is there for screen readers and label lookups only (`spe-sr-only`). Once
+// recorded, the header shows the session's title: its first message, then the model's or the user's.
+// Which session is open is still unknown on first load (before the URL's `?session=` is resolved, while
+// the page's own "Loading…" shows): `session` is `undefined` then, so the header has no heading at all.
 // Its rename input is labelled "Chat title", not the rows' "Session title", so a label lookup finds one.
 // Titles and tags are model or participant text: rendered as React text only, never as HTML.
 import { useEffect, useRef, useState } from "react";
@@ -104,7 +105,7 @@ export function ChatHeader({ session, knownTags, running, ready, onPatch, onDele
   if (session === null) {
     return (
       <header className="spe-header">
-        <h1 className="spe-header-title">New chat</h1>
+        <h1 className="spe-sr-only">New chat</h1>
       </header>
     );
   }

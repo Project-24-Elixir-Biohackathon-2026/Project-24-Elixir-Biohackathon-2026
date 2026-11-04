@@ -257,7 +257,10 @@ replaces one frontend with the other (its volumes, `open-webui-data` included, s
   `compaction` block, which `verify.yml` shows. The window defaults to the de.NBI
   model's (`spe_webui_model_context_tokens`, the gateway's `max_input_tokens`) while
   `spe_agent_model` is `spe_webui_model_id`, and to null otherwise: set it for another
-  model, or only a provider's "too long" error triggers a compaction.
+  model, or only a provider's "too long" error triggers a compaction. After a
+  session's first completed run, the agent asks the model for a title from the
+  first exchange, unless the session already has one: `spe_agent_title_generation`
+  (true), rendered as `agent.yaml`'s `title.enabled`, which `verify.yml` shows.
 - **sandbox** — the open-terminal image from role `sandbox`; publishes nothing.
 
 The role copies only the files git tracks under `platform/agui/pydantic-ai-agent/` and `platform/agui/copilotkit-chat/` to

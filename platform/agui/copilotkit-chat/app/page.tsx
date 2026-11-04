@@ -12,9 +12,11 @@ import {
   useDefaultRenderTool,
 } from "@copilotkit/react-core/v2";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchSession, fetchSessions, removeSession, updateSession } from "../lib/client.ts";
+import { askTitle, fetchSession, fetchSessions, removeSession, updateSession } from "../lib/client.ts";
+import { TitleTrigger } from "../lib/reconcile.ts";
 import { searchWith, sessionFromSearch } from "../lib/session-url.ts";
 import type { MetaPatch, SessionMeta } from "../lib/sessions.ts";
+import { effectiveTheme, parseTheme } from "../lib/theme.ts";
 import { ChatHeader } from "./chat-header";
 import { AssistantOrCompaction } from "./compaction-divider";
 import { ChevronRight } from "./icons";
@@ -135,17 +137,6 @@ function Chat() {
     const id = activeRef.current;
     if (id && list.some((s) => s.id === id)) showInUrl(id);
   }, []);
-  const { busy, noteRunError } = useRunReconcile({ openId: active ?? "", onList, onError: setError });
-
-  // The history goes onto the agent first, then CopilotChat remounts on the new thread
-  // (key={id}): a freshly mounted chat on a non-explicit thread keeps the agent's messages,
-  // and makes no connect request that would clear them (README, Sessions).
-  const select = useCallback((id: string, messages: Message[]) => {
-    agent.setMessages(messages);
-    activeRef.current = id;
-    setActive(id);
-  }, [agent]);
-
   const refresh = useCallback(async (): Promise<SessionMeta[] | null> => {
     try {
       const list = await fetchSessions();
@@ -157,10 +148,34 @@ function Chat() {
     }
   }, []);
 
+  // A New chat's first finished run, once recorded: one call for its model-written title (the server writes
+  // one only if the session has no title of its own); until it answers, or if it fails, the list shows the
+  // first message as the title. The list is refetched rather than patched with the answer, so a rename
+  // that lands while the title call is in flight is not overwritten by it.
+  const titles = useRef(new TitleTrigger());
+  const onRecorded = useCallback((id: string, finished: boolean) => {
+    if (!titles.current.take(id, finished)) return;
+    askTitle(id)
+      .then(() => refresh())
+      .catch((e: unknown) => console.warn(`session ${id}: no model title: ${messageOf(e)}`));
+  }, [refresh]);
+  const { busy, noteRunError } = useRunReconcile({ openId: active ?? "", onList, onError: setError, onRecorded });
+
+  // The history goes onto the agent first, then CopilotChat remounts on the new thread
+  // (key={id}): a freshly mounted chat on a non-explicit thread keeps the agent's messages,
+  // and makes no connect request that would clear them (README, Sessions).
+  const select = useCallback((id: string, messages: Message[]) => {
+    agent.setMessages(messages);
+    activeRef.current = id;
+    setActive(id);
+  }, [agent]);
+
   // New chat: a fresh thread id and an empty history; it joins the list once its first run is recorded.
   const startNew = useCallback(() => {
     requestRef.current += 1;
-    select(crypto.randomUUID(), []);
+    const id = crypto.randomUUID();
+    titles.current.started(id);
+    select(id, []);
     showInUrl(null);
   }, [select]);
 
@@ -294,14 +309,26 @@ function Chat() {
   );
 }
 
-// CopilotKit's own dark styles key on a `dark` class; this page follows the system setting.
+// CopilotKit's own dark styles key on a `dark` class; this follows the *effective* theme (the
+// sidebar's forced choice, via <html>'s data-theme attribute, or else the system setting),
+// updating when either changes. The attribute is read fresh each time rather than mirrored into
+// state, since app/theme-control.tsx (and the before-paint script in app/layout.tsx) are the
+// only writers of it.
 function useSystemColorScheme() {
   useEffect(() => {
     const query = window.matchMedia("(prefers-color-scheme: dark)");
-    const apply = () => document.documentElement.classList.toggle("dark", query.matches);
+    const apply = () => {
+      const choice = parseTheme(document.documentElement.getAttribute("data-theme"));
+      document.documentElement.classList.toggle("dark", effectiveTheme(choice, query.matches) === "dark");
+    };
     apply();
     query.addEventListener("change", apply);
-    return () => query.removeEventListener("change", apply);
+    const attrs = new MutationObserver(apply);
+    attrs.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => {
+      query.removeEventListener("change", apply);
+      attrs.disconnect();
+    };
   }, []);
 }
 

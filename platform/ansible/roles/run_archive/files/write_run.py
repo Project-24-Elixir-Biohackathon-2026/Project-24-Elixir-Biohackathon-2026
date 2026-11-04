@@ -155,9 +155,24 @@ def pretty_args(raw):
         return str(raw or "")
 
 
-def count_lines(path):
+def count_run_log(path):
+    """(runs, title calls) in a run log. A run line has no "type" field; `/title`'s calls are logged with
+    `"type": "title"` so evaluations see them, but they are not agent runs. A line that fails to parse is
+    counted as a run, as every line was before `/title` existed."""
+    runs = titles = 0
     with open(path, encoding="utf-8", errors="replace") as f:
-        return sum(1 for line in f if line.strip())
+        for line in f:
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+            except ValueError:
+                record = None
+            if isinstance(record, dict) and record.get("type") == "title":
+                titles += 1
+            else:
+                runs += 1
+    return runs, titles
 
 
 def is_compaction(item_or_message):
@@ -343,7 +358,9 @@ def write_agui(b, run_dir):
     if os.path.isdir(os.path.join(run_dir, "agui-journals")):
         index.append("- Session journals as stored (hidden and deleted included): [agui-journals/](agui-journals/)")
     if os.path.isfile(log):
-        index.append(f"- Agent run log: [agent-runs.jsonl](agent-runs.jsonl), {count_lines(log)} runs")
+        runs, titles = count_run_log(log)
+        suffix = f" + {titles} title call{'s' if titles != 1 else ''}" if titles else ""
+        index.append(f"- Agent run log: [agent-runs.jsonl](agent-runs.jsonl), {runs} runs{suffix}")
     else:
         index.append("- Agent run log: none (no run reached the agent)")
     index.append("")

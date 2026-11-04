@@ -92,8 +92,12 @@
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 }
 
+/* Dark tokens apply in two cases that a single selector list can't express across a media
+   query boundary, so the block is written twice (the least-duplicating structure that still
+   covers both): system dark, unless the theme control below forced Light; or Dark forced
+   outright, regardless of what the system is set to. Keep both blocks in step. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: var(--gray-900);
     --sidebar-bg: var(--gray-950);
     --sidebar-edge: rgba(38, 38, 38, 0.3);
@@ -147,6 +151,68 @@
   }
 }
 
+/* Dark forced outright (the second of the two cases above): same tokens, so native controls and
+   scrollbars follow too. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: var(--gray-900);
+  --sidebar-bg: var(--gray-950);
+  --sidebar-edge: rgba(38, 38, 38, 0.3);
+  --text: var(--gray-100);
+  --text-secondary: var(--gray-300);
+  --text-muted: var(--gray-500);
+  --text-placeholder: var(--gray-600);
+  --line: var(--gray-800);
+  --line-strong: var(--gray-700);
+  --hover: var(--gray-900);
+  --hover-strong: var(--gray-800);
+  --selected: rgba(255, 255, 255, 0.045);
+  --focus-ring: var(--gray-400);
+  --scrollbar: var(--gray-800);
+
+  --menu-bg: var(--gray-850);
+  --menu-border: var(--gray-800);
+  --menu-hover: rgba(51, 51, 51, 0.6);
+  --menu-separator: rgba(51, 51, 51, 0.6);
+  --input-bg: var(--gray-900);
+  --chip-bg: rgba(51, 51, 51, 0.5);
+  --chip-border: var(--gray-800);
+  --chip-text: var(--gray-300);
+  --chip-hover: var(--gray-800);
+
+  --dialog-bg: var(--gray-950);
+  --dialog-border: var(--gray-800);
+  --overlay: rgba(0, 0, 0, 0.6);
+  --button-bg: var(--gray-850);
+  --button-hover: var(--gray-800);
+  --button-strong-bg: var(--gray-100);
+  --button-strong-hover: var(--white);
+  --button-strong-text: var(--gray-900);
+  --button-off-bg: var(--gray-800);
+  --button-off-text: var(--gray-600);
+
+  --danger: #e58a83;
+  --danger-soft-bg: rgba(229, 138, 131, 0.1);
+  --danger-soft-border: rgba(229, 138, 131, 0.22);
+  --danger-soft-text: #f1b5b0;
+
+  --bubble-bg: var(--gray-850);
+  --composer-bg: var(--gray-850);
+  --composer-border: var(--gray-800);
+  --surface: rgba(255, 255, 255, 0.03);
+  --code-bg: var(--gray-950);
+
+  --shadow-menu: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
+  --shadow-dialog: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+  --shadow-composer: none;
+}
+
+/* Light forced outright: the :root base above is already the light palette, so only
+   color-scheme needs to flip explicitly (its default, above, is "light dark"). */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
 /* ---------- Page ---------- */
 
 html, body { height: 100%; margin: 0; }
@@ -197,10 +263,22 @@ body {
 
 /* ---------- Sidebar (Open WebUI's) ---------- */
 
-.spe-sidebar { width: var(--sidebar-width); flex: none; box-sizing: border-box; display: flex; flex-direction: column;
-  padding: 8px 8px 10px; background: var(--sidebar-bg); border-right: 1px solid var(--sidebar-edge);
-  font-size: 13px; line-height: 20px; color: var(--text); }
+/* min() caps the rendered width at the viewport minus a 48px margin for the chat pane, so neither a
+   stored desktop width nor a drag toward MAX causes horizontal page scroll on a phone-width
+   viewport (there is no narrow-screen collapse or overlay here to rely on instead). The margin must
+   match VIEWPORT_MARGIN in lib/sidebar-width.ts, which the resize handle's own cap (aria-valuemax,
+   drag, keyboard) is computed from, so the two never disagree. */
+.spe-sidebar { position: relative; width: min(var(--sidebar-width), calc(100vw - 48px)); flex: none;
+  box-sizing: border-box; display: flex; flex-direction: column; padding: 8px 8px 10px;
+  background: var(--sidebar-bg); border-right: 1px solid var(--sidebar-edge); font-size: 13px;
+  line-height: 20px; color: var(--text); }
 .spe-sidebar-collapsed { width: 52px; align-items: center; gap: 4px; padding: 8px 0; }
+/* The drag handle, on the sidebar's right edge: a thin strip, wide enough to grab, that straddles
+   the border. Hidden while collapsed, since the collapsed nav never renders one. */
+.spe-sidebar-resizer { position: absolute; top: 0; bottom: 0; right: -4px; width: 8px; cursor: col-resize;
+  touch-action: none; background: transparent; transition: background-color var(--hover-transition); }
+.spe-sidebar-resizer:hover, .spe-sidebar-resizer:focus-visible { background: var(--line-strong); }
+.spe-sidebar-resizer:focus-visible { outline: none; }
 .spe-sidebar-top { display: flex; align-items: center; gap: 4px; height: 32px; padding-left: 8px; }
 .spe-brand { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-size: 15px; font-weight: 600; color: var(--text); }
@@ -278,6 +356,12 @@ body {
 .spe-sidebar-foot { display: flex; flex-direction: column; gap: 4px; padding: 8px 8px 0;
   border-top: 1px solid var(--line); }
 .spe-sidebar-foot .spe-note { padding: 0; }
+.spe-theme-control { display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  font-size: 12px; line-height: 16px; color: var(--text-muted); }
+.spe-theme-select { height: 24px; box-sizing: border-box; margin: 0; padding: 0 4px; border: 0;
+  border-radius: var(--radius-item); background: var(--input-bg); color: var(--text); font: inherit;
+  font-size: 12px; outline: none; box-shadow: inset 0 0 0 1px var(--line); }
+.spe-theme-select:focus-visible { outline: none; box-shadow: inset 0 0 0 1.5px var(--focus-ring); }
 .spe-hidden-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px;
   color: var(--text-muted); cursor: pointer; }
 .spe-hidden-toggle input { margin: 0; accent-color: var(--button-strong-bg); }

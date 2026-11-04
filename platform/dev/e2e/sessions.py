@@ -672,11 +672,13 @@ def check_header(r: Run, ids: dict[str, str]) -> None:
     expect(page.locator(".spe-tool")).to_have_count(2)
     assert r.url_session() == ids["first"]
     page.get_by_role("button", name="New chat").click()
-    expect(header.locator(".spe-header-title")).to_have_text("New chat")
+    # A New chat has no visible title: its heading is for screen readers only.
+    expect(header.get_by_role("heading", name="New chat")).to_have_class("spe-sr-only")
+    expect(header.locator(".spe-header-title")).to_have_count(0)
     expect(header.get_by_role("button", name="Chat actions")).to_have_count(0)
     r.ok("header: rename by its menu (Enter saves) and double-click (Esc cancels), tags in the menu's tag editor, "
          "Delete opens the same dialog above the chat (Escape cancels, keeps the file); saved to the file; "
-         "reload reopens it with its tool cards; New chat has no menu")
+         "reload reopens it with its tool cards; New chat has no menu and no visible title")
 
 
 def check_stop(r: Run) -> str:

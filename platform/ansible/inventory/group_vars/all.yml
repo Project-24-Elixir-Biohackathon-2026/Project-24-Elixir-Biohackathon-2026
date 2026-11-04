@@ -215,4 +215,8 @@ spe_agent_compaction_enabled: true
 spe_agent_context_window_tokens: "{{ spe_webui_model_context_tokens if spe_agent_model == spe_webui_model_id else none }}"
 spe_agent_compaction_trigger_ratio: 0.8      # compact at this share of the window, in (0, 1)
 spe_agent_compaction_summary_max_tokens: 4096
+# Title generation: after a session's first completed run, the agent asks the same model for
+# a 2-4 word title from the first exchange, unless the session already has one (a rename or an
+# earlier title). Off: sessions keep the chat-UI default (untitled, or the first message).
+spe_agent_title_generation: true
 spe_agent_api_key: "{{ (spe_seed | string ~ ':agent-api') | hash('sha256') }}"

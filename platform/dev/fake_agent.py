@@ -16,7 +16,8 @@ summary is already the latest thing in the history); a command (`spe_command`) i
 answered with a fixed summary that quotes its focus; a message containing "echo-input"
 makes the model answer, instead of running a command, with the JSON list of {role, id}
 of what it was sent (the system prompt left out), so a
-client can see which history reached the model. The run log
+client can see which history reached the model. `/title` is off (the e2e finds rows by
+their auto title; see `title: {enabled: False}` below). The run log
 goes to a temporary directory, or to --run-log PATH; --key defaults to
 $SPE_AGENT_API_KEY, so the key need not sit in argv.
 """
@@ -175,6 +176,9 @@ def main() -> None:
         "tools": {"sandbox_url": "http://sandbox:8000"},
         "run_log": str(run_log),
         "compaction": {"context_window_tokens": COMPACT_WINDOW},
+        # The e2e finds rows by their auto title (sessions.py, auto_title): no model title here. /title answers
+        # 404, which the chat UI's title route logs and ignores.
+        "title": {"enabled": False},
     })
     secrets = Secrets(agent_api_key=args.key, sandbox_api_key="fake-sandbox-key", llm_api_key="no-llm")
     client = SandboxClient("http://sandbox:8000", "fake-sandbox-key",

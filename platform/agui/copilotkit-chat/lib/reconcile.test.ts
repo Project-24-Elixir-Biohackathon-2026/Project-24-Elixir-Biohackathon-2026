@@ -5,7 +5,7 @@ import type { Fetch } from "./client.ts";
 import { REFUSAL_MESSAGES } from "./recorder.ts";
 import type { SessionMeta } from "./sessions.ts";
 import {
-  RECONCILE_DELAY_MS, REFUSED_RUN_MESSAGES, SAVE_FAILED_MESSAGE, clockOffset, fetchSessionList,
+  RECONCILE_DELAY_MS, REFUSED_RUN_MESSAGES, SAVE_FAILED_MESSAGE, TitleTrigger, clockOffset, fetchSessionList,
   isRefusal, reconcile, serverRunStart, showsRun,
 } from "./reconcile.ts";
 
@@ -113,4 +113,13 @@ test("fetchSessionList: list and offset from one GET; a non-200 throws", async (
   assert.ok(serverOffsetMs > 58_000 && serverOffsetMs <= 60_000, String(serverOffsetMs));
   const bad: Fetch = async () => new Response('{"error":"x"}', { status: 500 });
   await assert.rejects(fetchSessionList(bad), /failed \(500\)/);
+});
+
+test("TitleTrigger: once per session started here, after its first finished run; never for other sessions", () => {
+  const titles = new TitleTrigger();
+  titles.started(ID);
+  assert.equal(titles.take("other", true), false); // a session from before this page load
+  assert.equal(titles.take(ID, false), false); // failed or stopped: the next run may still finish
+  assert.equal(titles.take(ID, true), true);
+  assert.equal(titles.take(ID, true), false); // at most once per page load
 });

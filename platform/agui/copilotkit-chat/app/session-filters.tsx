@@ -75,13 +75,15 @@ export function SearchBox({ query, knownTags, onChange }: SearchProps) {
 
 type HiddenProps = { showHidden: boolean; onChange: (showHidden: boolean) => void };
 
+// Returns its rows bare, not wrapped in the `.spe-sidebar-foot` footer: the footer is
+// app/sidebar.tsx's (it also holds the theme control), so this can sit in it as a fragment.
 export function HiddenToggle({ showHidden, onChange }: HiddenProps) {
   return (
-    <div className="spe-sidebar-foot">
+    <>
       <label className="spe-hidden-toggle">
         <input type="checkbox" checked={showHidden} onChange={(e) => onChange(e.target.checked)} /> Show hidden
       </label>
       <p className="spe-note">{DELETED_NOTE}</p>
-    </div>
+    </>
   );
 }

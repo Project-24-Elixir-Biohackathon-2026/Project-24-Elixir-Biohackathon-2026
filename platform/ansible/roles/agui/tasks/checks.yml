@@ -52,6 +52,13 @@
     success_msg: "compaction: {{ (agui_agent_yaml.content | b64decode | from_yaml).compaction | to_json }}"
     fail_msg: agent.yaml has no compaction block
 
+- name: Agent title generation setting
+  # Shows the rendered block; fails if the agent would run without one.
+  ansible.builtin.assert:
+    that: (agui_agent_yaml.content | b64decode | from_yaml).title.enabled == (spe_agent_title_generation | bool)
+    success_msg: "title.enabled: {{ (agui_agent_yaml.content | b64decode | from_yaml).title.enabled }}"
+    fail_msg: "agent.yaml's title.enabled does not match spe_agent_title_generation"
+
 - name: chat-ui container
   ansible.builtin.command:
     argv: [docker, compose, -p, spe-frontend, -f, "{{ spe_frontend_dir }}/docker-compose.yml", ps, -q, chat-ui]

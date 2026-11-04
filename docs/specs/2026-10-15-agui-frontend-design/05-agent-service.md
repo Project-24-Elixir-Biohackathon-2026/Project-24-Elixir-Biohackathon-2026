@@ -5,6 +5,12 @@
 - `POST /agent` — AG-UI, through `AGUIAdapter.dispatch_request`. Bearer
   key required (401 otherwise). A run whose `forwardedProps.spe_command` names a command is answered
   without the model loop (§15, `/compact`).
+- `POST /title` — a short, model-written title for a chat (`{thread_id, messages}`, one or two
+  `{role, content}` messages: the session's first user message and, if any, the first answer). Bearer key
+  required (401 otherwise); `404` when `title.enabled` is false; `422` when the model call fails or returns
+  no usable title (the detail redacted and length-capped, as the run log's keys are below); otherwise `200`
+  with `{"title": "…"}`. Every call is appended to the run log (below) whether it succeeds or not.
+  `chat-ui`'s session API is the only caller (§6 *Session API*).
 - `GET /healthz` — no auth, no LLM call; 200 when config is loaded and the
   sandbox's OpenAPI was fetched.
 
@@ -98,6 +104,10 @@ and errors. No secrets are logged; the bearer keys and the LLM key never
 appear in a tool result by construction (§3), and the logger additionally
 redacts the three key values if they occur.
 
+A `POST /title` call appends its own line, `{"type": "title", ...}` (thread id, start and end time,
+the title or `null` on failure, usage, and the error if any); a run line carries no `type`, so a reader
+can tell the two apart and count only runs (`platform/ansible/roles/run_archive/files/write_run.py`).
+
 ### Configuration
 
 `agent.yaml`, rendered by Ansible, validated at startup (unknown keys are
@@ -112,6 +122,7 @@ tools:
   sandbox_operations: all   # or a list of operationIds
   max_output_bytes: 16384
 limits: { request_limit: 50, tool_calls_limit: 100 }   # total_tokens_limit: optional, no cap when unset
+title: { enabled: true, max_tokens: 64 }   # POST /title; enabled off answers 404
 ```
 
 Keys (LLM, agent, sandbox) come from `agent.env`, never from `agent.yaml`.
