@@ -134,9 +134,9 @@ History apart, large documents, growth, the clarification template and the layou
   what the loop can't decide: destructive or irreversible actions outside it, a plan broken beyond a ledgered
   ruling (every way forward a guess), or quota-heavy runs, which *Setup* lists. That list is closed
   (`development-workflow.md`, *Gates*, says what is not a gate), even where a plan or handoff says to ask: decide
-  the rest and record the ruling. Never wait by asking in chat: a gate ends as
-  `development-workflow.md`'s *Gates* says, with one comment on the PR and `methodology next --end --blocked
-  <PR>`, which adds the `waiting-on-user` label.
+  the rest and record the ruling. Never wait by asking in chat: a gate waits on its PR as
+  `development-workflow.md`'s *Gates* says: one comment, the `waiting-on-user` label, and a watcher that wakes the
+  session when the user answers.
 - **Never edit `.methodology/`.** It is a link to the machine's read-only install of agent-methodology. Edits
   there are refused (the files are read-only) and would reach every repo on the machine. Deviate from a shared
   rule in *Overrides*; carry an improvement to agent-methodology as its own change, then `methodology update`
