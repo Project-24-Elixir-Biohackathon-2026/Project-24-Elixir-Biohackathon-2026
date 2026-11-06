@@ -210,13 +210,17 @@ spe_webui_auth: false
 spe_webui_admin_name: "SPE operator"
 spe_webui_admin_email: "admin@{{ spe_instance }}.spe.local"
 spe_webui_admin_password: "{{ ((spe_seed | string ~ ':webui-admin') | hash('sha256'))[:20] }}"
-# Run report: rendered from reports/run_report.md.j2 and created as the pinned
-# note "Run report" in OpenWebUI. Set by the Coder template; empty otherwise.
+# Run report: rendered from reports/run_report.md.j2 into <spe_reports_root>/
+# <workspace id>.md on the controller (roles/run_report) and edited through the
+# portal's report service (platform/report); never on the VM. The spe_coder_* values
+# are set by the Coder template; empty otherwise, and without a workspace id there
+# is no report.
 spe_coder_owner: ""
 spe_coder_owner_email: ""
 spe_coder_workspace: ""
+spe_coder_workspace_id: ""
 spe_report_template: "{{ playbook_dir }}/../reports/run_report.md.j2"
-spe_report_title: Run report
+spe_reports_root: /data-share/reports
 
 # Run archive: playbooks/archive.yml (also run first by destroy.yml) saves the
 # frontend's chats (OpenWebUI chats and notes, or the AG-UI journals and the

@@ -16,7 +16,9 @@ run `ansible-playbook`; the controller and the VM may be the same machine.
 
 This is the by-hand path. Participants normally get instances from the Coder
 portal instead (`platform/coder/README.md`), which runs the same playbooks with
-`spe_provision: openstack` and archives each run when it is stopped.
+`spe_provision: openstack`, keeps a run report per workspace on the portal VM and
+archives each run when it is stopped. A hand-made instance has no workspace, so no
+report: its archive says "missing".
 
 ## 1. What you need
 

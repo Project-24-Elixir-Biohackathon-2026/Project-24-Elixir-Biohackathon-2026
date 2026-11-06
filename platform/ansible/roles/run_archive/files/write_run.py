@@ -1,27 +1,32 @@
 #!/usr/bin/env python3
 """Turn an OpenWebUI export bundle into a readable run directory.
 
-    write_run.py <bundle.json> <run dir> <report note title>
+    write_run.py <bundle.json> <run dir>
 
 Can be re-run on an archived run to re-render it with a newer version of
-this script: write_run.py <run dir>/openwebui-export.json <run dir> "Run report",
-and for the AG-UI part, <run dir>/agui/openwebui-export.json <run dir>/agui "Run report". Render
+this script: write_run.py <run dir>/openwebui-export.json <run dir>, and for
+the AG-UI part, <run dir>/agui/openwebui-export.json <run dir>/agui. Render
 agui/ first: Open WebUI's index.md links it when it is there.
 
-Writes report.md (the participant's "Run report" note), chats/NN-<title>.md
-and .json (active branch of each chat, with tags), notes/ for any other
-notes, index.md (overview) and openwebui-export.json (the raw bundle).
+Writes chats/NN-<title>.md and .json (active branch of each chat, with tags),
+notes/ for the participant's notes, index.md (overview) and
+openwebui-export.json (the raw bundle). The run report is not in the bundle:
+the archive copies it from the controller into the run directory as
+report.md with its sidecar report.json (roles/run_report, platform/report);
+index.md reports its state (missing, not filled in, filled in), which the
+sidecar's template_sha256 decides.
 
 A bundle with spe_archive_mode is the AG-UI chat UI's export (one assistant
 message per run, with spe_run, spe_ignored and, for a /compact run, spe_command):
 write_agui() renders it instead, escaping or fencing every text, with each
 run's status, its ignored content, and a compaction marker or a refused or
 failed /compact run shown as requested by the participant; it links
-agui-journals/ and agent-runs.jsonl when they are in the run directory. There
-is no report.
+agui-journals/ and agent-runs.jsonl when they are in the run directory, and
+the report one level up.
 Stdlib only.
 """
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -99,6 +104,23 @@ def write(path, text):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         f.write(text)
+
+
+def report_line(run_dir, up=""):
+    """The index line for the run report: copied by the archive into the run directory (beside agui/) as
+    report.md with report.json; "not filled in" when it still equals the rendered template."""
+    base = os.path.dirname(run_dir.rstrip("/")) if up else run_dir
+    md = os.path.join(base, "report.md")
+    if not os.path.isfile(md):
+        return "- Report: missing (no report for this workspace)", "missing"
+    try:
+        with open(os.path.join(base, "report.json")) as f:
+            expected = (json.load(f) or {}).get("template_sha256")
+    except (OSError, ValueError):
+        expected = None
+    with open(md, "rb") as f:
+        state = "**not filled in**" if expected and hashlib.sha256(f.read()).hexdigest() == expected else "filled in"
+    return f"- Report: [report.md]({up}report.md), {state}", state
 
 
 # AG-UI bundles: the chat UI's exporter writes this same shape plus `spe_archive_mode` (live or final), one
@@ -377,7 +399,8 @@ def write_agui(b, run_dir):
     index = [
         f"# Run {name}",
         "",
-        "- Frontend: agui (CopilotKit chat). The AG-UI frontend has no run report.",
+        "- Frontend: agui (CopilotKit chat)",
+        report_line(run_dir, up)[0],
         f"- Archive: {ARCHIVE_MODES.get(mode) or md_inline(mode)}",
         f"- Exported: {when(b.get('exported_at'))}",
         f"- Parameters and canary record: [run.yml]({up}run.yml), {up}canaries.json",
@@ -400,7 +423,7 @@ def write_agui(b, run_dir):
 
 
 def main(argv):
-    bundle_path, run_dir, report_title = argv[:3]
+    bundle_path, run_dir = argv[:2]
     with open(bundle_path) as f:
         b = json.load(f)
 
@@ -420,23 +443,11 @@ def main(argv):
         write_agui(b, run_dir)
         return
 
-    # Notes: the run report, plus anything else the participant wrote.
-    report = None
+    # Notes: whatever the participant wrote in Open WebUI.
     for n in b.get("notes") or []:
         md = ((n.get("data") or {}).get("content") or {}).get("md") or ""
-        if n.get("title") == report_title and report is None:
-            report = md
-            write(os.path.join(run_dir, "report.md"), md)
-        else:
-            write(os.path.join(run_dir, "notes", slug(n.get("title")) + ".md"), md)
-
-    template = (b.get("report_template_md") or "").strip()
-    if report is None:
-        report_state = f'missing (no "{report_title}" note)'
-    elif template and report.strip() == template:
-        report_state = "**not filled in**"
-    else:
-        report_state = "filled in"
+        write(os.path.join(run_dir, "notes", slug(n.get("title")) + ".md"), md)
+    report_index, report_state = report_line(run_dir)
 
     # Chats, oldest first.
     rows = []
@@ -469,7 +480,7 @@ def main(argv):
         f"# Run {os.path.basename(run_dir.rstrip('/'))}",
         "",
         f"- Exported: {when(b.get('exported_at'))}",
-        f"- Report: [report.md](report.md), {report_state}",
+        report_index,
         "- Parameters and canary record: [run.yml](run.yml), canaries.json",
         *(["- AG-UI chat sessions: [agui/](agui/index.md)"]
           if os.path.isfile(os.path.join(run_dir, "agui", "index.md")) else []),

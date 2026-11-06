@@ -29,7 +29,8 @@ archives the run and tears the instance down.
 | `template/testbeds/*.yml` | Testbed presets, one file per entry in "Create workspace" | anyone, by PR |
 | `template/run-ansible.sh` | Runs a playbook with the vars Terraform passes | maintainers |
 | `deploy/` | Portal VM files: systemd units, env examples, Caddyfiles, the sync script, the Coder Agents setup | maintainers |
-| `../ansible/reports/run_report.md.j2` | The run report, rendered into the pinned "Run report" note at creation | anyone, by PR |
+| `../ansible/reports/run_report.md.j2` | The run report's starting content, rendered at the first build | anyone, by PR |
+| `../report/` | The run report service behind the "Report" button (`../report/README.md`) | maintainers |
 | `../ansible/roles/run_archive/` | Exports the chats and writes the run directory | maintainers |
 
 ## Deploying the portal
@@ -154,12 +155,31 @@ mid-conversation system message; `Qwen3-Coder-Next`, `gemma-4-31b` and
 `gpt-oss-120b` work. A model behind a small context window needs the
 `max_output_tokens` field.
 
-**Smoke test.** Create a workspace from "All data"; Open WebUI opens without a login
-and has the "Run report" note; ask the agent to list DRS objects (it runs `curl` in
-its terminal); the AG-UI chat shows tool calls as cards and the session gets a title;
-tag the chat `report`, write a line in the report, stop; the run directory's
-`index.md` lists the chat and links `agui/index.md`; `openstack server list` shows no
-`cw-…-api` server left.
+**9. Run reports.** The report behind each workspace's "Report" button is served by
+`../report/` (design: `docs/specs/2026-11-06-run-report-service.md`) as its own user,
+from the checkout, on `127.0.0.1:7090`:
+
+```bash
+sudo apt install -y python3-markdown
+sudo useradd --system --no-create-home --shell /usr/sbin/nologin sperange-report
+sudo install -d -m 2775 -o ubuntu -g sperange-report /data-share/reports   # setgid: the provisioner's new reports get the group
+sudo install -m 640 -o root -g sperange-report platform/coder/deploy/report.env.example /etc/sperange/report.env
+sudo cp platform/coder/deploy/sperange-report.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now sperange-report
+curl -s http://127.0.0.1:7090/reports/healthz        # ok
+```
+
+Then the `@reports` block of `deploy/Caddyfile.example` in the apex site, before the
+Coder catch-all, and `sudo systemctl reload caddy`. Restart the unit after a merge
+that changes `../report/`: the sync timer moves the checkout, not the process.
+
+**Smoke test.** Create a workspace from "All data"; "Report" opens the report page
+(editable, "not filled in" state is the template); Open WebUI opens without a login;
+ask the agent to list DRS objects (it runs `curl` in its terminal); the AG-UI chat
+shows tool calls as cards and the session gets a title; tag the chat `report`, write
+a line in the report, stop; the run directory's `index.md` lists the chat, says the
+report is filled in and links `agui/index.md`; the report is still open and editable
+after the stop; `openstack server list` shows no `cw-…-api` server left.
 
 Optional: `coder templates edit spe-testbed --default-ttl 12h` stops forgotten
 workspaces, which destroys their instances after archiving.
@@ -210,8 +230,10 @@ parameters:                           # keys = parameter names in main.tf
 ```
 
 A new parameter needs a change in `main.tf` and usually in Ansible. The run report
-is `../ansible/reports/run_report.md.j2` (Jinja2 and Markdown), rendered at creation;
-keep the note title "Run report".
+starts from `../ansible/reports/run_report.md.j2` (Jinja2 and Markdown), rendered on
+the portal VM at the workspace's first build into `/data-share/reports/<workspace id>.md`
+and edited behind the "Report" button (`../report/`); a restart never overwrites it.
+Keep the seed out of it: every portal user can read every report.
 
 ## The run archive
 
@@ -219,8 +241,8 @@ keep the note title "Run report".
 
 | File | Content |
 |---|---|
-| `index.md` | Overview: report status, every chat with its tags, link to `agui/` |
-| `report.md` | The "Run report" note |
+| `index.md` | Overview: report state, every chat with its tags, link to `agui/` |
+| `report.md`, `report.json` | The run report as it was at this stop, and its sidecar (owner, workspace, parameters) |
 | `chats/NN-<title>.md`, `.json` | Each Open WebUI chat, readable and raw |
 | `notes/` | Other notes |
 | `run.yml` | Participant, parameters, seed, versions |
@@ -229,14 +251,15 @@ keep the note title "Run report".
 | `agui/index.md`, `agui/chats/NN-<title>.md`, `.json` | The AG-UI sessions, rendered like Open WebUI chats, with run statuses, ignored client content and compactions |
 | `agui/agui-journals/`, `agui/agent-runs.jsonl` | The session journals as written, and the agent's run log |
 
-Re-render a run: `../ansible/roles/run_archive/files/write_run.py <run>/agui/openwebui-export.json <run>/agui "Run report"`,
+Re-render a run: `../ansible/roles/run_archive/files/write_run.py <run>/agui/openwebui-export.json <run>/agui`,
 then the same with `<run>/openwebui-export.json <run>`.
 
 ## Operating
 
 | Task | How |
 |---|---|
-| Logs | `journalctl -u coder`, `journalctl -u caddy`, build logs in the dashboard |
+| Logs | `journalctl -u coder`, `journalctl -u caddy`, `journalctl -u sperange-report`, build logs in the dashboard |
+| Reports | `https://<zone>/reports/` (any login), files in `/data-share/reports/` |
 | Instances | Dashboard, all users; OpenStack servers `cw-<user>-<workspace>-api` |
 | Archive without stopping | on the portal VM, in `platform/ansible`: `ansible-playbook playbooks/archive.yml -e spe_instance=cw-<user>-<ws>` |
 | Update Coder | install the release binary over `/usr/local/bin/coder`, `sudo systemctl restart coder` |
@@ -262,3 +285,5 @@ Leftover servers, security groups or keypairs named `cw-*` go the same way.
   its own run directory.
 - Tags are free text; the vocabulary is not enforced.
 - Builds use the checkout on the portal VM, not a copy pinned to the template version.
+- Every portal user can read every run report (by design); only its owner and admins
+  can edit it, and nobody can delete one from the portal.
