@@ -104,9 +104,30 @@ Coder. If Caddy refuses a wildcard certificate over HTTP-01, use
 
 **6. First admin and logins.** The first account created at `https://<zone>` is the
 admin, or `coder login https://<zone> --first-user-username admin --first-user-email <you>`.
-Participants: password accounts (`coder users create --username anna --email anna@example.org --login-type password`),
-or GitHub login (an OAuth app with callback `https://<zone>/api/v2/users/oauth2/github/callback`,
-the `CODER_OAUTH2_GITHUB_*` lines in `coder.env`, restricted with `_ALLOWED_ORGS` or `_TEAMS`).
+
+Participants log in with GitHub and must be members of one GitHub organization
+(`CODER_OAUTH2_GITHUB_ALLOWED_ORGS`; `_ALLOWED_TEAMS` narrows it to `<org>/<team-slug>`).
+Coder checks membership at every login, so leaving the organization ends access.
+
+1. In the organization: Settings > Developer settings > OAuth Apps > New OAuth App.
+   Homepage URL `https://<zone>`, callback URL
+   `https://<zone>/api/v2/users/oauth2/github/callback`, no device flow. Generate a
+   client secret.
+2. In `coder.env`: `CODER_OAUTH2_GITHUB_CLIENT_ID`, `_CLIENT_SECRET`,
+   `_ALLOW_SIGNUPS=true`, `_ALLOWED_ORGS=<org>`; `sudo systemctl restart coder`.
+   `curl https://<zone>/api/v2/users/authmethods` must then show
+   `"default_provider_configured":false`: without a client ID, Coder uses its own
+   hosted GitHub app (device flow, any GitHub account), so a missing ID is not "off".
+3. Invite a participant to the organization (People > Invite member, or
+   `gh api -X POST orgs/<org>/invitations -f email=anna@example.org`). After they
+   accept, "GitHub" on the login page creates their Coder account; the username is
+   their GitHub login.
+
+Password accounts still work (`coder users create --username anna --email anna@example.org --login-type password`).
+A password account whose email is also the GitHub email cannot use the GitHub
+button until its owner converts it: log in with the password, Account settings >
+Security > Single Sign On > GitHub. Private organization membership is read with the
+`read:org` scope the login requests, so participants must grant it.
 
 **7. Template and sync.**
 
@@ -235,7 +256,8 @@ Leftover servers, security groups or keypairs named `cw-*` go the same way.
 
 ## Limitations
 
-- Open WebUI has no login; Coder's owner-only app access is the gate.
+- Open WebUI has no login; Coder's owner-only app access is the gate. GitHub login
+  admits every member of the allowed organization; there is no per-person approval.
 - Stop destroys the instance. Chats survive only in the archive; every stop writes
   its own run directory.
 - Tags are free text; the vocabulary is not enforced.
