@@ -173,18 +173,19 @@ locals {
 
   ansible_vars = merge(
     {
-      spe_instance          = local.instance
-      spe_seed              = local.seed
-      spe_flavor            = data.coder_parameter.flavor.value
-      spe_samples           = jsondecode(data.coder_parameter.samples.value)
-      spe_tiers             = jsondecode(data.coder_parameter.tiers.value)
-      spe_workflows         = jsondecode(data.coder_parameter.workflows.value)
-      spe_run_smoke_test    = tobool(data.coder_parameter.smoke_test.value)
-      spe_coder_owner       = data.coder_workspace_owner.me.name
-      spe_coder_owner_email = data.coder_workspace_owner.me.email
-      spe_coder_workspace   = data.coder_workspace.me.name
-      spe_coder_agent_token = nonsensitive(coder_agent.main.token)
-      spe_coder_init_script = local.agent_init_script
+      spe_instance           = local.instance
+      spe_seed               = local.seed
+      spe_flavor             = data.coder_parameter.flavor.value
+      spe_samples            = jsondecode(data.coder_parameter.samples.value)
+      spe_tiers              = jsondecode(data.coder_parameter.tiers.value)
+      spe_workflows          = jsondecode(data.coder_parameter.workflows.value)
+      spe_run_smoke_test     = tobool(data.coder_parameter.smoke_test.value)
+      spe_coder_owner        = data.coder_workspace_owner.me.name
+      spe_coder_owner_email  = data.coder_workspace_owner.me.email
+      spe_coder_workspace    = data.coder_workspace.me.name
+      spe_coder_workspace_id = data.coder_workspace.me.id
+      spe_coder_agent_token  = nonsensitive(coder_agent.main.token)
+      spe_coder_init_script  = local.agent_init_script
     },
     { for k, _ in local.canary_types : "spe_canary_${k}" => contains(local.canaries, k) },
   )
@@ -232,8 +233,9 @@ resource "coder_agent" "main" {
 # Every workspace runs both chat frontends against the same sandbox and stack
 # (Ansible's spe_frontends default); the person opens the one to use. Both are
 # bound to 127.0.0.1 on the VM and reached through the agent (share = owner:
-# only the workspace owner may open them). Open WebUI keeps chats, notes and the
-# run report, archived on stop; the AG-UI chat shows every tool call as a card.
+# only the workspace owner may open them). Open WebUI keeps chats and notes,
+# archived on stop; the AG-UI chat shows every tool call as a card. The run
+# report is the "Report" app below, on the portal VM.
 resource "coder_app" "openwebui" {
   agent_id     = coder_agent.main.id
   slug         = "openwebui"
@@ -264,6 +266,19 @@ resource "coder_app" "chat" {
     interval  = 10
     threshold = 30
   }
+}
+
+# Report: the run report, kept on the portal VM by the report service
+# (platform/report), never on the instance. An external link, so it opens while
+# the workspace is stopped too; the report's owner and admins edit, everyone
+# logged in reads. create.yml writes the report at the first build.
+resource "coder_app" "report" {
+  agent_id     = coder_agent.main.id
+  slug         = "report"
+  display_name = "Report"
+  icon         = "/icon/folder.svg"
+  url          = "${data.coder_workspace.me.access_url}/reports/${data.coder_workspace.me.id}"
+  external     = true
 }
 
 # Rebuild: applies the clone to the running frontend (spe-apply: build the images
@@ -321,6 +336,10 @@ resource "coder_metadata" "spe" {
   item {
     key   = "seed"
     value = tostring(local.seed)
+  }
+  item {
+    key   = "run report"
+    value = "${data.coder_workspace.me.access_url}/reports/${data.coder_workspace.me.id}"
   }
   item {
     key   = "runs archive"

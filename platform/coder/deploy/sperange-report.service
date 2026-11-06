@@ -1,0 +1,29 @@
+# /etc/systemd/system/sperange-report.service: the run report service
+# (platform/report), behind Caddy at /reports. Runs as its own user, which can
+# write nothing but the reports directory and sees nothing of /home but the
+# checkout's platform/report, bind-mounted read-only (README, step 9). Restart it
+# after a merge that changes platform/report (the sync timer only moves the checkout).
+[Unit]
+Description=sperange run reports
+After=network-online.target remote-fs.target coder.service
+Wants=network-online.target
+RequiresMountsFor=/data-share
+
+[Service]
+User=sperange-report
+Group=sperange-report
+EnvironmentFile=/etc/sperange/report.env
+ExecStart=/usr/bin/python3 -I /home/ubuntu/sperange/platform/report/sperange_report.py
+Restart=on-failure
+RestartSec=5
+UMask=0002
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/ubuntu/sperange/platform/report
+ReadWritePaths=/data-share/reports
+PrivateTmp=true
+PrivateDevices=true
+
+[Install]
+WantedBy=multi-user.target

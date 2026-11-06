@@ -3,7 +3,8 @@
 # shared sandbox (role sandbox) as its terminal server; it is bound to 127.0.0.1
 # and reached through the Coder portal or an SSH tunnel. config.yml wrote its env
 # file and role sandbox (up.yml) started the containers; this part waits for
-# Open WebUI and attaches the system prompt, the terminal and the run report.
+# Open WebUI and attaches the system prompt and the terminal. The run report lives
+# on the controller (roles/run_report), not in a note.
 - name: Wait for OpenWebUI to answer
   ansible.builtin.uri:
     url: "http://127.0.0.1:{{ spe_webui_local_port }}/health"
@@ -68,72 +69,4 @@
     status_code: 200
   register: webui_model
   changed_when: webui_model.status == 200
-  no_log: true
-
-# Run report: the template lives in reports/ so it is versioned with the repo.
-# Rendered here and created once as a pinned OpenWebUI note; an existing note
-# with the same title is left alone so a re-run never overwrites a report.
-- name: Run report (rendered template)
-  ansible.builtin.template:
-    src: "{{ spe_report_template }}"
-    dest: "{{ spe_frontend_dir }}/run_report.md"
-    owner: "{{ spe_ssh_user }}"
-    group: "{{ spe_ssh_user }}"
-    mode: "0644"
-  register: report_md
-
-- name: Run report as HTML (the note editor loads HTML; OpenWebUI ships a Markdown renderer)
-  ansible.builtin.shell: >-
-    docker compose exec -T open-webui python -c
-    "import sys, markdown; sys.stdout.write(markdown.markdown(sys.stdin.read(), extensions=['tables']))"
-    < run_report.md
-  args:
-    chdir: "{{ spe_frontend_dir }}"
-  register: report_html
-  changed_when: false
-
-- name: Run report as Markdown
-  ansible.builtin.slurp:
-    src: "{{ spe_frontend_dir }}/run_report.md"
-  register: report_md_file
-
-- name: Existing notes
-  ansible.builtin.uri:
-    url: "http://127.0.0.1:{{ spe_webui_local_port }}/api/v1/notes/"
-    headers:
-      Authorization: "Bearer {{ webui_signin.json.token }}"
-    status_code: 200
-  register: webui_notes
-  no_log: true
-
-- name: Create the run report note
-  ansible.builtin.uri:
-    url: "http://127.0.0.1:{{ spe_webui_local_port }}/api/v1/notes/create"
-    method: POST
-    headers:
-      Authorization: "Bearer {{ webui_signin.json.token }}"
-    body_format: json
-    body:
-      title: "{{ spe_report_title }}"
-      data:
-        content:
-          json: null
-          md: "{{ report_md_file.content | b64decode }}"
-          html: "{{ report_html.stdout }}"
-      meta: null
-      access_grants: []
-    status_code: 200
-  register: report_note
-  changed_when: true
-  when: spe_report_title not in (webui_notes.json | map(attribute='title') | list)
-  no_log: true
-
-- name: Pin the run report note
-  ansible.builtin.uri:
-    url: "http://127.0.0.1:{{ spe_webui_local_port }}/api/v1/notes/{{ report_note.json.id }}/pin"
-    method: POST
-    headers:
-      Authorization: "Bearer {{ webui_signin.json.token }}"
-    status_code: 200
-  when: report_note is changed
   no_log: true
