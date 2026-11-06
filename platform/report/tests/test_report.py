@@ -140,6 +140,10 @@ def test_healthz_and_static_need_no_login(service):
     assert call(base, "/reports/healthz")[0] == 200
     status, headers, body = call(base, "/reports/static/report.js")
     assert status == 200 and headers["Content-Type"].startswith("text/javascript") and b"If-Match" in body
+    for name, ctype in (("easymde.min.js", "text/javascript"), ("easymde.min.css", "text/css"),
+                        ("font-awesome.min.css", "text/css"), ("fontawesome-webfont.woff2", "font/woff2")):
+        status, headers, _ = call(base, f"/reports/static/{name}")
+        assert status == 200 and headers["Content-Type"].startswith(ctype), name
     assert call(base, "/reports/static/../sperange_report.py")[0] == 404
     assert call(base, "/reports/static/report.txt")[0] == 404
 
@@ -153,16 +157,23 @@ def test_everyone_logged_in_reads_the_list_and_any_report(service):
     status, headers, body = call(base, f"/reports/{WID}.md", token="tok-bob")
     assert status == 200 and body.startswith(b"# Run report") and headers["ETag"] == sr.etag_of(body)
     status, _, body = call(base, f"/reports/{WID}", token="tok-bob")
-    assert status == 200 and 'data-can-edit="0"' in body.decode() and "read-only" in body.decode()
-    assert "Workspace state" not in body.decode()  # bob cannot see anna's workspace in Coder
+    page = body.decode()
+    assert status == 200 and 'data-can-edit="0"' in page and "Read-only" in page
+    assert "(running)" not in page  # bob cannot see anna's workspace in Coder
+    # readers get the rendered report, not an editor
+    assert "<h1>Run report</h1>" in page and "<h2>Goal</h2>" in page
+    assert "<textarea" not in page and "easymde" not in page
+    assert f'href="/reports/{WID}.md"' in page
 
 
 def test_the_owner_and_an_admin_get_the_editable_page_with_the_workspace_state(service):
     base, _ = service
     for tok in ("tok-anna", "tok-root"):
         status, _, body = call(base, f"/reports/{WID}", token=tok)
-        assert status == 200 and 'data-can-edit="1"' in body.decode() and 'id="save"' in body.decode()
-        assert "<dt>Workspace state</dt><dd>running</dd>" in body.decode()
+        page = body.decode()
+        assert status == 200 and 'data-can-edit="1"' in page and 'id="save"' in page and "<textarea" in page
+        assert "tm-test (running)" in page
+        assert "/reports/static/easymde.min.js" in page and "/reports/static/font-awesome.min.css" in page
 
 
 def test_every_page_carries_the_csp_and_no_inline_script(service):
@@ -170,7 +181,8 @@ def test_every_page_carries_the_csp_and_no_inline_script(service):
     for path in ("/reports/", f"/reports/{WID}"):
         status, headers, body = call(base, path, token="tok-anna")
         assert status == 200
-        assert headers["Content-Security-Policy"].startswith("default-src 'self'; script-src 'self'")
+        assert headers["Content-Security-Policy"].startswith("default-src 'self'; script-src 'self'; style-src")
+        assert "'unsafe-inline'" not in headers["Content-Security-Policy"].split("style-src")[0]
         assert headers["X-Content-Type-Options"] == "nosniff"
         assert "<script>" not in body.decode()
 

@@ -8,7 +8,7 @@ from the first build on, kept after the workspace is gone. Design:
 | | |
 |---|---|
 | `sperange_report.py` | The service: standard library plus `python3-markdown`; routes in its docstring |
-| `static/` | The editor page's stylesheet and script (no inline script: the pages carry a CSP) |
+| `static/` | The page's stylesheet and script (no inline script: the pages carry a CSP), plus the vendored editor: EasyMDE 2.21.0 (`easymde.min.js`, `easymde.min.css`, from the npm package `easymde`) and Font Awesome 4.7.0 for its toolbar (`font-awesome.min.css` with its `@font-face` cut down to `fontawesome-webfont.woff2`, from the npm package `font-awesome`) |
 | `tests/` | `pytest` against a fake Coder API |
 | `../coder/deploy/sperange-report.service`, `report.env.example` | The unit and its env file |
 | `../ansible/roles/run_report/` | Writes the report and its sidecar at the first build of a workspace |
@@ -21,6 +21,13 @@ service, which learns who is asking from Coder's session cookie (forwarded to Co
 `users/me` endpoint, nowhere else). Everyone logged in reads every report; the owner
 and portal admins write. On stop, the archive copies both files into the run
 directory as `report.md` and `report.json`.
+
+The owner (and portal admins) get the EasyMDE editor, side by side with a preview
+that the service renders, so it is the same sanitized HTML everyone else sees in the
+reading view. The look follows `platform/site/static/site.css`. To update the editor,
+replace the two EasyMDE files from a newer npm tarball and keep `spellChecker: false`
+in `report.js` (the spell checker would fetch a dictionary from a CDN, which the CSP
+forbids anyway).
 
 Run the tests:
 

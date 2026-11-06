@@ -54,8 +54,11 @@ MAX_BYTES = 1_000_000
 CACHE_SECONDS = 30
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
-STATIC_TYPES = {".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8"}
-CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; frame-ancestors 'none'; form-action 'self'"
+STATIC_TYPES = {".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".woff2": "font/woff2"}
+# Scripts only from here, no inline script; inline styles are allowed because the editor
+# (EasyMDE on CodeMirror 5) sets some, and a style cannot reach Coder's cookie.
+CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; "
+       "font-src 'self'; frame-ancestors 'none'; form-action 'self'")
 
 
 # --- Markdown -----------------------------------------------------------------
@@ -255,21 +258,25 @@ def is_admin(user: dict) -> bool:
 
 
 # --- pages --------------------------------------------------------------------
+# The look follows the landing page (platform/site/static/site.css): the same tokens,
+# top bar and cards. The editor is EasyMDE (vendored in static/, with Font Awesome 4
+# for its toolbar); readers get the rendered report instead of an editor.
 
-def page(title: str, body: str) -> bytes:
+def page(title: str, body: str, user: dict | None, editor: bool = False) -> bytes:
+    who = html.escape(user.get("username", "")) if user else ""
+    extra = (f"<link rel=\"stylesheet\" href=\"{PREFIX}/static/font-awesome.min.css\">"
+             f"<link rel=\"stylesheet\" href=\"{PREFIX}/static/easymde.min.css\">" if editor else "")
     return (
         "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">"
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-        f"<title>{html.escape(title)}</title>"
+        f"<title>{html.escape(title)}</title>{extra}"
         f"<link rel=\"stylesheet\" href=\"{PREFIX}/static/report.css\"></head>"
-        f"<body>{body}</body></html>"
+        "<body><div class=\"wrap\"><header class=\"top\"><a class=\"brand\" href=\"/\">SPE Range</a>"
+        f"<nav><a href=\"/workspaces\">Portal</a><a href=\"{PREFIX}/\">Reports</a>"
+        f"<span class=\"who\">{who}</span></nav></header>{body}</div>"
+        + (f"<script src=\"{PREFIX}/static/easymde.min.js\"></script>" if editor else "")
+        + f"<script src=\"{PREFIX}/static/report.js\"></script></body></html>"
     ).encode()
-
-
-def nav(user: dict | None) -> str:
-    who = html.escape(user.get("username", "")) if user else ""
-    return (f"<nav><a href=\"/workspaces\">Portal</a> · <a href=\"{PREFIX}/\">Reports</a>"
-            f"<span class=\"who\">{who}</span></nav>")
 
 
 def list_page(rows: list[dict], user: dict) -> bytes:
@@ -279,17 +286,20 @@ def list_page(rows: list[dict], user: dict) -> bytes:
         trs.append(
             f"<tr><td><a href=\"{PREFIX}/{wid}\">{html.escape(str(r.get('workspace') or wid))}</a></td>"
             f"<td>{html.escape(str(r.get('owner') or ''))}</td>"
-            f"<td>{html.escape(str(r.get('instance') or ''))}</td>"
+            f"<td><code>{html.escape(str(r.get('instance') or ''))}</code></td>"
             f"<td>{html.escape(str(r.get('created') or ''))}</td>"
             f"<td>{html.escape(r.get('last_saved') or '')}</td></tr>"
         )
     table = ("<table><thead><tr><th>Workspace</th><th>Owner</th><th>Instance</th><th>Created</th>"
              "<th>Last saved</th></tr></thead><tbody>" + "".join(trs) + "</tbody></table>"
-             if trs else "<p>No report yet. A report is created with each workspace.</p>")
-    return page("Run reports", nav(user) + "<main class=\"list\"><h1>Run reports</h1>" + table + "</main>")
+             if trs else "<p class=\"muted\">No report yet. A report is created with each workspace.</p>")
+    body = ("<main class=\"list\"><h1>Run reports</h1><p class=\"lead\">One report per workspace, written by its "
+            "owner while testing. Everyone logged in can read them.</p>"
+            f"<section class=\"card\">{table}</section></main>")
+    return page("Run reports", body, user)
 
 
-def editor_page(wid: str, meta: dict, user: dict, can_edit: bool, state: str | None, last_saved: str) -> bytes:
+def facts_html(wid: str, meta: dict, state: str | None) -> str:
     facts = [
         ("Workspace", str(meta.get("workspace") or wid)),
         ("Owner", str(meta.get("owner") or "")),
@@ -297,27 +307,33 @@ def editor_page(wid: str, meta: dict, user: dict, can_edit: bool, state: str | N
         ("Created", str(meta.get("created") or "")),
     ]
     if state:
-        facts.append(("Workspace state", state))
-    dl = "".join(f"<dt>{html.escape(k)}</dt><dd>{html.escape(v)}</dd>" for k, v in facts if v)
-    mode = ("<span class=\"mode\">you can edit; saved automatically</span>" if can_edit
-            else "<span class=\"mode\">read-only: only the owner and portal admins can edit</span>")
-    body = (
-        nav(user)
-        + f"<main class=\"editor\" data-id=\"{wid}\" data-can-edit=\"{'1' if can_edit else '0'}\">"
-        + f"<header><h1>Run report</h1><dl>{dl}</dl>"
-        + f"<div class=\"bar\">{mode}<span id=\"status\" data-last-saved=\"{html.escape(last_saved)}\"></span>"
-        + ("<button id=\"save\" type=\"button\">Save</button>" if can_edit else "")
-        + "</div></header>"
-        + "<section class=\"panes\"><textarea id=\"source\" spellcheck=\"true\""
-        + ("" if can_edit else " readonly") + "></textarea>"
-        + "<div id=\"preview\" class=\"preview\"></div></section></main>"
-        + f"<script src=\"{PREFIX}/static/report.js\"></script>"
-    )
-    return page(f"Run report: {meta.get('workspace') or wid}", body)
+        facts.append(("Workspace", f"{meta.get('workspace') or wid} ({state})"))
+        facts.pop(0)
+    return "".join(f"<div class=\"fact\"><span class=\"k\">{html.escape(k)}</span>"
+                   f"<span class=\"v\">{html.escape(v)}</span></div>" for k, v in facts if v)
+
+
+def editor_page(wid: str, meta: dict, user: dict, can_edit: bool, state: str | None, last_saved: str,
+                content: bytes) -> bytes:
+    head = (f"<header class=\"report-head card\"><div class=\"title\"><h1>Run report</h1>"
+            f"<div class=\"facts\">{facts_html(wid, meta, state)}</div></div>")
+    if can_edit:
+        head += ("<div class=\"bar\"><span class=\"hint\">Saved as you type, readable by every portal user.</span>"
+                 f"<span id=\"status\" data-last-saved=\"{html.escape(last_saved)}\"></span>"
+                 "<button id=\"save\" type=\"button\">Save</button></div></header>")
+        body = (f"<main class=\"editor\" data-id=\"{wid}\" data-can-edit=\"1\">{head}"
+                "<section class=\"card editor-card\"><textarea id=\"source\"></textarea></section></main>")
+    else:
+        head += ("<div class=\"bar\"><span class=\"hint\">Read-only: only the owner and portal admins can edit."
+                 f"{' Last saved ' + html.escape(last_saved) + '.' if last_saved else ''}</span>"
+                 f"<a class=\"raw\" href=\"{PREFIX}/{wid}.md\">Markdown</a></div></header>")
+        body = (f"<main class=\"editor\" data-id=\"{wid}\" data-can-edit=\"0\">{head}"
+                f"<article class=\"card reading\">{render_markdown(content.decode('utf-8', 'replace'))}</article></main>")
+    return page(f"Run report: {meta.get('workspace') or wid}", body, user, editor=can_edit)
 
 
 def message_page(title: str, text: str, user: dict | None = None) -> bytes:
-    return page(title, nav(user) + f"<main class=\"list\"><h1>{html.escape(title)}</h1><p>{html.escape(text)}</p></main>")
+    return page(title, f"<main class=\"list\"><h1>{html.escape(title)}</h1><p>{html.escape(text)}</p></main>", user)
 
 
 # --- the server ---------------------------------------------------------------
@@ -418,7 +434,8 @@ class Handler(BaseHTTPRequestHandler):
             data, etag = content
             return self.send(HTTPStatus.OK, data, "text/markdown; charset=utf-8", {"ETag": etag})
         state = self.coder.workspace_state(self.token(), wid)
-        return self.send(HTTPStatus.OK, editor_page(wid, meta, user, self.can_edit(meta, user), state, self.store.last_saved(wid)))
+        return self.send(HTTPStatus.OK, editor_page(wid, meta, user, self.can_edit(meta, user), state,
+                                                    self.store.last_saved(wid), content[0]))
 
     def do_PUT(self):
         path, rest = self.route()
@@ -481,6 +498,15 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             return None
         if n > limit:
+            # Drain a bounded amount so the client gets the answer instead of a reset
+            # mid-upload; past that, the connection is closed after the reply.
+            left = min(n, 8 * limit)
+            while left > 0:
+                chunk = self.rfile.read(min(left, 65536))
+                if not chunk:
+                    break
+                left -= len(chunk)
+            self.close_connection = True
             return None
         return self.rfile.read(n)
 

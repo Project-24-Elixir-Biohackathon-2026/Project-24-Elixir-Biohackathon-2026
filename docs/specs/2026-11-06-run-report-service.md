@@ -58,10 +58,14 @@ may write. The workspace's state (running, stopped, deleted) is looked up with t
 viewer's token and shown when the lookup succeeds. The cookie value goes to Coder
 only and is never logged.
 
-**Editor page.** Markdown on the left, preview on the right, a save button, autosave
-three seconds after typing stops. The page keeps the `ETag` it loaded and sends it as
-`If-Match`; a 412 shows "changed elsewhere, reload" instead of overwriting. The header
-shows owner, workspace, instance, "last saved" and the workspace state.
+**Editor page.** The owner and admins get EasyMDE (vendored, with Font Awesome 4 for
+its toolbar; 2026-11-06, chosen over a structured form and over Toast UI): Markdown
+with a toolbar, side by side with a preview that the service renders, a save button,
+autosave three seconds after typing stops. The page keeps the `ETag` it loaded and
+sends it as `If-Match`; a 412 shows "changed elsewhere, reload" instead of
+overwriting. Everyone else gets the rendered report as a reading view with a link to
+the Markdown. Both show owner, workspace with its state, instance, created and "last
+saved", in the landing page's look.
 
 **Button.** A fourth `coder_app` in the template, "Report", `external = true`, URL
 `<access url>/reports/<workspace id>`. Not proxied through the VM, so it works while
@@ -80,7 +84,9 @@ part's `index.md` links the report one level up.
   viewer's browser on the portal origin (that origin holds Coder's cookie). Raw HTML
   is escaped before rendering, so only Markdown syntax produces markup, and every
   page carries `Content-Security-Policy: default-src 'self'; script-src 'self';
-  frame-ancestors 'none'`, which also blocks `javascript:` links. No inline script.
+  style-src 'self' 'unsafe-inline'; frame-ancestors 'none'`, which also blocks
+  `javascript:` links. No inline script; inline styles are allowed because the editor
+  sets some, and a style cannot reach the cookie.
 - Writes require a same-origin request: the `Origin` header, when present, must be
   the portal; Coder's cookie is `SameSite=Lax` as well.
 - Ids are validated as UUIDs before any path is built.

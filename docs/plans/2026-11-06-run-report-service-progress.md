@@ -25,6 +25,10 @@ Plan: `docs/plans/2026-11-06-run-report-service.md`. Spec:
 2. **"Last saved" is set explicitly with the portal's clock.** The share's NFS server
    runs about 17 minutes ahead (seen 2026-11-06), so a plain write showed a future
    time. Cost if wrong: none beyond the extra `utime` call.
-3. **During the live try the unit runs from the branch worktree** through a drop-in
+3. **The editor is EasyMDE, vendored** (2026-11-06, after the user saw the first page:
+   "doesn't look good, not clearly structured"; the structured form was recommended,
+   EasyMDE chosen). Adds 450 kB of static files and `style-src 'unsafe-inline'`. Cost
+   if wrong: the files to refresh on an EasyMDE update; scripts stay strict.
+4. **During the live try the unit runs from the branch worktree** through a drop-in
    `/etc/systemd/system/sperange-report.service.d/try.conf`, since the canonical path
    is the `main` checkout. Remove the drop-in after the merge and restart the unit.
