@@ -1,7 +1,7 @@
 {
   "env": {
     "AGENT_CONTEXT_BUDGET": "150000",
-    "AGENT_AUTO_CONTINUE": "1",
+    "AGENT_AUTO_CONTINUE": "true",
     "AGENT_CHAIN_MAX": "10"
   },
   "hooks": {

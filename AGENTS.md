@@ -3,8 +3,9 @@
 <!--
   Our fork's AGENTS.md: upstream's project guide merged with the template of thodkatz/agent-methodology. Edit
   freely outside the methodology blocks. Inside them (between a "methodology:" marker and its "/methodology:" one),
-  .methodology/shared/sync-agents.py owns the text: set a value on the opening marker, or deviate in Overrides.
-  The shared guides and scripts live in .methodology/ (a submodule): never edit them here (Working Conventions).
+  `methodology sync` owns the text: set a value in .claude/methodology.json, or deviate in Overrides. The shared
+  guides and scripts live in .methodology/, a link to this machine's methodology install: never edit them
+  (Working Conventions).
 -->
 
 > This file is `AGENTS.md`: Codex reads it natively, and Claude Code reads it when no `CLAUDE.md` exists, so it is

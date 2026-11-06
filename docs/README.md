@@ -4,7 +4,7 @@ One line per document: what it covers and who reads it. Open the document only w
 
 | Path | What | Read when |
 |---|---|---|
-| `../.methodology/shared/guides/` | the shared guides: workflow, sessions and context, spec and plan layout (a submodule; never edited here) | see `AGENTS.md`, *Read on demand* |
+| `../.methodology/shared/guides/` | the shared guides: workflow, sessions and context, spec and plan layout (the machine's install, through the `.methodology` link; never edited here) | see `AGENTS.md`, *Read on demand* |
 | `guides/` | this repo's own guides (fork-only, `AGENTS.md`, *Contributing upstream*) | see `AGENTS.md`, *Read on demand* |
 | `guides/contributing-upstream.md` | guide: porting fork work to upstream, and merging upstream back | you open a PR on upstream or merge `upstream/main` |
 | `handoffs/` | handoffs of this repo's sessions outside any plan, one file each (fork-only) | you start a session from one: read only the newest |
