@@ -30,7 +30,7 @@ and can be checked against your archived chats.
 
 One file per entry in `threats/`, `TM-NNN-short-name.md`:
 
-- **Frontmatter**: id, name, a description of 3 to 5 sentences, status, and the
+- **Metadata block** (YAML between `---` lines at the top of the file): id, name, a description of 3 to 5 sentences, status, and the
   entry points, assets and STRIDE categories it touches. Values come from
   `vocabulary.yaml`.
 - **Attack scenarios**: who triggers it, through which entry point, what the agent

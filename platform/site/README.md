@@ -16,14 +16,14 @@ python3 -m http.server -d platform/site/dist 8000           # look at it locally
 | Path | What |
 |---|---|
 | `build.py` | Validates the catalog with `validate.py`, writes the landing page, runs `mkdocs build --strict`; refuses to run on a broken catalog and keeps the previous output |
-| `mkdocs.yml`, `hooks.py` | The catalog site; `docs_dir` is `threats/` itself. The hooks add the generated tables and each entry's frontmatter |
+| `mkdocs.yml`, `hooks.py` | The catalog site; `docs_dir` is `threats/` itself. The hooks add the generated tables and each entry's metadata |
 | `pages/` | The hand-written pages: Overview, Interactive table, one page per metadata field. Edit freely |
 | `assets/` | Sorting and filtering of the table, images |
 | `landing/index.html`, `static/site.css` | The landing page |
 | `dist/` | Build output, ignored by git |
 
 The catalog has an Overview, an Interactive table that sorts and filters by text,
-status or entry point, one page per entry, and one page per frontmatter field with
+status or entry point, one page per entry, and one page per metadata field with
 its values and their meaning. `threats/` stays data: `TEMPLATE.md` is excluded, the
 other pages come from `pages/`.
 
