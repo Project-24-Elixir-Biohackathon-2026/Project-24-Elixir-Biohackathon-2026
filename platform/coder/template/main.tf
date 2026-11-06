@@ -279,6 +279,7 @@ resource "coder_app" "report" {
   icon         = "/icon/folder.svg"
   url          = "${data.coder_workspace.me.access_url}/reports/${data.coder_workspace.me.id}"
   external     = true
+  open_in      = "tab"
 }
 
 # Rebuild: applies the clone to the running frontend (spe-apply: build the images
