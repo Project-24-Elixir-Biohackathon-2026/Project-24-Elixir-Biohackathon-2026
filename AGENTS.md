@@ -140,7 +140,7 @@ History apart, large documents, growth, the clarification template and the layou
 - **Never edit `.methodology/`.** It is a link to the machine's read-only install of agent-methodology. Edits
   there are refused (the files are read-only) and would reach every repo on the machine. Deviate from a shared
   rule in *Overrides*; carry an improvement to agent-methodology as its own change, then `methodology update`
-  (agent-methodology's `AGENTS.md`, *Updating a repo*).
+  (agent-methodology's `UPDATING.md`).
 <!-- /methodology: working-conventions -->
 
 - **Merges are signed off too**: `git merge --signoff` (`-s` there means `--strategy`). The DCO app checks every
