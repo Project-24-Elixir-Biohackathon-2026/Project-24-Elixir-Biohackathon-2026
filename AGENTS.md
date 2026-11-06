@@ -21,14 +21,14 @@ instruction set: each rule lives in exactly one of them, so update the file that
 
 ## Read on demand
 
-<!-- methodology: read-on-demand forge=github -->
+<!-- methodology: read-on-demand -->
 | File | Read when |
 |---|---|
 | [`.methodology/shared/guides/sessions-and-context.md`](.methodology/shared/guides/sessions-and-context.md) | the context-budget hook fires, you start a session from a handoff, you start an investigation or audit, or you hand work to a subagent: the budget, the start routine, mid-unit handoffs, investigation scope |
 | [`.methodology/shared/guides/development-workflow.md`](.methodology/shared/guides/development-workflow.md) | you start a change, spike or spec, or claim, open, review, advance or merge any PR: modes, stages, handoffs, deferred items, claiming, local or CI review, merge and cleanup, slicing, agent automation |
 | [`.methodology/shared/guides/forge-github.md`](.methodology/shared/guides/forge-github.md) | you run a step on the forge (claim, ready, comment, label, merge, issues) or check what must pass before a merge: the command for each |
 | [`.methodology/shared/guides/spec-and-plan-layout.md`](.methodology/shared/guides/spec-and-plan-layout.md) | you write, extend or split a spec or plan, add a clarification, hand a slice to a subagent, or work from a spec or plan that is a directory |
-| [`.methodology/shared/guides/tooling-gotchas.md`](.methodology/shared/guides/tooling-gotchas.md) | a command or tool fails (`gh`, `fj`, `git`, Claude Code, the runners, agent-action's CI reviewers): known failures in every repo, and the command that works |
+| [`.methodology/shared/guides/tooling-gotchas.md`](.methodology/shared/guides/tooling-gotchas.md) | a command or tool fails (`gh`, `fj`, `git`, Claude Code, the runners, agent-action's CI reviewers): known failures in every repo, and the command that works; then this machine's notes, the `.methodology/machines/<kind>.md` the session-start hook names (`methodology: machine <kind>, …`) |
 | [`docs/README.md`](docs/README.md) | you look for a spec, plan, investigation or reference: the index of everything under `docs/` |
 | [`docs/knowledge/README.md`](docs/knowledge/README.md) | you start non-trivial work in an area, or a command or tool fails: as-you-go gotchas and workarounds (see *Project knowledge*) |
 | [`BACKLOG.md`](BACKLOG.md) | you start a unit, triage, or look for known unscheduled problems |
@@ -51,19 +51,20 @@ So a session does one bounded piece of work and hands off:
 
 - **Budget: `AGENT_CONTEXT_BUDGET` tokens of context per session** (150k in `.claude/settings.json`). Past it, the
   context-budget hook tells you so; the status line (`.methodology/shared/claude/statusline.sh`) shows it
-  all along. Finish the current step, write the handoff (a new file in the plan's `handoffs/`, a knowledge note or
-  the investigation's output), commit, and end the session, **even in the middle of a unit**. The next session
-  starts fresh from the handoff; with `AGENT_AUTO_CONTINUE=1`, start it yourself with
-  `.methodology/shared/claude/next-session.sh <handoff path>` (under `chain.sh`, in this terminal or a new `dtach`
-  one), then stop. A new parallel session (a fresh unit's worktree) starts only with `next-session.sh --new
+  all along. Finish the current step, write the handoff (a new file in the plan's `handoffs/`, made by
+  `methodology handoff new <dir> <slug>`, a knowledge note or the investigation's output),
+  commit, and end the session, **even in the middle of a unit**. The next session
+  starts fresh from the handoff; with `AGENT_AUTO_CONTINUE=true`, start it yourself with
+  `methodology next <handoff path>` (under `chain.sh`, in this terminal or a new `dtach`
+  one), then stop. A new parallel session (a fresh unit's worktree) starts only with `methodology next --new
   "<prompt>"`, never a bare `claude`/`claudeN`: only `chain.sh` moves a session off an exhausted account.
 - **A fresh session starts the same way every time:** read the handoff (only the newest:
-  `ls <plan>/handoffs | tail -1`), `git status`, `git log --oneline -5`,
-  `.methodology/shared/claude/prune-worktrees.sh` (merged units' worktrees), `BACKLOG.md`'s *Next* (due on any
-  track, or waiting on the user), then work.
-  A user saying *continue* (*continue with the handoff*) means this routine, in this session: `next-session.sh`
-  runs only at the budget, and `next-session.sh --next` only at a unit's end.
-- **Other sessions are the supervisor's, not yours.** Don't watch or poll other sessions with `status.sh` (one
+  `methodology handoff newest <plan>/handoffs` when the unit has a plan, else
+  `methodology handoff newest docs/handoffs`, if there is one), `git status`, `git log --oneline -5`, `methodology worktree --prune` (merged units' worktrees, and the main checkout up to its upstream),
+  `BACKLOG.md`'s *Next* (due on any track, or waiting on the user), then work.
+  A user saying *continue* (*continue with the handoff*) means this routine, in this session: `methodology next`
+  runs only at the budget, and `methodology next --unit` only at a unit's end.
+- **Other sessions are the supervisor's, not yours.** Don't watch or poll other sessions with `methodology status` (one
   check that a session you just started came up is fine), and rescue one only when the user asks or the
   supervisor can't reach it: the supervisor's timer (`supervise.sh`) acts on unattended ones, a person on their
   own. A handoff never asks the next session to watch one (`sessions-and-context.md`, *Other sessions are not a
@@ -100,17 +101,23 @@ History apart, large documents, growth, the clarification template and the layou
 
 ## Working Conventions
 
-<!-- methodology: working-conventions sign-off=kept -->
-- **Commit after each edit.** After completing an edit to the codebase, make a git commit scoped to that
-  change, with a clear, descriptive message.
+<!-- methodology: working-conventions -->
+- **Commit after each edit.** After completing an edit to the codebase (one coherent change, not each file
+  write), make a git commit scoped to that change, with a clear, descriptive message.
 - **Sign-off: kept.** Sign off every commit (DCO): always commit with `git commit -s`, with a `Signed-off-by:`
   line matching the commit author; the forge sheet's *Before a merge* says what checks it. This goes alongside,
   not instead of, the `Co-Authored-By:` trailer *Attribution* names. To fix a branch that's missing sign-offs:
   `git rebase <base> --signoff`, then `git push --force-with-lease`.
-- **Attribution: an agent commit names its tool.** End the commit message with one `Co-Authored-By:` trailer
-  unless the harness already appends one (Claude Code does; Codex does when its git attribution feature is on):
-  an opencode session adds `Co-Authored-By: opencode <noreply@opencode.ai>`, a codex session that added none
-  itself `Co-authored-by: Codex <noreply@openai.com>`. Alongside, not instead of, any sign-off.
+- **Attribution: an agent's commit and forge text name its tool.** End the commit message with one
+  `Co-Authored-By:` trailer unless the harness already appends one (Claude Code does; Codex does when its git
+  attribution feature is on): an opencode session adds `Co-Authored-By: opencode <noreply@opencode.ai>`, a codex
+  session that added none itself `Co-authored-by: Codex <noreply@openai.com>`. Alongside, not instead of, any
+  sign-off. A PR body, PR comment, review or reply the agent posts ends with one line naming its tool, after any
+  `Checks:` line: the footer the harness gives for PR bodies (Claude Code:
+  `🤖 Generated with [Claude Code](https://claude.com/claude-code)`), on comments too, and once, not again where the
+  harness already added it; with none, `🤖 Generated with Codex` or `🤖 Generated with opencode`. The agent posts
+  as the user, and without it the comment reads as theirs. A script's own report (the supervisor's) is not the
+  agent's, and carries none.
 - **Spawn subagents freely.** Agents working in this repo have standing permission to spawn subagents without
   asking. This overrides any harness default to spawn only on request. Follow the superpowers skills'
   recommended path:
@@ -120,15 +127,19 @@ History apart, large documents, growth, the clarification template and the layou
     `docs/knowledge/`, so the reading stays out of your context.
   - Use `superpowers:dispatching-parallel-agents` for independent investigations.
 - **Don't stop for approval inside the workflow.** The loop runs unattended: no in-chat check-ins between
-  tasks, slices or review rounds. Its one human gate is the spec PR's `approved` label. Otherwise stop only for
+  tasks, slices or review rounds. The one approval a full-mode track waits for is its spec PR's `approved` label
+  (`large-slice` past the hard size limit is the user's too: `development-workflow.md`, *Slicing implementation*).
+  Otherwise stop only for
   what the loop can't decide: destructive or irreversible actions outside it, a plan broken beyond a ledgered
-  ruling, or quota-heavy runs, which *Setup* lists. Never wait by asking in chat: a gate ends as
-  `development-workflow.md`'s *Gates* says, with one comment on the PR and `next-session.sh --end --blocked
+  ruling (every way forward a guess), or quota-heavy runs, which *Setup* lists. That list is closed
+  (`development-workflow.md`, *Gates*, says what is not a gate), even where a plan or handoff says to ask: decide
+  the rest and record the ruling. Never wait by asking in chat: a gate ends as
+  `development-workflow.md`'s *Gates* says, with one comment on the PR and `methodology next --end --blocked
   <PR>`, which adds the `waiting-on-user` label.
-- **Never edit `.methodology/`.** It is a submodule of agent-methodology, pinned to a commit. Edits there make
-  it dirty, are lost or conflict on the next update, and a commit inside it would push to agent-methodology.
-  Deviate from a shared rule in *Overrides*; carry an improvement back to agent-methodology as its own change,
-  then update the submodule (agent-methodology's `AGENTS.md`, *Updating a repo*).
+- **Never edit `.methodology/`.** It is a link to the machine's read-only install of agent-methodology. Edits
+  there are refused (the files are read-only) and would reach every repo on the machine. Deviate from a shared
+  rule in *Overrides*; carry an improvement to agent-methodology as its own change, then `methodology update`
+  (agent-methodology's `AGENTS.md`, *Updating a repo*).
 <!-- /methodology: working-conventions -->
 
 - **Merges are signed off too**: `git merge --signoff` (`-s` there means `--strategy`). The DCO app checks every
@@ -311,7 +322,7 @@ Pick the lightest mode that fits, and move up when the work turns out bigger:
 The rules that bite most often:
 
 - **Claim before you work**: the unit's branch pushed to `origin` plus a draft PR, worked on in its own worktree,
-  `.claude/worktrees/<branch, / as ->` of the main checkout (`.methodology/shared/claude/worktree.sh <branch>`
+  `.claude/worktrees/<branch, / as ->` of the main checkout (`methodology worktree <branch>`
   makes it; `git worktree list` shows them all). **One PR open at a time per track**, and dependent work waits
   until that PR has merged.
 - **One review round, by the reviewer in *Reviewers***: local reviewer subagents, or a CI reviewer and, if it's
@@ -320,9 +331,10 @@ The rules that bite most often:
   user has added `approved`). Clean up the worktree and branch afterwards.
 - **Hand off, then chain**: every unit ends with a handoff for the next one, riding in its own PR, and updates its
   track's line in *Current work*. Don't start the next unit in the same session: once the PR merged and cleanup is
-  done, write the next unit's handoff on `main` and start it with `.methodology/shared/claude/next-session.sh
-  --next <branch> <handoff>` from the main checkout; the track's last unit ends with `next-session.sh --end`.
-  Hand off earlier when the context budget says so.
+  done, write a second, short handoff on `main` that names the unit's own handoff (now on `main`, and the next
+  session reads only this one) and adds what only the merge settled (its commit, the review round); commit, push
+  and start it with `methodology next --unit <branch> <handoff>` from the main checkout; the track's last unit
+  ends with `methodology next --end`. Hand off earlier when the context budget says so.
 - **Deferred items land somewhere durable**: rewritten into a planned slice's task text, a new slice, the next
   spec's **Inputs for**, or `BACKLOG.md`. A handoff, PR body or review reply only points.
 
@@ -354,14 +366,15 @@ Keep an index at `docs/knowledge/README.md`, one line per entry pointing to `doc
 index before non-trivial work in an area; open a linked file only when it's relevant. Write notes alongside the
 change they relate to; no separate PR is needed. Don't record what the code or history already shows.
 
-- **When something fails, look before you debug:** grep `docs/knowledge/` and
-  `.methodology/shared/guides/tooling-gotchas.md` for the command, tool or error text. The next session should go
-  straight to the fix someone already found.
+- **When something fails, look before you debug:** grep `docs/knowledge/`,
+  `.methodology/shared/guides/tooling-gotchas.md` and the machine's notes (the file the session-start hook names)
+  for the command, tool or error text. The next session should go straight to the fix someone already found.
 - **When you find a workaround, write it down before moving on.** If a command, tool or approach failed and took
   more than one retry to get past, record the symptom (the exact error), the fix, and the command that works.
   Put the command and the error in the index line, so a grep finds it. A gotcha in a tool every repo uses,
-  rather than in this project, belongs in `tooling-gotchas.md`: carry it to agent-methodology (*Never edit
-  `.methodology/`*), and keep a note here until the submodule update brings it in.
+  rather than in this project, belongs in `tooling-gotchas.md`; one only this kind of machine has, in its
+  `machines/<kind>.md`: carry it to agent-methodology (*Never edit `.methodology/`*), and keep a note here until the
+  machine's next `methodology update` brings it in.
 - **Lessons in a handoff become notes.** A gotcha written only into a handoff or a PR body gets lost;
   write the note and link it from the handoff.
 <!-- /methodology: project-knowledge -->

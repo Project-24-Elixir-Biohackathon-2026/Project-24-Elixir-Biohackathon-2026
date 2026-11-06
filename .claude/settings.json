@@ -10,7 +10,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd \"$CLAUDE_PROJECT_DIR\" || exit 0; [ -z \"${GITHUB_ACTIONS:-}\" ] || exit 0; if [ ! -d .methodology/shared ] && g=$(git rev-parse --absolute-git-dir 2>/dev/null); then l=\"$g/methodology-init.lock\"; find \"$l\" -maxdepth 0 -mmin +1 -delete 2>/dev/null; n=0; until (set -C; : >\"$l\") 2>/dev/null && trap 'rm -f \"$l\"' EXIT; do n=$((n+1)); [ $n -le 45 ] || break; sleep 1; done; fi; [ -d .methodology/shared ] || GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND=\"${GIT_SSH_COMMAND:-ssh} -o BatchMode=yes -o ConnectTimeout=10\" git submodule update --init -q .methodology >/dev/null 2>&1 || { echo 'methodology: git submodule update --init .methodology failed, so the context-budget hook is off in this worktree until it is fixed.'; exit 0; }; command -v python3 >/dev/null || echo 'methodology: python3 is not on PATH, so the context-budget hook is off.'; case \"$(git submodule status .methodology 2>/dev/null)\" in +*) echo 'methodology: .methodology/ is not at the pinned commit: a pull moved the pin, or a commit was made inside it. Carry any edit of yours to agent-methodology, then run git submodule update .methodology.';; esac; [ -z \"$(git -C .methodology status --porcelain 2>/dev/null)\" ] || echo 'methodology: .methodology/ has local edits. Never edit it (AGENTS.md, Working Conventions): carry the change to agent-methodology, then restore it with git submodule update --force .methodology && git -C .methodology clean -fd.'; if [ -f AGENTS.md ] && [ -f .methodology/shared/sync-agents.py ] && command -v python3 >/dev/null; then python3 .methodology/shared/sync-agents.py --check >/dev/null 2>&1 || echo 'methodology: the methodology blocks in AGENTS.md differ from the pinned template, or their markers are broken. python3 .methodology/shared/sync-agents.py --check says how; without --check, it rewrites the blocks.'; fi",
+            "command": "h=${AGENT_METHODOLOGY_HOME:-~/.local/share/agent-methodology};m=/shared/methodology;f=$h/current$m;cd \"$CLAUDE_PROJECT_DIR\"||exit 0;[ -x \"$f\" ]&&exec \"$f\" setup --hook;[ \"$GITHUB_ACTIONS\" ]||echo \"methodology: run git clone git@github.com:thodkatz/agent-methodology.git $h/repo && $h/repo$m update\"",
             "timeout": 60
           }
         ]
@@ -22,7 +22,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -z \"${GITHUB_ACTIONS:-}\" ] || exit 0; f=\"$CLAUDE_PROJECT_DIR/.methodology/shared/claude/context-budget.py\"; [ -f \"$f\" ] || exit 0; command -v python3 >/dev/null || exit 0; exec python3 \"$f\"",
+            "command": "[ -z \"${GITHUB_ACTIONS:-}\" ] || exit 0; f=\"${AGENT_METHODOLOGY_HOME:-$HOME/.local/share/agent-methodology}/current/shared/claude/context-budget.py\"; [ -f \"$f\" ] || exit 0; command -v python3 >/dev/null || exit 0; exec python3 \"$f\"",
             "timeout": 10
           }
         ]
@@ -33,7 +33,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -z \"${GITHUB_ACTIONS:-}\" ] || exit 0; f=\"$CLAUDE_PROJECT_DIR/.methodology/shared/claude/context-budget.py\"; [ -f \"$f\" ] || exit 0; command -v python3 >/dev/null || exit 0; exec python3 \"$f\"",
+            "command": "[ -z \"${GITHUB_ACTIONS:-}\" ] || exit 0; f=\"${AGENT_METHODOLOGY_HOME:-$HOME/.local/share/agent-methodology}/current/shared/claude/context-budget.py\"; [ -f \"$f\" ] || exit 0; command -v python3 >/dev/null || exit 0; exec python3 \"$f\"",
             "timeout": 10
           }
         ]
@@ -42,6 +42,6 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "f=\"$CLAUDE_PROJECT_DIR/.methodology/shared/claude/statusline.sh\"; [ -x \"$f\" ] && exec \"$f\"; cat >/dev/null; echo 'methodology: no status line (.methodology/ not initialised)'"
+    "command": "f=\"${AGENT_METHODOLOGY_HOME:-$HOME/.local/share/agent-methodology}/current/shared/claude/statusline.sh\"; [ -x \"$f\" ] && exec \"$f\"; cat >/dev/null; echo 'methodology: not installed'"
   }
 }
