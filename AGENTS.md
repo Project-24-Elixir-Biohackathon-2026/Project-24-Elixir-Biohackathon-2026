@@ -29,7 +29,7 @@ instruction set: each rule lives in exactly one of them, so update the file that
 | [`.methodology/shared/guides/development-workflow.md`](.methodology/shared/guides/development-workflow.md) | you start a change, spike or spec, or claim, open, review, advance or merge any PR: modes, stages, handoffs, deferred items, claiming, local or CI review, merge and cleanup, slicing, agent automation |
 | [`.methodology/shared/guides/forge-github.md`](.methodology/shared/guides/forge-github.md) | you run a step on the forge (claim, ready, comment, label, merge, issues) or check what must pass before a merge: the command for each |
 | [`.methodology/shared/guides/spec-and-plan-layout.md`](.methodology/shared/guides/spec-and-plan-layout.md) | you write, extend or split a spec or plan, add a clarification, hand a slice to a subagent, or work from a spec or plan that is a directory |
-| [`.methodology/shared/guides/tooling-gotchas.md`](.methodology/shared/guides/tooling-gotchas.md) | a command or tool fails (`gh`, `fj`, `git`, Claude Code, the runners, agent-action's CI reviewers): known failures in every repo, and the command that works; then this machine's notes, the `.methodology/machines/<kind>.md` the session-start hook names (`methodology: machine <kind>, …`) |
+| [`.methodology/shared/guides/tooling-gotchas.md`](.methodology/shared/guides/tooling-gotchas.md) | a command or tool fails (`gh`, `fj`, `git`, Claude Code, the runners, agent-action's CI reviewers): known failures in every repo, and the command that works; then this machine's notes, the `.methodology/machines/<kind>.md` the session-start hook names (`methodology: machine <kind>, …`), and this repo's own for it, `docs/knowledge/machines/<kind>.md`, when it has one |
 | [`docs/README.md`](docs/README.md) | you look for a spec, plan, investigation or reference: the index of everything under `docs/` |
 | [`docs/knowledge/README.md`](docs/knowledge/README.md) | you start non-trivial work in an area, or a command or tool fails: as-you-go gotchas and workarounds (see *Project knowledge*) |
 | [`BACKLOG.md`](BACKLOG.md) | you start a unit, triage, or look for known unscheduled problems |
@@ -363,19 +363,24 @@ In this repo:
 <!-- methodology: project-knowledge -->
 As you work, capture anything you learn that isn't already visible from the code or `git log`: a workaround, a
 constraint that isn't obvious from reading the file, why an approach was rejected, a gotcha that cost real time.
-Keep an index at `docs/knowledge/README.md`, one line per entry pointing to `docs/knowledge/<topic>.md`. Skim the
-index before non-trivial work in an area; open a linked file only when it's relevant. Write notes alongside the
-change they relate to; no separate PR is needed. Don't record what the code or history already shows.
+Keep an index at `docs/knowledge/README.md`, one line per entry pointing to `docs/knowledge/<topic>.md` (not the
+`docs/knowledge/machines/<kind>.md` files below, which the hook names). Skim the index before non-trivial work in
+an area; open a linked file only when it's relevant. Write notes alongside the change they relate to; no separate
+PR is needed. Don't record what the code or history already shows.
 
 - **When something fails, look before you debug:** grep `docs/knowledge/`,
-  `.methodology/shared/guides/tooling-gotchas.md` and the machine's notes (the file the session-start hook names)
-  for the command, tool or error text. The next session should go straight to the fix someone already found.
+  `.methodology/shared/guides/tooling-gotchas.md` and the machine's notes (the files the session-start hook names:
+  `.methodology/machines/<kind>.md`, and this repo's `docs/knowledge/machines/<kind>.md` when it has one) for the
+  command, tool or error text; under `docs/knowledge/machines/`, only this machine's file applies. The next
+  session should go straight to the fix someone already found.
 - **When you find a workaround, write it down before moving on.** If a command, tool or approach failed and took
   more than one retry to get past, record the symptom (the exact error), the fix, and the command that works.
   Put the command and the error in the index line, so a grep finds it. A gotcha in a tool every repo uses,
   rather than in this project, belongs in `tooling-gotchas.md`; one only this kind of machine has, in its
   `machines/<kind>.md`: carry it to agent-methodology (*Never edit `.methodology/`*), and keep a note here until the
-  machine's next `methodology update` brings it in.
+  machine's next `methodology update` brings it in. One only this repo has, and only on one kind of machine (a
+  service that needs a workaround there), goes in `docs/knowledge/machines/<kind>.md` (`<kind>` is the
+  `AGENT_MACHINE` the hook names), not in `AGENTS.md`, which every machine reads.
 - **Lessons in a handoff become notes.** A gotcha written only into a handoff or a PR body gets lost;
   write the note and link it from the handoff.
 <!-- /methodology: project-knowledge -->
