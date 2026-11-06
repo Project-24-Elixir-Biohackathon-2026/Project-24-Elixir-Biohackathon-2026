@@ -93,7 +93,9 @@ for bstate in "$branch_dir"/.pushed-*; do
   [[ -f $bstate ]] || continue
   name=${bstate##*/.pushed-}
   [[ -n ${wanted[$name]:-} ]] && continue
-  if coder templates delete "$prefix-$name" --yes >/dev/null 2>&1; then
+  # Deleted here, or already deleted by hand: either way the branch's leftovers go.
+  if coder templates delete "$prefix-$name" --yes >/dev/null 2>&1 \
+     || ! coder templates versions list "$prefix-$name" >/dev/null 2>&1; then
     rm -f "$bstate"
     git worktree remove --force "$branch_dir/$name" 2>/dev/null || true
     echo "template $prefix-$name removed (branch template/$name is gone)"
