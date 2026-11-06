@@ -308,7 +308,8 @@ Not done yet: a run-report equivalent in the CopilotKit chat.
 <!-- methodology: development-workflow -->
 Pick the lightest mode that fits, and move up when the work turns out bigger:
 
-- **Direct**: you can describe the diff in one sentence (typo, one-line doc fix, config tweak). Commit to `main`.
+- **Direct**: you can describe the diff in one sentence (typo, one-line doc fix, config tweak), and it changes no
+  code or tests (those wait on the suite: change mode). Commit to `main`.
 - **Change**: a few files, clear approach, no contract others rely on. One PR `change/<slug>`, plan in its body.
 - **Spike**: you don't yet know what works. A written question and budget in `docs/investigations/<topic>.md`,
   throwaway code on `spike/<topic>` (never merged); the output is the finding and a recommendation.
