@@ -315,7 +315,8 @@ Pick the lightest mode that fits, and move up when the work turns out bigger:
 - **Full**: more than one slice, a contract or schema change, or costly rework. Three sequential stages, each
   its own branch cut from `origin/main` and its own PR:
   1. **Spec**: `spec/<topic>`, written by the `brainstorming` skill into `docs/superpowers/specs/`. Every
-     decision names its acceptance check. **The user approves it** (the `approved` label).
+     decision names its acceptance check. **The user approves it** (the `approved` label; in a
+     session they are in, the agent adds it with `methodology gate approve`, quoting them).
   2. **Plan**: `plan/<topic>`, written by the `writing-plans` skill into `docs/superpowers/plans/`, with its
      `## PR slices`.
   3. **Implementation**: one small PR per slice, `impl/<topic>-<n>-<slug>`, titled `… (n/N)`.
