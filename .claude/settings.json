@@ -16,6 +16,18 @@
         ]
       }
     ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"${GITHUB_ACTIONS:-}\" ] || exit 0; f=\"${AGENT_METHODOLOGY_HOME:-$HOME/.local/share/agent-methodology}/current/shared/claude/pkill-guard.py\"; [ -f \"$f\" ] || exit 0; command -v python3 >/dev/null || exit 0; exec python3 \"$f\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "*",
