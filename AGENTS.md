@@ -335,7 +335,10 @@ The rules that bite most often:
   done, write a second, short handoff on `main` that names the unit's own handoff (now on `main`, and the next
   session reads only this one) and adds what only the merge settled (its commit, the review round); commit, push
   and start it with `methodology next --unit <branch> <handoff>` from the main checkout; the track's last unit
-  ends with `methodology next --end`. Hand off earlier when the context budget says so.
+  ends with `methodology next --end`. Hand off earlier when the context budget says so. Told to stop ("stop
+  here", "finish this, then stop", "pause"), finish the step, commit and push, write a handoff (`methodology
+  handoff new`, where the budget's goes), commit and push it, then `methodology next --end`:
+  never the handoff form, which chains on.
 - **Deferred items land somewhere durable**: rewritten into a planned slice's task text, a new slice, the next
   spec's **Inputs for**, or `BACKLOG.md`. A handoff, PR body or review reply only points.
 
