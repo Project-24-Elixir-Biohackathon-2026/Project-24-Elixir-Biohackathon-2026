@@ -128,11 +128,13 @@ History apart, large documents, growth, the clarification template and the layou
     `docs/knowledge/`, so the reading stays out of your context.
   - Use `superpowers:dispatching-parallel-agents` for independent investigations.
 - **Don't stop for approval inside the workflow.** The loop runs unattended: no in-chat check-ins between
-  tasks, slices or review rounds. The one approval a full-mode track waits for is its spec PR's `approved` label
-  (`large-slice` past the hard size limit is the user's too: `development-workflow.md`, *Slicing implementation*).
-  Otherwise stop only for
-  what the loop can't decide: destructive or irreversible actions outside it, a plan broken beyond a ledgered
-  ruling (every way forward a guess), or quota-heavy runs, which *Setup* lists. That list is closed
+  tasks, slices or review rounds. The one approval a full-mode track waits for is its spec, the stage the user
+  attends: they write it with the agent and approve it (its PR's `approved` label, or `methodology gate approve` at
+  their word in the session). Past the hard size limit the agent adds `large-slice` itself, with its why-one-unit
+  (`development-workflow.md`, *Slicing implementation*). Otherwise stop only at a gate the approved spec names, a
+  clarification that changes the spec's intent, the floor (a step reverting the repo can't undo: spending money,
+  heavy resource requests (those *Setup* lists among them), destroying VMs, infrastructure or data, publishing or
+  sending, force-pushing or rewriting `main`, secrets and credentials) or a `next-session.sh` refusal. That list is closed
   (`development-workflow.md`, *Gates*, says what is not a gate), even where a plan or handoff says to ask: decide
   the rest and record the ruling. Never wait by asking in chat: a gate waits on its PR as
   `development-workflow.md`'s *Gates* says: one comment, the `waiting-on-user` label, and a watcher that wakes the
