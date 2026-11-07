@@ -322,6 +322,11 @@ Pick the lightest mode that fits, and move up when the work turns out bigger:
 
 The rules that bite most often:
 
+- **Look for what exists before you build it**: before a spec or change that adds logic someone maintains,
+  search open, on more than one harness, with the needs in the user's terms, and ask the reverse (take the best
+  tool whole: what breaks, what layer is left); a close one gets a trial first. Agent-methodology built ~4,000
+  lines of session tooling before searching, months after tools that do much of it existed
+  (`development-workflow.md`, *Choosing a mode*).
 - **Claim before you work**: the unit's branch pushed to `origin` plus a draft PR, worked on in its own worktree,
   `.claude/worktrees/<branch, / as ->` of the main checkout (`methodology worktree <branch>`
   makes it; `git worktree list` shows them all). **One PR open at a time per track**, and dependent work waits
