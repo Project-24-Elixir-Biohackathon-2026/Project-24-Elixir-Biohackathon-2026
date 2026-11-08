@@ -1,5 +1,10 @@
 # A `contrib/` unit cannot be chained with `next-session.sh`
 
+**Resolved** in the methodology by 2026-11-08 (generation `9d83559`): a handoff hop from the main checkout on its
+default branch is now allowed (`next-session.sh`, the worktree check). So: write the handoff in `docs/handoffs/` on
+`main`, push it, and run `methodology next docs/handoffs/<file>` from the main checkout. Also, since 171398a
+`.methodology` is a machine-install link, not a submodule. What follows is the original finding.
+
 Found 2026-11-04 (the user), handing off the upstream package unit (kraatz #17).
 
 **Symptom.** Neither place a `contrib/<slug>` unit runs from lets `.methodology/shared/claude/next-session.sh

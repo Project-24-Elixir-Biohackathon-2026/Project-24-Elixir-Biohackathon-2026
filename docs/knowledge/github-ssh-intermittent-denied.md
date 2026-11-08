@@ -24,12 +24,12 @@ main` worked while SSH failed:
 ```bash
 git -c url."https://github.com/".insteadOf=git@github.com: fetch origin     # per command
 git config --local url."https://github.com/".insteadOf git@github.com:     # this repo and all its worktrees
-git -C .methodology config --local url."https://github.com/".insteadOf git@github.com:   # the submodule too
 ```
 
 Set with `--local` on 2026-11-04 (not `--global`), meant to stay only while GitHub rejects the key. Once
-`ssh -T git@github.com` passes every time again, undo it in both places:
-`git config --local --unset url."https://github.com/".insteadOf` (and the same with `-C .methodology`).
+`ssh -T git@github.com` passes every time again, undo it:
+`git config --local --unset url."https://github.com/".insteadOf`. (Until 171398a `.methodology` was a submodule
+and needed the same setting; it is now a link to the machine's install, which `methodology update` fetches.)
 
 Or retry until one attempt is accepted: `for i in $(seq 10); do git push origin <ref> && break; sleep 3; done`.
 To tell this failure apart from a missing key: `ssh -v -T git@github.com 2>&1 | grep -E 'accepts|denied'` a few

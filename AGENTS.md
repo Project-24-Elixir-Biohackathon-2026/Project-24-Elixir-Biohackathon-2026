@@ -155,7 +155,7 @@ Where this repo deviates from a shared guide, one line each: "In this repo, X in
 because Z." This file wins over the guides in `.methodology/shared/guides/`.
 
 - In this repo, **the checks before a merge are the DCO app, the unit's test commands run locally (*Running
-  things*) and `sync-agents.py --check`** instead of `forge-github.md`, *Before a merge* (tests, lint, DCO and
+  things*) and `methodology sync --check`** instead of `forge-github.md`, *Before a merge* (tests, lint, DCO and
   `pr-checks.yml` in CI), because the fork has no workflows yet (`BACKLOG.md`). The PR body says what ran.
 - In this repo, **a branch missing sign-offs is not rebased and force-pushed** instead of the fix in *Working
   Conventions* above, because pushed branches are not rewritten here (PR #1 was merged with DCO red rather
@@ -173,7 +173,7 @@ because Z." This file wins over the guides in `.methodology/shared/guides/`.
 
 Our fork's `main` carries fork-only files that upstream must never receive:
 
-    .gitmodules  .methodology/  .claude/settings.json  BACKLOG.md
+    .methodology/  .claude/  BACKLOG.md
     docs/README.md  docs/guides/  docs/knowledge/  docs/investigations/  docs/proposals/  docs/superpowers/
     docs/handoffs/  docs/upstream-ports.md
 
@@ -184,7 +184,7 @@ A PR to upstream is cut from `upstream/main` (`git fetch upstream`), carries onl
 
 ```bash
 git diff --name-only upstream/main...HEAD \
-  | grep -E '^(\.gitmodules|\.methodology|\.claude/|BACKLOG\.md|docs/(README\.md|guides/|knowledge/|investigations/|proposals/|superpowers/|handoffs/|upstream-ports\.md))' \
+  | grep -E '^(\.methodology|\.claude/|BACKLOG\.md|docs/(README\.md|guides/|knowledge/|investigations/|proposals/|superpowers/|handoffs/|upstream-ports\.md))' \
   && echo "fork-only files in this branch: remove them" || echo ok
 ```
 

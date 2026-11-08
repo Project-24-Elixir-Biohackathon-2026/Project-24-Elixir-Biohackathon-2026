@@ -21,7 +21,7 @@ together. Each fork PR is one squash commit on our `main`.
 upstream*, plus `AGENTS.md` itself, and changes with it:
 
 ```bash
-X=(":(exclude).gitmodules" ":(exclude).methodology" ":(exclude).claude" ":(exclude)AGENTS.md"
+X=(":(exclude).methodology" ":(exclude).claude" ":(exclude)AGENTS.md"
    ":(exclude)BACKLOG.md" ":(exclude)docs/README.md" ":(exclude)docs/guides" ":(exclude)docs/knowledge"
    ":(exclude)docs/investigations" ":(exclude)docs/proposals" ":(exclude)docs/superpowers" ":(exclude)docs/handoffs"
    ":(exclude)docs/upstream-ports.md")
@@ -58,8 +58,8 @@ cd .claude/worktrees/contrib-<slug>
 
 Upstream has neither `.methodology/` nor `.claude/settings.json`, so a session started in this worktree runs no
 hooks (no context budget): work on it from a session started in the main checkout.
-`next-session.sh` cannot chain such a unit's sessions from either place; hand off on `main` and have the user
-start the next session (`docs/knowledge/contrib-unit-chaining.md`).
+To chain such a unit's sessions, write the handoff in `docs/handoffs/` on `main`, push it, and run
+`methodology next docs/handoffs/<file>` from the main checkout on `main` (`docs/knowledge/contrib-unit-chaining.md`).
 
 Never open an upstream PR from `main` or from a `change/`, `spec/`, `plan/` or `impl/` branch: they carry the
 fork-only files. Upstream once merged our methodology adoption PR that way (kraatz #8) and had to revert it
