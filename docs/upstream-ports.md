@@ -54,3 +54,4 @@ its commit again (the guide's step 7).
 - `d03751c` Reset an existing host's frontend through its compose link (#41) → kraatz #17 (open)
 - `9abdbb9` Contributing guide: the package port path; spec's latest clarification is 23 → kraatz #17 (open)
 - `d1daa75` TM-007: AG-UI's client-held history as a known protocol weakness (#43) → kraatz #17 (open)
+- `338eb8e` AG-UI archive Markdown: Compacted wording, autolinks, refusal reason, bad timestamps (#44) → kraatz (not opened yet: `contrib/agui-archive-markdown` pushed, title and body in fork issue #45)
