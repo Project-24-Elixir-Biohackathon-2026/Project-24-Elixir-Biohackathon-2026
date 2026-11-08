@@ -15,6 +15,18 @@ which puts `ansible`, `ansible-playbook`, `ansible-galaxy` … in `~/.local/bin`
 (`openstack.cloud`, `community.general`, `ansible.posix`). Run it with `</dev/null`, or under `script` when stdout
 is also non-blocking (`ansible-nonblocking-stdout.md`).
 
+## samtools, bgzip, tabix, bcftools
+
+`platform/dev/tests` needs them (the dummy dataset; `test_spe_seed_accepts_it` also runs `spe_seed.py`, which
+wants `bcftools`). No guest rebuild needed: `nix profile add` fails ("experimental Nix feature 'nix-command' is
+disabled", then "creating directory \"/nix/store/.links\": Read-only file system"), and PyPI has no package with
+the commands, but micromamba is installed:
+
+    micromamba create -y -n spe-bio -c conda-forge -c bioconda samtools htslib bcftools
+    for t in samtools bgzip tabix bcftools; do ln -sf ~/.micromamba/envs/spe-bio/bin/$t ~/.local/bin/$t; done
+
+The lasting alternative is adding them to nixed's guest packages (a switch by the user).
+
 ## SSH to de.NBI through the host's `~/.ssh` share
 
 The host's `~/.ssh` is shared at `/mnt/host-ssh`, and `/etc/ssh/ssh_config` includes `/mnt/host-ssh/config`.
@@ -31,7 +43,9 @@ The host's `~/.ssh` is shared at `/mnt/host-ssh`, and `/etc/ssh/ssh_config` incl
   A fresh guest has no de.NBI host keys (the host's `known_hosts` has none either): the first connection gives
   "Host key verification failed"; add `StrictHostKeyChecking accept-new` to that scratch config for it, as
   Task 12 did (`docs/plans/2026-10-15-agui-frontend-progress.md`). Jump host, accepted 2026-11-08:
-  `ED25519 SHA256:8ojvA8rKjb3wno5y5jumAmsWdNkHeuH/xKfKu7nQPSI`.
+  `ED25519 SHA256:8ojvA8rKjb3wno5y5jumAmsWdNkHeuH/xKfKu7nQPSI`; agent-service-1 (`10.57.204.214`):
+  `ED25519 SHA256:VTe3qymo0Nkk0J5bpKymm8J+iwBuNZANAzmkthsIq7o`. Once the host's config sets `IdentitiesOnly yes`
+  (done 2026-11-08), a plain `ssh agent-service-1 …` is enough.
 - **"Permissions 0644 for '/home/agentvm/.ssh/denbi' are too open … bad permissions", then "Permission denied
   (publickey,…)"**: the share passes the host file's mode through, and the host's `~/.ssh/denbi` was 0644, so ssh
   offers no key at all. Fix on the host: `chmod 600 ~/.ssh/denbi` (the share is read-only from the guest). Don't
