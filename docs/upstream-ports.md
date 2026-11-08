@@ -1,6 +1,6 @@
 # Upstream ports
 
-Which fork commits with project changes have been decided for upstream (`kraatz/elixir-biohackathon-2026-test`):
+Which fork commits with project changes have been decided for upstream (`Project-24-Elixir-Biohackathon-2026/Project-24-Elixir-Biohackathon-2026`, formerly `kraatz/elixir-biohackathon-2026-test`; `kraatz #<n>` is its PR number):
 ported in an upstream PR, or not for upstream and why. Fork-only: upstream's history carries no fork hashes.
 The procedure that reads and writes it: `docs/guides/contributing-upstream.md`.
 

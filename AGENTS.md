@@ -10,7 +10,7 @@
 
 > This file is `AGENTS.md`: Codex reads it natively, and Claude Code reads it when no `CLAUDE.md` exists, so it is
 > the single entry point for people and agents. `README.md` stays upstream's project README.
-> **Upstream (`kraatz/elixir-biohackathon-2026-test`, remote `upstream`) knows nothing of the methodology**: this
+> **Upstream (`Project-24-Elixir-Biohackathon-2026/Project-24-Elixir-Biohackathon-2026`, formerly `kraatz/elixir-biohackathon-2026-test`, remote `upstream`) knows nothing of the methodology**: this
 > file is rewritten for our fork, and a PR there must work without any of it (*Contributing upstream*).
 
 <!-- methodology: entry-point -->
@@ -242,14 +242,14 @@ new template), how the person tests it, and how a tested change becomes a templa
 Each unit of work runs in its own worktree (*Development workflow*).
 
 The portal VM follows upstream's `main`, not ours (`platform/coder/deploy/sync-template.sh`, on a checkout
-cloned from `kraatz`): a merge there changes what participants get within minutes. Our work reaches them through
+cloned from upstream): a merge there changes what participants get within minutes. Our work reaches them through
 an upstream PR (`docs/guides/contributing-upstream.md`).
 
 Private instance files and `platform/ansible/output/` exist only in the main checkout,
 not in a worktree. An instance runs the chat frontend from a clone of this repository
 on its VM (`~/sperange`), checked out at `spe_repo_ref`, by default the commit the
 controller's checkout is at, so that commit must be pushed. `spe_repo_url` defaults to
-upstream (`kraatz`), which lacks our commits: every instance file used from our checkout sets
+upstream (still the old `kraatz` URL, which redirects), which lacks our commits: every instance file used from our checkout sets
 `spe_repo_url: https://github.com/thodkatz/elixir-biohackathon-2026-test.git` (the `*.example.yml` files do not). To
 deploy a topic branch before it is merged, push it and run Ansible from the main checkout
 with `-e spe_repo_ref=<branch>`, and with `-i <worktree>/platform/ansible/inventory/hosts.yml`
@@ -302,7 +302,7 @@ next to Open WebUI (`spe_frontends`, kraatz #16). Chat sessions (sidebar, archiv
 sessions* plan (`docs/superpowers/plans/2026-10-29-agui-chat-sessions/`, done).
 The conversation record (journals, the live archive, TM-005) was built by the
 *AG-UI conversation record* plan (`docs/superpowers/plans/2026-11-03-agui-conversation-record/`, done).
-Not done yet: a run-report equivalent in the CopilotKit chat.
+The run report is no longer a chat feature: it lives on the portal VM for every frontend (`platform/report/`).
 
 ## Development workflow
 
