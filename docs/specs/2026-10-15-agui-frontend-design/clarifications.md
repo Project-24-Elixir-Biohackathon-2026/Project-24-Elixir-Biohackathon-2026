@@ -294,8 +294,8 @@ in the parts it amends.
     `<run>/agui/agui-journals/`. *Amends:* §1 *Goal*, §3's container table intro, §7's variables, §9's condition,
     §14 *Export* and *Write*, decisions 15's and 30's checks. *Status:* folded.
 
-26. **A New chat is titled as its first run starts, from its question alone** (2026-11-08, the user's choice; the
-    fork's PR #52). §6 *Sessions* now has the browser fetch the list as a New chat's first run starts, so the
+26. **A New chat is titled as its first run starts, from its question alone** (2026-11-08, the user's choice).
+    §6 *Sessions* now has the browser fetch the list as a New chat's first run starts, so the
     sidebar and header show the fallback title (first message, 60 characters) within a second of sending, and ask
     for the model title at once; `POST /api/sessions/{id}/title` titles from the first run that added a user
     message, whatever its status (running, finished, failed or stopped), with that question alone, instead of the
