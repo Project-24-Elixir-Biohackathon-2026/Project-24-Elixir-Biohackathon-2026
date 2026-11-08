@@ -46,6 +46,8 @@ The host's `~/.ssh` is shared at `/mnt/host-ssh`, and `/etc/ssh/ssh_config` incl
   `ED25519 SHA256:8ojvA8rKjb3wno5y5jumAmsWdNkHeuH/xKfKu7nQPSI`; agent-service-1 (`10.57.204.214`):
   `ED25519 SHA256:VTe3qymo0Nkk0J5bpKymm8J+iwBuNZANAzmkthsIq7o`. Once the host's config sets `IdentitiesOnly yes`
   (done 2026-11-08), a plain `ssh agent-service-1 …` is enough.
+- **Instance files**: set `spe_existing_ssh_args: ""`, not the examples' `"-F /home/agentvm/.ssh/config"`, for
+  the same `-F` reason (deployed this way to agent-service-1, 2026-11-08).
 - **"Permissions 0644 for '/home/agentvm/.ssh/denbi' are too open … bad permissions", then "Permission denied
   (publickey,…)"**: the share passes the host file's mode through, and the host's `~/.ssh/denbi` was 0644, so ssh
   offers no key at all. Fix on the host: `chmod 600 ~/.ssh/denbi` (the share is read-only from the guest). Don't
