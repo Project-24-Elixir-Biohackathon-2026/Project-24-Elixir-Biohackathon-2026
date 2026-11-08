@@ -52,3 +52,19 @@ The host's `~/.ssh` is shared at `/mnt/host-ssh`, and `/etc/ssh/ssh_config` incl
   (publickey,…)"**: the share passes the host file's mode through, and the host's `~/.ssh/denbi` was 0644, so ssh
   offers no key at all. Fix on the host: `chmod 600 ~/.ssh/denbi` (the share is read-only from the guest). Don't
   retry against the jump host until it is fixed: each try is a failed login there.
+
+## `create.yml` against this guest itself (`dev-local`, `spe_existing_host: localhost`)
+
+Found 2026-11-08 on `agentvm-thinkrepos`: this guest is NixOS, not the Ubuntu the playbooks target, so it cannot
+be its own instance.
+
+- **"timed out waiting for ping module test: 'ping'"** (after 600 s, task *Wait for SSH*): `existing_host` pins
+  `ansible_python_interpreter: /usr/bin/python3`, which NixOS lacks (`/run/current-system/sw/bin/python3`). Past
+  it with `-e ansible_python_interpreter=/run/current-system/sw/bin/python3`; the user is `agentvm`, not `ubuntu`
+  (`spe_ssh_user: agentvm`).
+- **"only 5 GB free on the filesystem of /, need 15"**: the root and `/home` are small; only `/var/tmp` (Docker's
+  data root, ~29 GB) has room.
+- After that, `base` installs packages with `apt` unconditionally: no way through without playbook changes.
+
+Use an Ubuntu VM as the target (e.g. a de.NBI VM, or a local Ubuntu VM), or run the AG-UI agent and chat UI
+directly for model-backed feature work.
