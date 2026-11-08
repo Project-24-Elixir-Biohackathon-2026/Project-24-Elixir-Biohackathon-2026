@@ -33,7 +33,9 @@ start reads this section; keep it short.
 
 - agent-methodology: `methodology worktree` takes the main checkout from `git worktree list`'s first line, which in a
   submodule is the parent's `.git/modules/<name>`, so here it misplaces the worktree and claims nothing
-  (`docs/knowledge/methodology-worktree-submodule.md`). Carry a fix to agent-methodology (resolve the checkout with
+  (`docs/knowledge/methodology-worktree-submodule.md`). `next-session.sh` (`--unit`'s worktree, the `repo=` hint)
+  and `supervise.sh` read the same line, and `status.sh` uses `dirname` of the common dir, so a chained unit runs
+  under `.git/modules/` with no `methodology status` row (seen 2026-11-08, slice 1 of leave-running-chat). Carry a fix to agent-methodology (resolve the checkout with
   `git rev-parse --show-toplevel` from the main worktree, or `core.worktree`) — from #50's review; waits because it
   is another repository's change.
 - agent-methodology: `forge.sh` calls `gh pr view <n>` (and `gh api repos/{owner}/{repo}/…`) without `--repo`; on

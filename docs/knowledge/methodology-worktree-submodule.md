@@ -30,5 +30,20 @@ gh api repos/thodkatz/elixir-biohackathon-2026-test/pulls -f title='…' -f head
   -F draft=true -f body='…' --jq .number
 ```
 
+**The chain lands there too, and status doesn't see it** (seen 2026-11-08, the leave-running-chat plan and slice
+1). `next-session.sh` takes the main checkout from the same first line (`mc=…` for `--unit`'s new worktree, and
+the `repo=` deck hint), so `methodology next --unit` starts the next unit's session in
+`/workspace/biohackathon/.git/modules/elixir-biohackathon-2026-test/.claude/worktrees/<branch>` with
+`am.repo` set to the git directory. `methodology status` from the checkout takes its repo as
+`dirname "$(git rev-parse --git-common-dir)"` (`status.sh`), here `/workspace/biohackathon/.git/modules`, which
+matches neither, so the running unit has no row; `git worktree list` from the checkout does show it. To see it:
+
+```bash
+AGENT_SUPERVISE_REPOS=/workspace/biohackathon/.git/modules/elixir-biohackathon-2026-test methodology status
+agent-deck list --all          # every session, with its id for `methodology attach <id>`
+```
+
+The worktree is a working one: commits, pushes and PRs from it are fine; only its place is wrong.
+
 Until `methodology worktree` resolves the main checkout another way (an agent-methodology change, `BACKLOG.md`),
 use these commands for every claim in this repo.
