@@ -3,7 +3,7 @@
 // bodies are generic; details go to the server log.
 import { ValidationError, codeOf, isSessionId, parsePatch } from "./sessions.ts";
 import type { Journals } from "./sessions.ts";
-import { TitleUnavailable, firstExchange } from "./title.ts";
+import { TitleUnavailable, firstQuestion } from "./title.ts";
 import type { Titler } from "./title.ts";
 
 const MAX_BODY = 16 * 1024;
@@ -90,9 +90,10 @@ export async function deleteSession(journals: Journals, id: string): Promise<Res
   }
 }
 
-// POST /api/sessions/{id}/title: once the session has a completed run and no title of its own (no meta title:
-// neither a rename nor an earlier model title), the agent writes one from the first message and answer, read
-// from the journal; it is appended only if still no title is set (a rename meanwhile wins). Answers the
+// POST /api/sessions/{id}/title: once a run of the session has added a user message (from its run_start, so
+// while that run is still going) and the session has no title of its own (no meta title: neither a rename nor
+// an earlier model title), the agent writes one from that first question, read from the journal; it is
+// appended only if still no title is set (a rename meanwhile wins). Answers the
 // metadata, unchanged when nothing was written. The agent failing is logged, not an error for the browser.
 // No body is needed, so without this check the request would be a CORS simple request (no preflight) that
 // another site could trigger freely, each call a paid model call while the agent keeps failing; requiring a
@@ -106,7 +107,7 @@ export async function titleSession(journals: Journals, id: string, titler: Title
     if (!state) return fail(404, "no such session");
     if (state.titled) return Response.json(state.meta);
     const conv = await journals.load(id, { outsideQueue: true });
-    messages = conv && firstExchange(conv);
+    messages = conv && firstQuestion(conv);
     if (!messages) return Response.json(state.meta);
   } catch (error) {
     return serverError(`read ${id}`, error);

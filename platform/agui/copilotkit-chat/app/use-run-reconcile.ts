@@ -2,7 +2,8 @@
 // New chat), and after each run, however it ended, the list is fetched until it shows that run, or the error
 // bar says it was not saved. A run the recorder ended itself (a refusal, or a journal it could not write:
 // its RUN_ERROR is already in the bar) is fetched once, without retries: nothing more is written for it.
-// A run the list shows is passed to `onRecorded`, with whether it finished (RUN_FINISHED), for its title.
+// Each run's session is passed to `onStarted` as the run starts, and to `onRecorded` once the list shows the
+// run, for a New chat's title.
 import { UseAgentUpdate, useAgent } from "@copilotkit/react-core/v2";
 import { useCallback, useEffect, useRef } from "react";
 import type { SessionMeta } from "../lib/sessions.ts";
@@ -12,16 +13,17 @@ type Options = {
   openId: string;
   onList: (list: SessionMeta[]) => void;
   onError: (message: string) => void;
-  onRecorded: (id: string, finished: boolean) => void;
+  onStarted: (id: string) => void;
+  onRecorded: (id: string) => void;
 };
-type Run = { id: string; startMs: number; refused: boolean; finished: boolean };
+type Run = { id: string; startMs: number; refused: boolean };
 
 const LIST_FAILED = "The session list could not be loaded.";
 
-export function useRunReconcile({ openId, onList, onError, onRecorded }: Options) {
+export function useRunReconcile({ openId, onList, onError, onStarted, onRecorded }: Options) {
   const { agent } = useAgent({ agentId: "spe", updates: [UseAgentUpdate.OnRunStatusChanged] });
-  const latest = useRef({ openId, onList, onError, onRecorded });
-  latest.current = { openId, onList, onError, onRecorded };
+  const latest = useRef({ openId, onList, onError, onStarted, onRecorded });
+  latest.current = { openId, onList, onError, onStarted, onRecorded };
   const current = useRef<Run | null>(null); // the run in progress
   const last = useRef<Run | null>(null); // the latest run, in progress or ended
 
@@ -29,16 +31,12 @@ export function useRunReconcile({ openId, onList, onError, onRecorded }: Options
     const sub = agent.subscribe({
       onRunInitialized: () => {
         // The open session is read when a run starts: switching is disabled until it ends.
-        current.current = last.current = {
-          id: latest.current.openId, startMs: Date.now(), refused: false, finished: false,
-        };
+        current.current = last.current = { id: latest.current.openId, startMs: Date.now(), refused: false };
+        latest.current.onStarted(latest.current.openId);
       },
       onRunErrorEvent: ({ event }) => {
         const run = current.current;
         if (run !== null && isRefusal(String(event.message ?? ""))) run.refused = true;
-      },
-      onRunFinishedEvent: () => {
-        if (current.current !== null) current.current.finished = true;
       },
       onRunFinalized: () => {
         const ended = current.current;
@@ -53,7 +51,7 @@ export function useRunReconcile({ openId, onList, onError, onRecorded }: Options
         reconcile(fetchSessionList, ended.id, ended.startMs)
           .then(({ list, saved }) => {
             latest.current.onList(list);
-            if (saved) latest.current.onRecorded(ended.id, ended.finished);
+            if (saved) latest.current.onRecorded(ended.id);
             else latest.current.onError(SAVE_FAILED_MESSAGE);
           })
           .catch(() => latest.current.onError(LIST_FAILED));
