@@ -97,8 +97,10 @@ Fields starting with `spe_` are ours; Open WebUI itself never writes them, so it
   run.yml                          as for every run
   index.md                         Open WebUI's, or an overview when it did not run; links agui/index.md
   agui/index.md                    sessions table `# | Session | Tags | Created | Runs | Compactions | State`;
-                                   says that the AG-UI frontend has no run report, and whether the archive
-                                   was live (incomplete runs may still have been going) or final
+                                   links the run report one level up with its state (missing, not filled
+                                   in, filled in; `docs/specs/2026-11-06-run-report-service.md`), and says
+                                   whether the archive was live (incomplete runs may still have been
+                                   going) or final
   agui/openwebui-export.json       the bundle, copied as for Open WebUI; an in-place re-render reads it back
   agui/chats/NN-<slug>.md          the active branch along currentId: user and assistant text, each tool call
                                    with fenced arguments and result, plus the three additions below; then

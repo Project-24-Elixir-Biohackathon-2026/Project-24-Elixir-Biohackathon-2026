@@ -3,7 +3,7 @@
 # agent's HTTPS calls to WES/DRS/TRS verify against it (never --insecure). The
 # runbook and helper scripts are not baked in: files/agent/ is mounted at
 # /opt/agent (platform/instance/compose.yml), so an edit there is live.
-FROM ghcr.io/open-webui/open-terminal:0.12.4
+FROM ghcr.io/open-webui/open-terminal:0.16.1
 USER root
 COPY spe-ca.crt /usr/local/share/ca-certificates/spe-ca.crt
 RUN chmod 644 /usr/local/share/ca-certificates/spe-ca.crt && update-ca-certificates

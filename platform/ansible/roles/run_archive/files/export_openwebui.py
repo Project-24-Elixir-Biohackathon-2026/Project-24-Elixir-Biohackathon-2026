@@ -2,7 +2,7 @@
 """Export what a participant produced in OpenWebUI to one JSON file.
 
 Runs on the SPE VM against the local OpenWebUI (stdlib only):
-    export_openwebui.py <base url> <out.json> <rendered report template>
+    export_openwebui.py <base url> <out.json>
 Credentials come from WEBUI_EMAIL / WEBUI_PASSWORD; both may be empty when
 OpenWebUI runs without a login (sign-in then returns the single admin).
 """
@@ -12,7 +12,7 @@ import sys
 import time
 import urllib.request
 
-base, out, template = sys.argv[1:4]
+base, out = sys.argv[1:3]
 
 
 def call(path, body=None, token=None):
@@ -40,7 +40,6 @@ bundle = {
     "tags": call("/api/v1/chats/all/tags", token=token),
     "notes": [call(f"/api/v1/notes/{n['id']}", token=token)
               for n in call("/api/v1/notes/", token=token)],
-    "report_template_md": open(template).read() if os.path.exists(template) else None,
 }
 with open(out, "w") as f:
     json.dump(bundle, f, indent=1)

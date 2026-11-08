@@ -1,6 +1,6 @@
 # The SPE chat UI: Next.js (standalone output) + CopilotKit, port 3000.
 # Needs AGENT_URL and AGENT_API_KEY at run time (server side only).
-FROM node:24-slim AS build
+FROM node:26-slim AS build
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY package.json package-lock.json ./
@@ -29,7 +29,7 @@ RUN set -e \
  && test -d /exporter/node_modules/rxjs
 SHELL ["/bin/sh", "-c"]
 
-FROM node:24-slim
+FROM node:26-slim
 WORKDIR /app
 # No telemetry from an SPE: Next.js, CopilotKit runtime (and, via /info, its browser client).
 # NEXT_MANUAL_SIG_HANDLE: Next.js's own SIGTERM handler would exit before the sessions are saved;

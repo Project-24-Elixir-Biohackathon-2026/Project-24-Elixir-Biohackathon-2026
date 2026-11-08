@@ -22,7 +22,6 @@
           - /tmp/spe-export-openwebui.py
           - "http://127.0.0.1:{{ spe_webui_local_port }}"
           - /tmp/spe-openwebui-export.json
-          - "{{ spe_frontend_dir }}/run_report.md"
       environment:
         WEBUI_EMAIL: "{{ spe_webui_admin_email if spe_webui_auth else '' }}"
         WEBUI_PASSWORD: "{{ spe_webui_admin_password if spe_webui_auth else '' }}"

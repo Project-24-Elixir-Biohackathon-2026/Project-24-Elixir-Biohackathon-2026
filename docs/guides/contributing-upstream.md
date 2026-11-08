@@ -1,6 +1,6 @@
 # Contributing upstream
 
-How fork work reaches upstream (`kraatz/elixir-biohackathon-2026-test`, remote `upstream`), and how upstream's
+How fork work reaches upstream (`Project-24-Elixir-Biohackathon-2026/Project-24-Elixir-Biohackathon-2026`, formerly `kraatz/elixir-biohackathon-2026-test`, remote `upstream`; PR numbers carried over, written `kraatz #<n>` in the ledger), and how upstream's
 work comes back into our `main`. The rules (which files are fork-only, the check every upstream branch passes)
 are in `AGENTS.md`, *Contributing upstream*; this guide is the procedure.
 
@@ -141,7 +141,7 @@ git push -u origin contrib/<slug>
 it from the compare page, with the base set to upstream explicitly:
 
 ```
-https://github.com/kraatz/elixir-biohackathon-2026-test/compare/main...thodkatz:elixir-biohackathon-2026-test:contrib/<slug>?expand=1
+https://github.com/Project-24-Elixir-Biohackathon-2026/Project-24-Elixir-Biohackathon-2026/compare/main...thodkatz:elixir-biohackathon-2026-test:contrib/<slug>?expand=1
 ```
 
 Post the title and body for them as an issue on our fork (`gh issue create --repo thodkatz/elixir-biohackathon-2026-test`,

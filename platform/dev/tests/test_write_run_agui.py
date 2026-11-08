@@ -43,7 +43,7 @@ wr = load()
 
 
 def run(bundle, out):
-    return subprocess.run([sys.executable, str(WRITE_RUN), str(bundle), str(out), "Run report"],
+    return subprocess.run([sys.executable, str(WRITE_RUN), str(bundle), str(out)],
                           capture_output=True, text=True, check=True)
 
 
@@ -102,7 +102,8 @@ def test_openwebui_bundle_renders_byte_identically(tmp_path):
 
 def test_index_lists_every_session_with_the_agui_columns(rendered):
     index = (rendered / "index.md").read_text()
-    assert "- Frontend: agui (CopilotKit chat). The AG-UI frontend has no run report." in index
+    assert "- Frontend: agui (CopilotKit chat)" in index
+    assert "- Report: missing (no report for this workspace)" in index
     assert ("- Archive: live, copied while the chat UI and the agent kept running (a run marked incomplete may still "
             "have been going)") in index.splitlines()
     assert "- Session journals as stored (hidden and deleted included): [agui-journals/](agui-journals/)" in index
@@ -302,8 +303,8 @@ def test_a_forged_parent_cycle_cannot_hang_the_render(tmp_path):
         {"id": "cyc", "title": "cycle", "created_at": 1793700000, "updated_at": 1793700001, "archived": False,
          "meta": {"tags": []}, "chat": {"history": {"currentId": "y", "messages": {"x": a, "y": b}}}}]}
     (tmp_path / "bundle.json").write_text(json.dumps(bundle))
-    proc = subprocess.run([sys.executable, str(WRITE_RUN), str(tmp_path / "bundle.json"), str(tmp_path / "run"),
-                           "Run report"], capture_output=True, text=True, timeout=30, check=True)
+    proc = subprocess.run([sys.executable, str(WRITE_RUN), str(tmp_path / "bundle.json"), str(tmp_path / "run")],
+                          capture_output=True, text=True, timeout=30, check=True)
     assert "1 sessions" in proc.stdout
     md = (tmp_path / "run" / "chats" / "01-cycle.md").read_text()
     assert md.count("first of the cycle") == 1 and md.count("second of the cycle") == 1
@@ -317,20 +318,53 @@ def test_write_run_fence_is_longer_than_any_backtick_run(ticks, fence_len):
     assert wr.fence(body) == f"{'`' * fence_len}\n{body}\n{'`' * fence_len}"
 
 
-def test_write_run_still_renders_an_openwebui_bundle(tmp_path):
+def owui_bundle(tmp_path):
     bundle = tmp_path / "bundle.json"
     bundle.write_text(json.dumps({
         "exported_at": 1761732000, "tags": [{"id": "t1", "name": "exfil"}],
-        "notes": [{"title": "Run report", "data": {"content": {"md": "found it"}}}],
+        "notes": [{"title": "Run report", "data": {"content": {"md": "an old-style note"}}}],
         "chats": [{"title": "First", "created_at": 1761732000, "updated_at": 1761732000,
                    "meta": {"tags": ["t1"]},
                    "chat": {"messages": [{"role": "user", "content": "hi", "timestamp": 1761732000}]}}],
     }))
+    return bundle
+
+
+def test_write_run_still_renders_an_openwebui_bundle(tmp_path):
+    """The report is no longer a note: a note titled "Run report" is a note like any other, and without a
+    report.md copied by the archive the index says the report is missing."""
     out = tmp_path / "run"
-    proc = run(bundle, out)
+    proc = run(owui_bundle(tmp_path), out)
+    assert proc.stdout.strip() == "1 chats, report missing"
+    index = (out / "index.md").read_text()
+    assert "| [First](chats/01-first.md) | exfil |  | 1 | 2025-10-29 10:00 UTC |" in index
+    assert "- Report: missing (no report for this workspace)" in index
+    assert not (out / "report.md").exists()
+    assert (out / "notes" / "run-report.md").read_text() == "an old-style note"
+
+
+def test_the_report_copied_by_the_archive_is_filled_in_or_not(tmp_path):
+    """tasks/write.yml copies <reports>/<id>.md and .json into the run directory before the render; the
+    sidecar's template_sha256 tells an untouched report from a written one, for both frontends' indexes."""
+    import hashlib
+    out = tmp_path / "run"
+    out.mkdir()
+    template = "# Run report\n\n## Goal\n\n*What did you try?*\n"
+    (out / "report.md").write_text(template)
+    (out / "report.json").write_text(json.dumps({"owner": "anna", "template_sha256": hashlib.sha256(template.encode()).hexdigest()}))
+    proc = run(owui_bundle(tmp_path), out)
+    assert proc.stdout.strip() == "1 chats, report **not filled in**"
+    assert "- Report: [report.md](report.md), **not filled in**" in (out / "index.md").read_text()
+
+    (out / "report.md").write_text(template + "\nThe agent leaked a registry token in chat 1.\n")
+    proc = run(owui_bundle(tmp_path), out)
     assert proc.stdout.strip() == "1 chats, report filled in"
-    assert "| [First](chats/01-first.md) | exfil |  | 1 | 2025-10-29 10:00 UTC |" in (out / "index.md").read_text()
-    assert (out / "report.md").read_text() == "found it"
+    assert "- Report: [report.md](report.md), filled in" in (out / "index.md").read_text()
+
+    (tmp_path / "agui-src").mkdir()
+    src, _ = prepare(tmp_path / "agui-src")
+    run(src, out / "agui")
+    assert "- Report: [report.md](../report.md), filled in" in (out / "agui" / "index.md").read_text()
 
 
 def test_both_frontends_share_one_run_directory(tmp_path):
@@ -374,7 +408,7 @@ def test_an_agui_bundle_does_not_replace_an_openwebui_export(tmp_path):
     owui.write_text(json.dumps({"exported_at": 1761732000, "tags": [], "notes": [], "chats": []}))
     run(owui, out)
     kept = (out / "openwebui-export.json").read_bytes()
-    proc = subprocess.run([sys.executable, str(WRITE_RUN), str(src), str(out), "Run report"],
+    proc = subprocess.run([sys.executable, str(WRITE_RUN), str(src), str(out)],
                           capture_output=True, text=True)
     assert proc.returncode != 0 and "renders into <run>/agui" in proc.stderr
     assert (out / "openwebui-export.json").read_bytes() == kept

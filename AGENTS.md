@@ -10,7 +10,7 @@
 
 > This file is `AGENTS.md`: Codex reads it natively, and Claude Code reads it when no `CLAUDE.md` exists, so it is
 > the single entry point for people and agents. `README.md` stays upstream's project README.
-> **Upstream (`kraatz/elixir-biohackathon-2026-test`, remote `upstream`) knows nothing of the methodology**: this
+> **Upstream (`Project-24-Elixir-Biohackathon-2026/Project-24-Elixir-Biohackathon-2026`, formerly `kraatz/elixir-biohackathon-2026-test`, remote `upstream`) knows nothing of the methodology**: this
 > file is rewritten for our fork, and a PR there must work without any of it (*Contributing upstream*).
 
 <!-- methodology: entry-point -->
@@ -203,9 +203,6 @@ is open (`docs/guides/contributing-upstream.md`, step 6).
 
 - **Canary evaluation ladder** (biohackathon 0013): spec (#1) and plan (#2) merged. **Next: slice 1/9**
   `impl/canary-eval-ladder-1-scoring`. Handoff: `ls docs/superpowers/plans/2026-10-22-canary-eval-ladder/handoffs | tail -1`.
-- **Upstream PR kraatz #17** (`contrib/agui-package`): the AG-UI package, opened by the user 2026-11-04, with
-  TM-007's update (fork #43) on it; kraatz #9 (the token cap) closed in its favour. Waits on upstream's review.
-  Ledger: `docs/upstream-ports.md`; after it merges, `docs/guides/contributing-upstream.md`, step 7.
 - **Not scheduled**: `BACKLOG.md` holds every deferred item without a slice; its *Next*, the ones due soon or
   waiting on the user.
 
@@ -227,6 +224,7 @@ new template), how the person tests it, and how a tested change becomes a templa
 | `platform/agui/` | The AG-UI frontend: `pydantic-ai-agent/` (Pydantic AI agent served over AG-UI) and `copilotkit-chat/` (Next.js + CopilotKit chat) |
 | `platform/instance/` | What runs on an instance from the repository clone there: the frontend's compose file, `spe-apply`, the workspace instructions for Coder Agents (`platform/instance/README.md`) |
 | `platform/promptfoo-evals/` | promptfoo provider, assertions and starter suite against an instance's agent |
+| `platform/report/` | The run report service on the portal VM, behind each workspace's Report button (`platform/report/README.md`) |
 | `platform/dev/` | Development helpers: dummy dataset generator, scripted agent, tests for host-side scripts |
 | `docs/getting-started.md` | Deploying and using an instance by hand, and its private configuration |
 | `docs/specs/`, `docs/plans/` | Design specs and implementation plans |
@@ -244,14 +242,14 @@ new template), how the person tests it, and how a tested change becomes a templa
 Each unit of work runs in its own worktree (*Development workflow*).
 
 The portal VM follows upstream's `main`, not ours (`platform/coder/deploy/sync-template.sh`, on a checkout
-cloned from `kraatz`): a merge there changes what participants get within minutes. Our work reaches them through
+cloned from upstream): a merge there changes what participants get within minutes. Our work reaches them through
 an upstream PR (`docs/guides/contributing-upstream.md`).
 
 Private instance files and `platform/ansible/output/` exist only in the main checkout,
 not in a worktree. An instance runs the chat frontend from a clone of this repository
 on its VM (`~/sperange`), checked out at `spe_repo_ref`, by default the commit the
 controller's checkout is at, so that commit must be pushed. `spe_repo_url` defaults to
-upstream (`kraatz`), which lacks our commits: every instance file used from our checkout sets
+upstream (still the old `kraatz` URL, which redirects), which lacks our commits: every instance file used from our checkout sets
 `spe_repo_url: https://github.com/thodkatz/elixir-biohackathon-2026-test.git` (the `*.example.yml` files do not). To
 deploy a topic branch before it is merged, push it and run Ansible from the main checkout
 with `-e spe_repo_ref=<branch>`, and with `-i <worktree>/platform/ansible/inventory/hosts.yml`
@@ -270,6 +268,7 @@ uv run --with pyyaml --with mkdocs-material python platform/site/build.py   # la
 uv run --with pytest --with pyyaml --with mkdocs-material pytest platform/dev/tests -q   # dataset generator, host preflight, site build, archive
 (cd platform/agui/pydantic-ai-agent && uv run --group dev pytest -q)   # agent
 (cd platform/promptfoo-evals && uv run --group dev pytest -q)          # promptfoo provider and assertions
+uv run --with pytest --with markdown pytest platform/report/tests -q    # run report service
 (cd platform/agui/copilotkit-chat && npm ci && npm run build)          # chat UI (type check)
 (cd platform/agui/copilotkit-chat && npm ci && npm test)               # chat UI (sessions, recorder, API)
 cd platform/ansible && ansible-playbook playbooks/create.yml -e @instances/NAME.yml </dev/null
@@ -301,9 +300,9 @@ All 13 tasks are done, including the model-backed checks on the development VM
 on 2026-10-19 together with the Coder portal, which now runs it on every instance
 next to Open WebUI (`spe_frontends`, kraatz #16). Chat sessions (sidebar, archive) were added by the *AG-UI chat
 sessions* plan (`docs/superpowers/plans/2026-10-29-agui-chat-sessions/`, done).
-The conversation record (journals, the live archive, TM-007) was built by the
+The conversation record (journals, the live archive, TM-005) was built by the
 *AG-UI conversation record* plan (`docs/superpowers/plans/2026-11-03-agui-conversation-record/`, done).
-Not done yet: a run-report equivalent in the CopilotKit chat.
+The run report is no longer a chat feature: it lives on the portal VM for every frontend (`platform/report/`).
 
 ## Development workflow
 

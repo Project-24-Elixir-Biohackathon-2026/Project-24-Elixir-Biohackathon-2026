@@ -1,1 +1,6 @@
 /.methodology
+
+# Python caches (every directory with scripts or tests)
+__pycache__/
+*.pyc
+.pytest_cache/
