@@ -41,3 +41,8 @@ agent-service-1):
 Open WebUI here has one seed-derived admin account per instance, so its per-user notes are per-instance in
 practice. Settled: AG-UI notes are owned by the instance; no identity work. Next in the brainstorm: lay out the
 approaches (storage beside the session journals, editor, pinning, run report at deploy, archive), then the spec.
+**Also settled (user, 2026-11-08):** aligned with Open WebUI as above: standalone notes (not per session),
+Markdown canonical, per-instance pin, run report as a pinned note, archived; no sharing/access grants. **No AI
+"enhance" button** ("definitely not"). **A rich-text editor if it is not a large piece of code**: Open WebUI uses
+TipTap; size `@tiptap/react` (+ markdown round-trip) against a lighter Markdown editor and propose one with its
+bundle and code cost.
