@@ -19,3 +19,10 @@ What the chat sessions (§6), the conversation record (§13, §14) and `/compact
 - **Participants' root access on the VM**, and records shipped off the VM as they are written.
 - **A promptfoo target that runs through `chat-ui`** (the mitigated variant of §13 *Approach*'s experiment).
 - **Recording edits made in Open WebUI** (its event webhook or audit log).
+- **A mark for a reply that finished while away** (ChatGPT's dot on the row): the running mark goes when the run
+  ends, and nothing says the reply is unread; the early output's screenshot is where the user decides whether it
+  is needed (clarification 27).
+- **A limit on runs in progress at once**: one participant per instance, and each run's model calls are already
+  capped by the agent (§5); a participant can start as many as they leave (clarification 27).
+- **Navigating to a running session from a notification**, or any notification when a background run ends.
+

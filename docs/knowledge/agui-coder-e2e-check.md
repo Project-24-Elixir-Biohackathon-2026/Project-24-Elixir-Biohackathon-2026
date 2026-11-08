@@ -22,7 +22,8 @@ SPE_URL=http://127.0.0.1:13001/ SPE_WS=theo/agui-e2e python3 docs/knowledge/agui
 - **The session id is in the URL only once a run has ended**: mid-run, `?session=` is absent. Take it from the
   `threadId` of the page's `POST …/agent/spe/run` (`track()`), as `platform/dev/e2e/sessions.py`'s `live_run` does.
 - **A tab cannot switch sessions during its own run** (New chat and the rows are disabled): "switching mid-run"
-  means another tab opening the running session.
+  means another tab opening the running session. This changes once the living AG-UI spec's clarification 27
+  (leave a running chat) is built: then a tab switches freely during its run; rewrite this line in that slice.
 - **CopilotChat virtualizes the message list**: only the rows near the viewport are in the DOM (`[data-index]`,
   absolutely placed), so `locator(".copilotKitUserMessage").count()` on a long chat scrolled to the bottom says 0
   (runs 2 and 3 failed "B shows A's whole run" on this, not a chat bug). `chat_rows()` scrolls the list's real

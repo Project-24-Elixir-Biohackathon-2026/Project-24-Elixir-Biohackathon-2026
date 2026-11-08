@@ -51,3 +51,17 @@ works (#46, 2026-11-08):
 ID=$(gh api repos/thodkatz/elixir-biohackathon-2026-test/pulls/<n> --jq .node_id)
 gh api graphql -f query="mutation { markPullRequestReadyForReview(input:{pullRequestId:\"$ID\"}) { pullRequest { isDraft } } }"
 ```
+
+**`methodology gate approve` fails the same way** (seen 2026-11-08, #55): `methodology gate: could not read #55's
+labels; nothing is done.` Its `forge_labels` runs `gh pr view <n>` without `--repo`, which resolves the fork's parent
+in the organization. `gh repo set-default thodkatz/elixir-biohackathon-2026-test` (`gh-default-repo.md`) does not
+help: tried 2026-11-08, `gh pr view 55` still fails on `repo_001.parent`; only `--repo` avoids it. A shared-tool bug
+(`.methodology/shared/claude/forge.sh`'s `forge_labels`), to carry to agent-methodology; keep this until a
+`methodology update` brings the fix. Do its two steps by hand, in its order (the comment first):
+
+```bash
+R=repos/thodkatz/elixir-biohackathon-2026-test
+B=$(mktemp)
+printf 'The user approved this spec in this session, at %s:\n\n> <their words>\n' "$(date -u +%Y-%m-%dT%H:%MZ)" > "$B"
+gh api $R/issues/<n>/comments -F body=@"$B" && gh api $R/issues/<n>/labels -f "labels[]=approved"
+```

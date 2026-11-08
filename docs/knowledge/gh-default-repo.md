@@ -13,3 +13,6 @@ marked and this session goes on", even after the label had been added by hand. `
 **Fix.** Once per clone: `gh repo set-default thodkatz/elixir-biohackathon-2026-test`. It is stored in the
 local `.git/config`, which worktrees share. Commands you type yourself still take `--repo` (`AGENTS.md`,
 *Development workflow*).
+
+**Not enough since 2026-11-08**: with upstream in an organization, `gh` without `--repo` fails on the parent
+even with the default set (`gh-pr-create-token.md`, `methodology gate approve`).
