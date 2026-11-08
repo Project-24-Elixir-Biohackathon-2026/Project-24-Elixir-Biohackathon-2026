@@ -4,8 +4,9 @@ What the chat sessions (§6), the conversation record (§13, §14) and `/compact
 
 - **Sessions with owners** (several participants per instance): needs identity in the chat UI; waits, like
   per-user budgets, for multi-participant instances.
-- **A run report** in the CopilotKit chat (Open WebUI's "Run report" note); `index.md` states that there is
-  none.
+- **A run report** inside the CopilotKit chat. Since 2026-11-06 the report is neither frontend's: it lives on
+  the portal VM behind the workspace's "Report" button (`docs/specs/2026-11-06-run-report-service.md`), and the
+  archive's `agui/index.md` links it one level up.
 - **Branching, editing or regenerating messages in the chat**: CopilotKit's page passes no edit or regenerate
   handlers, and navigating branches is left to the archive. Also export from the UI, full-text search over
   messages, folders: Open WebUI features not asked for.

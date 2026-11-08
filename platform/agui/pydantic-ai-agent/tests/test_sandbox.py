@@ -15,7 +15,7 @@ from spe_agent.sandbox import (
     truncate,
 )
 
-FIXTURE = Path(__file__).parent / "fixtures" / "open-terminal-0.12.4-openapi.json"
+FIXTURE = Path(__file__).parent / "fixtures" / "open-terminal-0.16.1-openapi.json"
 SPEC = json.loads(FIXTURE.read_text())
 OPS = {op.name: op for op in operations_from_openapi(SPEC)}
 BASE = "http://sandbox:8000"
@@ -241,7 +241,7 @@ def discovery(request: httpx.Request) -> httpx.Response:
 
 async def test_discovery():
     c = client_for(Recorder(discovery))
-    assert (await c.openapi())["info"]["version"] == "0.12.4"
+    assert (await c.openapi())["info"]["version"] == "0.16.1"
     assert await c.cwd() == "/home/user"
     assert await c.system_prompt() == "You have access to a computer."
 

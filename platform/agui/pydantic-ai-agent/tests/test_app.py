@@ -27,7 +27,7 @@ from spe_agent.config import Config, ConfigError, LimitsCfg, Secrets
 from spe_agent.runlog import RunLog, redact
 from spe_agent.sandbox import SandboxClient
 
-FIXTURE = Path(__file__).parent / "fixtures" / "open-terminal-0.12.4-openapi.json"
+FIXTURE = Path(__file__).parent / "fixtures" / "open-terminal-0.16.1-openapi.json"
 SANDBOX = "http://sandbox:8000"
 AGENT_KEY, SANDBOX_KEY, LLM_KEY = "agent-key-123456", "sandbox-key-654321", "llm-key-abcdef"
 AUTH = {"Authorization": f"Bearer {AGENT_KEY}"}

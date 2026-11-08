@@ -14,7 +14,7 @@ req = urllib.request.Request(
 with urllib.request.urlopen(req, timeout=60) as resp:
     result = json.load(resp)
 output = result.get("output", "")
-# open-terminal 0.12.4 returns the output as a list of {"type": ..., "data": ...} chunks.
+# open-terminal (0.12.4 and 0.16.1) returns the output as a list of {"type": ..., "data": ...} chunks.
 if isinstance(output, list):
     output = "".join(str(chunk.get("data", "")) if isinstance(chunk, dict) else str(chunk) for chunk in output)
 print(output)

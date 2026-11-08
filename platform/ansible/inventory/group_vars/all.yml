@@ -77,8 +77,8 @@ spe_cert_days: 825
 # Images the compose file pulls. Role prefetch pulls them in the background
 # right after Docker is up, together with the OpenWebUI image when that frontend
 # is on; each consumer waits only for its own (spe_prefetch_wait).
-spe_mongo_image: mongo:5.0.6            # WESkit database
-spe_redis_image: redis:6.2.6-alpine     # WESkit result broker
+spe_mongo_image: mongo:5.0.33           # WESkit database
+spe_redis_image: redis:6.2.24-alpine    # WESkit result broker
 spe_traefik_image: traefik:v2.11
 spe_filer_mongo_image: mongo:3.6        # drs-filer and trs-filer databases
 spe_stack_images: "{{ [spe_mongo_image, spe_redis_image, spe_traefik_image, spe_filer_mongo_image] }}"
@@ -179,8 +179,8 @@ spe_local_vars:
   - spe_agent_title_generation
   - spe_webui_auth
 spe_local_vars_extra: []     # instance files add their own overrides here
-spe_frontend_webui_image: ghcr.io/open-webui/open-webui:v0.11.3
-spe_frontend_terminal_image: spe-open-terminal:0.12.4
+spe_frontend_webui_image: ghcr.io/open-webui/open-webui:v0.13.0
+spe_frontend_terminal_image: spe-open-terminal:0.16.1
 spe_webui_local_port: 8080          # bound to 127.0.0.1 on the VM; reach it over an SSH tunnel
 
 # LLM backend for the frontend. Reuses the de.NBI endpoint. The key is NOT
@@ -210,13 +210,17 @@ spe_webui_auth: false
 spe_webui_admin_name: "SPE operator"
 spe_webui_admin_email: "admin@{{ spe_instance }}.spe.local"
 spe_webui_admin_password: "{{ ((spe_seed | string ~ ':webui-admin') | hash('sha256'))[:20] }}"
-# Run report: rendered from reports/run_report.md.j2 and created as the pinned
-# note "Run report" in OpenWebUI. Set by the Coder template; empty otherwise.
+# Run report: rendered from reports/run_report.md.j2 into <spe_reports_root>/
+# <workspace id>.md on the controller (roles/run_report) and edited through the
+# portal's report service (platform/report); never on the VM. The spe_coder_* values
+# are set by the Coder template; empty otherwise, and without a workspace id there
+# is no report.
 spe_coder_owner: ""
 spe_coder_owner_email: ""
 spe_coder_workspace: ""
+spe_coder_workspace_id: ""
 spe_report_template: "{{ playbook_dir }}/../reports/run_report.md.j2"
-spe_report_title: Run report
+spe_reports_root: /data-share/reports
 
 # Run archive: playbooks/archive.yml (also run first by destroy.yml) saves the
 # frontend's chats (OpenWebUI chats and notes, or the AG-UI journals and the

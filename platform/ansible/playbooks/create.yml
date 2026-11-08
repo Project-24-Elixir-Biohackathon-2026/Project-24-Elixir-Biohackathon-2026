@@ -20,6 +20,14 @@
   roles:
     - { role: os_provision, tags: [always], when: spe_provision == 'openstack' }
     - { role: existing_host, tags: [always], when: spe_provision == 'existing' }
+  post_tasks:
+    # The run report of a portal workspace lives here on the controller, not on the
+    # VM (roles/run_report, platform/report); nothing for hand-made instances.
+    - name: Run report on the controller
+      ansible.builtin.import_role:
+        name: run_report
+      tags: [always]
+      when: spe_coder_workspace_id | length > 0 and not spe_local_apply
 
 # The VM's work runs in overlapping lanes. As soon as Docker is up, the package
 # install, the image pulls and the image builds (stack, sandbox, AG-UI) start in

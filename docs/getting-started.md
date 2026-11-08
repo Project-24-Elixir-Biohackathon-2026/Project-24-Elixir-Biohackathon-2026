@@ -16,7 +16,9 @@ run `ansible-playbook`; the controller and the VM may be the same machine.
 
 This is the by-hand path. Participants normally get instances from the Coder
 portal instead (`platform/coder/README.md`), which runs the same playbooks with
-`spe_provision: openstack` and archives each run when it is stopped.
+`spe_provision: openstack`, keeps a run report per workspace on the portal VM and
+archives each run when it is stopped. A hand-made instance has no workspace, so no
+report: its archive says "missing".
 
 ## 1. What you need
 
@@ -48,7 +50,7 @@ needed port is taken, or if disk is short. Nothing on a refused VM is changed.
 | What | What it is for | Where it comes from | Where it lives | Share? |
 |---|---|---|---|---|
 | **Seed** (`spe_seed`) | Derives every canary token, the agent's bearer key, the sandbox key and the Open WebUI admin password. Anyone with it can reproduce all canaries | You generate it (step 4) | Your instance file `platform/ansible/instances/<name>.yml` (git-ignored, mode 0600) | **No.** Never commit it |
-| **LLM key** | Lets the agent call the model | Your LLM provider. For the de.NBI endpoint: the project's key (ask the project; the portal's Coder workspaces carry the working one, `docs/knowledge/denbi-llm-key.md`; the copy in `~/agent-stack/webui.env` on agent-service-1 is blocked). For another OpenAI-compatible API or Anthropic: your own key | Exported in your shell at run time: `SPE_LLM_API_KEY` (or `DENBI_LLM_API_KEY` / `ANTHROPIC_API_KEY`). On the VM only in `spe-frontend/agent.env` (0600), read by the agent container alone | **No** |
+| **LLM key** | Lets the agent call the model | Your LLM provider. For the de.NBI endpoint: the project's key (ask the project; the portal's Coder workspaces carry the working one, which Open WebUI there uses; the copy in `~/agent-stack/webui.env` on agent-service-1 is blocked). For another OpenAI-compatible API or Anthropic: your own key | Exported in your shell at run time: `SPE_LLM_API_KEY` (or `DENBI_LLM_API_KEY` / `ANTHROPIC_API_KEY`). On the VM only in `spe-frontend/agent.env` (0600), read by the agent container alone | **No** |
 | **SSH key and config** for de.NBI | Reaching VMs on the private network through the jump host | Your de.NBI account (key registered with de.NBI and on the VMs) | `~/.ssh/config` and your key, outside any repository | **No** |
 | **Agent bearer key** | Required by the agent's AG-UI endpoint; the chat UI and promptfoo send it | Derived from the seed by the playbook | `platform/ansible/output/<instance>/agent_api_key` (0600); on the VM in `agent.env` and `chat-ui.env` (0600) | Only with people who may use the agent |
 | **Canary record** | The answer key: every planted token and where it is | Written by the playbook | `platform/ansible/output/<instance>/canaries.json` (0600; encrypted to `canaries.json.age` if `spe_age_recipient` is set) | **No.** Never copy it to a VM or to a player. `canaries.manifest.sha256` (hashes only) may go to detection tooling |
@@ -130,7 +132,7 @@ and `VM` with the VM's SSH host.
    | `spe_source_data_root` | the dummy dataset's path on the controller |
    | `spe_manage_docker` | `false` if Docker on the VM already runs other things (the playbook then leaves its packages, config and service alone); `true` to let it install and configure Docker |
    | `spe_data_root` | leave the default `/data-share` only if that path does not exist on the VM. On de.NBI VMs `/data-share` may be the mounted shared dataset: use e.g. `/srv/spe-data` |
-   | `spe_agent_model_provider`, `spe_agent_model`, `spe_agent_base_url` | your LLM. `openai_compatible` works with any OpenAI-compatible API: set `spe_agent_base_url` (default: the de.NBI endpoint) and the model name, e.g. `qwen3.8-27b` on de.NBI. `anthropic` uses Anthropic's API. Optional `spe_agent_allowed_models: [<name>]` refuses any other model, a guard against typos selecting a pricier one. Other vendors: `agent/README.md` |
+   | `spe_agent_model_provider`, `spe_agent_model`, `spe_agent_base_url` | your LLM. `openai_compatible` works with any OpenAI-compatible API: set `spe_agent_base_url` (default: the de.NBI endpoint) and the model name, e.g. `qwen3.8-27b` on de.NBI. `anthropic` uses Anthropic's API. Optional `spe_agent_allowed_models: [<name>]` refuses any other model, a guard against typos selecting a pricier one. Other vendors: `platform/agui/pydantic-ai-agent/README.md` |
    | `spe_agent_context_window_tokens` | only for a model other than de.NBI's `qwen3.8-27b` (whose window is already set): the model's context window in tokens, so the agent compacts a long conversation before the provider refuses it, e.g. a vLLM server's `max_model_len` (`GET <base_url>/models`), a LiteLLM gateway's `max_input_tokens` (`GET <base_url>/model/info`) or the vendor's documented window. Unset, the agent compacts only after a "too long" error. `spe_agent_compaction_enabled: false` turns compaction off. An instance that changes `spe_webui_model_id` also sets `spe_webui_model_context_tokens` to the new model's window |
    | `spe_agui_smoke` | `false`; set `true` on a run to add one model-backed check |
    | `spe_frontends` | leave the default (`[openwebui, agui]`) for both chats, or `[agui]` for the agent alone (the examples do) |

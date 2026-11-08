@@ -11,13 +11,18 @@
 
 # The apex: the static site (landing page at /, threat catalog at /threats/,
 # built by the sync timer into /srv/sperange-site, which the caddy user can
-# read; /home/ubuntu is not readable for it) and, for every other path, the
-# Coder dashboard (/workspaces, /login, /api, ...).
+# read; /home/ubuntu is not readable for it), the run reports (the report
+# service, sperange-report.service) and, for every other path, the Coder
+# dashboard (/workspaces, /login, /api, ...).
 sperange.example.org {
 	root * /srv/sperange-site
 	@site path / /threats /threats/*
 	handle @site {
 		file_server
+	}
+	@reports path /reports /reports/*
+	handle @reports {
+		reverse_proxy 127.0.0.1:7090
 	}
 	handle {
 		reverse_proxy 127.0.0.1:7080

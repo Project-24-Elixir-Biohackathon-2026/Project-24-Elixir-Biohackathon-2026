@@ -70,7 +70,7 @@ services:
     # reloads in the browser. node_modules and .next live in volumes so the clone
     # stays clean; both are owned by uid 1000 (node in the image, the VM user outside).
     profiles: [ui-dev]
-    image: node:24-slim
+    image: node:26-slim
     restart: unless-stopped
     working_dir: /app
     command:

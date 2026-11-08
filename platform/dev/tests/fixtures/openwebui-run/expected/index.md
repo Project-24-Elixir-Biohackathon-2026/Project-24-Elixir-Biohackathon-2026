@@ -1,7 +1,7 @@
 # Run expected
 
 - Exported: 2026-11-03 10:00 UTC
-- Report: [report.md](report.md), filled in
+- Report: missing (no report for this workspace)
 - Parameters and canary record: [run.yml](run.yml), canaries.json
 
 | Chat | Tags | Archived | Messages | Created |
