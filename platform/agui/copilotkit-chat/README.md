@@ -65,8 +65,10 @@ volume like the agent's run log.
 the sessions by title only, grouped and filtered by `lib/sidebar-view.ts` (below), and a button that collapses the sidebar. Each row has a `⋯` menu
 (`app/row-menu.tsx`): rename (also a double-click on the
 title; Enter, Tab or a click outside saves, Escape cancels), pin, tags, hide, and delete after a confirmation
-(`app/delete-dialog.tsx`; the journal is kept and archived). The menu closes on a click outside, Escape or a choice;
-on a touch screen every row shows its `⋯`.
+(`app/delete-dialog.tsx`; the journal is kept and archived). The menu closes on a click outside, Escape or a choice,
+and gives focus back to its `⋯` (after a click outside, only when the click left focus nowhere: `lib/menu.ts`,
+`refocusIfLost`); on a touch screen every row shows its `⋯`. An opened or reloaded session starts at its newest
+content (`app/page.tsx`, `SCROLL_VIEW`).
 Tags are shown and edited only in the menu's tag editor (`app/tag-editor.tsx`): it suggests the tags in use (arrow
 keys pick one, Enter adds it or the typed text), and a click on a tag removes it. Titles and tags are rendered as
 text. The page only reads sessions and changes metadata (`lib/client.ts`); it never writes messages. The note that

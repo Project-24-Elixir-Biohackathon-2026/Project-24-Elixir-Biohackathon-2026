@@ -42,3 +42,12 @@ GraphQL: The 'Project-24-Elixir-Biohackathon-2026' organization forbids access v
 Its GraphQL query reads the fork's parent, which lives in that organization. The REST call touches only the fork
 and works: `gh api repos/thodkatz/elixir-biohackathon-2026-test/pulls -f title=… -f head=<branch> -f base=main
 -F draft=true -f body=… --jq .number`, then add the label with `gh api …/issues/<n>/labels -f "labels[]=<label>"`.
+
+`gh pr ready <n>` fails the same way. REST cannot mark a draft ready either: `gh api -X PATCH …/pulls/<n> -F
+draft=false` answers 200 and leaves `"draft": true`. The GraphQL mutation alone, which does not read the parent,
+works (#46, 2026-11-08):
+
+```bash
+ID=$(gh api repos/thodkatz/elixir-biohackathon-2026-test/pulls/<n> --jq .node_id)
+gh api graphql -f query="mutation { markPullRequestReadyForReview(input:{pullRequestId:\"$ID\"}) { pullRequest { isDraft } } }"
+```

@@ -292,3 +292,19 @@ in the parts it amends.
     AG-UI-only instance has its sessions one directory down, and a tool reading `<run>/agui-journals/` must read
     `<run>/agui/agui-journals/`. *Amends:* §1 *Goal*, §3's container table intro, §7's variables, §9's condition,
     §14 *Export* and *Write*, decisions 15's and 30's checks. *Status:* folded.
+
+24. **A click outside the row menu refocuses its `⋯` when it left focus nowhere; a reopened session opens on its
+    newest content** (2026-11-08, the user's choice; the fork's PR #46). After a press outside closes the row menu (or its tag
+    editor), in the sidebar and the chat header, the page waits for the press's own focus change and gives focus
+    back to the `⋯` only if it is then on the page itself (`body`, `<html>` or none), and not after a tap (a
+    touch press), so a press on a field, button or link keeps it; before, a click outside always left focus where it put it. Opening or reloading a session no longer
+    animates a scroll through its whole history (CopilotKit's scroll view, `initial: "smooth"`, about a second
+    with the newest content below the fold): it starts at the end at once; a live send still scrolls smoothly.
+    *Reason:* the refocus had waited only because it would take focus from what the click landed on; checking
+    where focus went after the press removes that, and a keyboard user is not dropped to the top of the tab
+    order by a stray click. The scroll was seen with `/compact`'s divider, below the fold right after a reload.
+    *Cost if wrong:* in Safari, which does not focus a button on click, a click on another button gives focus to
+    the `⋯` although the button acted; a click into chat text moves focus (not the selection) to the `⋯`; the
+    instant start relies on CopilotKit passing the scroll slot's props to `use-stick-to-bottom`, which its type
+    leaves out. *Amends:* §6 *Row menu*, *Opening a session*; reverses the chat sessions spec's clarification 7
+    (a click outside never refocusing the `⋯`). *Status:* folded.
