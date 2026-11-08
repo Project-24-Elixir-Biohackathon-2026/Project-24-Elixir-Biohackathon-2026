@@ -60,3 +60,4 @@ its commit again (the guide's step 7).
 - `171398a` Migrate the methodology off the submodule (253d08561b5640f4c1227e3e807be466c82a588a) → not for upstream: its shared files (`.gitignore`, `.gitmodules`) only drop the fork's methodology submodule
 - `231ba4c` Merge upstream/main (2026-11-08): kraatz #17 merged, report app, dependency bumps, TM-005 → not for upstream: a merge of upstream itself; the fork work it carries has its own lines
 - `23a944b` AG-UI chat: group tool calls across model steps (#50) → kraatz (not opened yet: `contrib/agui-tool-group-steps` pushed, title and body in fork issue #51)
+- `9eec3a8` AG-UI chat: title a new session as its first run starts (#52) → kraatz (not opened yet: `contrib/agui-title-on-send` pushed, title and body in fork issue #53)
