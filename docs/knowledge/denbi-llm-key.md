@@ -41,3 +41,9 @@ ssh -F ~/.ssh/config agent-service-1 'K=$(grep -h "^OPENAI_API_KEY=" ~/spe-front
   curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer $K" https://denbi-llm-api-internal.bihealth.org/v1/models'
 export DENBI_LLM_API_KEY=$(ssh -F ~/.ssh/config agent-service-1 'grep -h "^OPENAI_API_KEY=" ~/spe-frontend/agent.env | cut -d= -f2-')
 ```
+
+**With Coder out (2026-11-08)** there is no other copy within reach: agent-service-1 has only the blocked key
+(`281aa6c1`), `spe-ga4gh-api-2` has none in `~/*/*.env`, `wes-service-1` has no route from the jump host. The
+`spe_denbi_api_key` tracked in `platform/ansible/instances/test-1.yml` hashes to `281aa6c1` too: the blocked key,
+not the portal's (`52bb9f98`). Without Coder a working key comes only from the project (or an admin unblocking
+`281aa6c1` via LiteLLM's `/key/unblock`).
