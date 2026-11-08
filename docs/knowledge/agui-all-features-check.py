@@ -16,7 +16,7 @@ def ok(name, cond, detail=""):
 
 
 def vm(cmd):
-    return subprocess.run(["ssh", "-F", "/home/agentvm/.ssh/config", "-o", "BatchMode=yes", "-o", "LogLevel=ERROR",
+    return subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "LogLevel=ERROR",
                            os.environ.get("SPE_HOST", "agent-service-1"), cmd], capture_output=True, text=True).stdout
 
 
