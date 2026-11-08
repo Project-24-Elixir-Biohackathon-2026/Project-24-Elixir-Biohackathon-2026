@@ -56,3 +56,4 @@ its commit again (the guide's step 7).
 - `d1daa75` TM-007: AG-UI's client-held history as a known protocol weakness (#43) → kraatz #17 (merged)
 - `338eb8e` AG-UI archive Markdown: Compacted wording, autolinks, refusal reason, bad timestamps (#44) → kraatz (not opened yet: `contrib/agui-archive-markdown` pushed, title and body in fork issue #45)
 - `70d6505` AG-UI chat: reopened sessions land on their end; menu focus after a click outside (#46) → kraatz (not opened yet: `contrib/agui-chat-ui-polish` pushed, title and body in fork issue #47)
+- `8e0b891` denbi example: set spe_data_root, say where the API IP comes from → kraatz (not opened yet: `contrib/denbi-example-data-root` pushed, title and body in fork issue #49)
