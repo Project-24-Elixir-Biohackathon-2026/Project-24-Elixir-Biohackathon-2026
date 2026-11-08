@@ -36,3 +36,8 @@ agent-service-1):
 - Proposal put to the user: instance-owned notes as Markdown alongside session journals, pinnable, the run
   report as a pinned note created at deploy, archived with the sessions; per-person needs chat identity first.
 - Backlog item it closes: "A run report in the CopilotKit chat" (`BACKLOG.md`).
+
+**Answered after writing (user, 2026-11-08):** "each user is meant to has its own openwebui and agui instance".
+Open WebUI here has one seed-derived admin account per instance, so its per-user notes are per-instance in
+practice. Settled: AG-UI notes are owned by the instance; no identity work. Next in the brainstorm: lay out the
+approaches (storage beside the session journals, editor, pinning, run report at deploy, archive), then the spec.
