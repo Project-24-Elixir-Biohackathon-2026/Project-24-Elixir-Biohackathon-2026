@@ -403,9 +403,10 @@ Decisions (what was considered and why) go to `biohackathon`'s `knowledge/` reco
 
 ## Setup
 
-Install and test commands: *Running things*. `.methodology/` is a private submodule
-(`git@github.com:thodkatz/agent-methodology.git`): the SessionStart hook initialises it in each worktree; without
-access the hook says so and the context-budget hook stays off, and nothing else depends on it.
+Install and test commands: *Running things*. `.methodology/` is a git-ignored link to the machine's
+install of agent-methodology (`methodology setup`; version pinned in `.claude/methodology.json`, moved by
+`methodology update`); `methodology doctor` checks it. Without the install the hooks stay off, and nothing else
+depends on it.
 
 Quota-heavy runs to ask about before starting (*Don't stop for approval*): **any promptfoo evaluation or other
 run that makes paid model calls** (*Project rules*), and **creating or destroying cloud instances**
