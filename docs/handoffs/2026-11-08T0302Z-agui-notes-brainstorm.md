@@ -46,3 +46,18 @@ Markdown canonical, per-instance pin, run report as a pinned note, archived; no 
 "enhance" button** ("definitely not"). **A rich-text editor if it is not a large piece of code**: Open WebUI uses
 TipTap; size `@tiptap/react` (+ markdown round-trip) against a lighter Markdown editor and propose one with its
 bundle and code cost.
+
+## Both fix units finished (2026-11-08)
+
+- #44 merged (`338eb8e`), `contrib/agui-archive-markdown` pushed, body in fork issue #45.
+- #46 merged (`70d6505`), `contrib/agui-chat-ui-polish` pushed, body in fork issue #47.
+- Upstream moved to the org **Project-24-Elixir-Biohackathon-2026/Project-24-Elixir-Biohackathon-2026** (kraatz
+  redirects). The org refuses fine-grained tokens with lifetime > 366 days (HTTP 403), which also breaks
+  `gh pr create` on the fork (it reads the parent); told the user to shorten the token at
+  https://github.com/settings/personal-access-tokens/20062365. The user opens both upstream PRs:
+  https://github.com/Project-24-Elixir-Biohackathon-2026/Project-24-Elixir-Biohackathon-2026/compare/main...thodkatz:elixir-biohackathon-2026-test:contrib/agui-archive-markdown?expand=1
+  https://github.com/Project-24-Elixir-Biohackathon-2026/Project-24-Elixir-Biohackathon-2026/compare/main...thodkatz:elixir-biohackathon-2026-test:contrib/agui-chat-ui-polish?expand=1
+- Left for this session, before the notes: upstream merged kraatz #17, so do its step 7 in
+  `docs/guides/contributing-upstream.md` (ledger lines still say open, *Current work* line); update the upstream
+  remote URL and every current-design mention of `kraatz/elixir-biohackathon-2026-test` to the org (grep; history
+  stays); once the user gives the two upstream PR numbers, ledger and *Current work* lines for them.
