@@ -12,6 +12,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import { renamePatch, tagSuggestions, withTag, withoutTag } from "../lib/client.ts";
+import { refocusIfLost } from "../lib/menu.ts";
 import type { MetaPatch, SessionMeta } from "../lib/sessions.ts";
 import { DeleteDialog } from "./delete-dialog";
 import { Ellipsis } from "./icons";
@@ -70,7 +71,8 @@ export function ChatHeader({ session, knownTags, running, ready, onPatch, onDele
     if (returnFocus) trigger.current?.focus();
   };
 
-  // A press outside ends it: outside the menu and its ⋯, or outside the title for a rename.
+  // A press outside ends it: outside the menu and its ⋯, or outside the title for a rename. The ⋯ gets
+  // focus back if the press left it nowhere (lib/menu.ts, `refocusIfLost`).
   useEffect(() => {
     if (!open || open.mode === "delete") return;
     const onDown = (e: PointerEvent) => {
@@ -81,6 +83,7 @@ export function ChatHeader({ session, knownTags, running, ready, onPatch, onDele
       }
       if (popover.current?.contains(target) || trigger.current?.contains(target)) return;
       end();
+      if (e.pointerType !== "touch") refocusIfLost(document, () => trigger.current);
     };
     document.addEventListener("pointerdown", onDown, true);
     return () => document.removeEventListener("pointerdown", onDown, true);

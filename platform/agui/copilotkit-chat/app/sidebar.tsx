@@ -6,7 +6,8 @@
 // One owner for what a row is doing: `Sidebar` holds which row has its menu, rename, tag editor or
 // delete dialog open, so at most one row is ever busy, and opening a session, New chat, collapsing
 // or another row's menu ends it. The close and focus rules follow Open WebUI's sidebar: the menu
-// closes on a press outside it, Escape or a choice, and gives focus back to its ⋯; a rename is saved
+// closes on a press outside it, Escape or a choice, and gives focus back to its ⋯ (after a press outside,
+// only when the press left focus nowhere, so it never takes focus from a field or button); a rename is saved
 // by Enter or a press outside the row and cancelled by Escape; a tag typed but not added is dropped.
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
@@ -14,6 +15,7 @@ import type { MouseEvent } from "react";
 import { removeSession, renamePatch, tagSuggestions, updateSession, withTag, withoutTag } from "../lib/client.ts";
 import type { MetaPatch, SessionMeta } from "../lib/sessions.ts";
 import { DEFAULT as DEFAULT_WIDTH, MAX as MAX_WIDTH, MIN as MIN_WIDTH, clampWidth, maxFor, parseWidth, stepWidth } from "../lib/sidebar-width.ts";
+import { refocusIfLost } from "../lib/menu.ts";
 import { filterSessions, sections } from "../lib/sidebar-view.ts";
 import type { ViewFilter } from "../lib/sidebar-view.ts";
 import { DeleteDialog } from "./delete-dialog";
@@ -133,6 +135,7 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
 
   // A press outside ends it: outside the menu and its ⋯ for the popover, outside the row for a rename.
   // Capture phase, so it runs before the press's own target acts (another row opens, another ⋯ toggles).
+  // The popover's ⋯ gets focus back if the press left it nowhere (lib/menu.ts, `refocusIfLost`).
   useEffect(() => {
     if (!busy || busy.mode === "delete") return;
     const onDown = (e: PointerEvent) => {
@@ -144,6 +147,8 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
       }
       if (popover.current?.contains(target) || trigger?.contains(target)) return;
       end();
+      const id = busy.id;
+      if (e.pointerType !== "touch") refocusIfLost(document, () => triggers.current.get(id));
     };
     document.addEventListener("pointerdown", onDown, true);
     return () => document.removeEventListener("pointerdown", onDown, true);

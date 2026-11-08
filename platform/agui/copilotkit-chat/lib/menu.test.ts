@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { menuIndex, popoverPosition } from "./menu.ts";
+import { focusLost, menuIndex, popoverPosition, refocusIfLost } from "./menu.ts";
 
 const view = { width: 1280, height: 800 };
 const size = { width: 180, height: 200 };
@@ -35,4 +35,41 @@ test("menuIndex: arrows wrap, Home and End jump, other keys are not the menu's",
   assert.equal(menuIndex("End", 0, 5), 4);
   assert.equal(menuIndex("Enter", 0, 5), null);
   assert.equal(menuIndex("ArrowDown", -1, 0), null);
+});
+
+test("focusLost: only a press that left focus on the page itself, or nowhere", () => {
+  const body = { name: "body" };
+  const root = { name: "html" };
+  const page = { body, documentElement: root };
+  assert.equal(focusLost(body, page), true);
+  assert.equal(focusLost(root, page), true);
+  assert.equal(focusLost(null, page), true);
+  assert.equal(focusLost({ name: "textarea" }, page), false);
+  assert.equal(focusLost({ name: "another row's button" }, page), false);
+});
+
+test("refocusIfLost: waits for the press's own focus change, then refocuses the ⋯ only if focus was lost", () => {
+  const body = { name: "body" };
+  const page = { body, documentElement: { name: "html" }, activeElement: body as object | null };
+  const focused: unknown[] = [];
+  const trigger = { focus: (o?: unknown) => focused.push(o) };
+  let later: (() => void) | undefined;
+  const schedule = (f: () => void) => { later = f; };
+
+  refocusIfLost(page, () => trigger, schedule);
+  assert.equal(focused.length, 0, "nothing before the press has moved focus");
+  later!();
+  assert.deepEqual(focused, [{ preventScroll: true }]);
+
+  // The press landed on something focusable: focus stays where it put it.
+  focused.length = 0;
+  page.activeElement = { name: "textarea" };
+  refocusIfLost(page, () => trigger, schedule);
+  later!();
+  assert.equal(focused.length, 0);
+
+  // The ⋯ is gone by then (its row left the list): nothing to do.
+  page.activeElement = body;
+  refocusIfLost(page, () => undefined, schedule);
+  assert.doesNotThrow(() => later!());
 });
