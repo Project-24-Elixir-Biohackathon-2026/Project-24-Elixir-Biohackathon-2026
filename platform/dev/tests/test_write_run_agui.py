@@ -26,6 +26,11 @@ NAMES = {
     MANUAL: "06-what-have-we-covered-so-far",
 }
 
+# What compaction.py's `_head` sends after a marker: the summary in place of the messages before it, plus the
+# latest user message before it for as long as no user message follows the marker.
+COMPACTED_LINE = ("From here the model saw this summary instead of the messages above, except the latest user "
+                  "message above, which it kept until the next user message.")
+
 
 def load():
     spec = importlib.util.spec_from_file_location("write_run", WRITE_RUN)
@@ -197,15 +202,15 @@ def test_a_refused_run_off_the_branch_still_shows_what_it_was_sent(rendered):
     md = chat(rendered, IGNORED)
     other = md[md.index("## Other branches"):]
     assert other.index("**deleted**: message `a2`") < other.index("## assistant · 2026-11-03 10:12 UTC · after `u2`") \
-        < other.index("**Run refused**: the chat UI did not call the agent (the reason follows). "
-                      "Error: no new user message")
+        < other.index("**Run refused**: the chat UI did not call the agent. Reason: no new user message")
+    assert "(the reason follows)" not in md and "Error: no new user message" not in md
     assert "- Runs: 3 (completed 2, refused 1)" in md
 
 
 def test_a_compaction_is_a_section_where_it_happened(rendered):
     md = chat(rendered, BRANCHES)
     summary = "SUMMARY of the earlier turns\n## Not a section\n``````\nsix ticks"
-    section = ("## Compacted\n\nFrom here the model saw this summary instead of the messages above.\n\n"
+    section = ("## Compacted\n\n" + COMPACTED_LINE + "\n\n"
                "```````\n" + summary + "\n```````")
     assert md.count("## Compacted") == 1 and section in md
     assert md.index("```\na long task\n```") < md.index("## Compacted") < md.index("Done after compacting.")
@@ -279,6 +284,10 @@ def test_helpers():
     assert wr.render_status({"status": "completed"}) == "" and wr.render_status(None) == ""
     assert wr.render_status({"status": "x|y"}) == r"**Run x\|y**: a status this script does not know."
     assert wr.render_status({"status": "x", "error": "boom|bang"}).endswith(r" Error: boom\|bang")
+    # A refused run names its reason once, and says nothing of a reason it has not got.
+    assert wr.render_status({"status": "refused", "error": "Nothing to compact yet."}) == \
+        "**Run refused**: the chat UI did not call the agent. Reason: Nothing to compact yet."
+    assert wr.render_status({"status": "refused"}) == "**Run refused**: the chat UI did not call the agent."
     assert wr.render_ignored([]) == ""
     block = wr.render_ignored([{"kind": "deleted", "message": "a`2"}])
     assert block.startswith("## sent by the client, not used\n") and block.endswith("**deleted**: message ``a`2``")
@@ -369,3 +378,66 @@ def test_an_agui_bundle_does_not_replace_an_openwebui_export(tmp_path):
                           capture_output=True, text=True)
     assert proc.returncode != 0 and "renders into <run>/agui" in proc.stderr
     assert (out / "openwebui-export.json").read_bytes() == kept
+
+
+@pytest.mark.parametrize("raw,shown", [
+    ("see https://evil.example/x", r"see https\://evil.example/x"),
+    ("HTTP://A.B and ftp://c.d", r"HTTP\://A.B and ftp\://c.d"),
+    ("www.evil.example", r"www\.evil.example"),
+    ("WWW.Evil.example/x", r"WWW\.Evil.example/x"),
+    ("https://www.x.y", r"https\://www\.x.y"),
+    ("no link: a.b, //c", "no link: a.b, //c"),
+])
+def test_md_inline_breaks_gfm_autolinks(raw, shown):
+    """GFM turns a bare URL or www. name into a link; an escaped `:` or `.` renders as itself but links nothing."""
+    assert wr.md_inline(raw) == shown
+
+
+def test_a_url_in_a_title_or_tag_is_no_link_in_the_index(tmp_path):
+    bundle = {"exported_at": 1793700000, "spe_archive_mode": "final", "tags": [], "notes": [], "chats": [
+        {"id": "u", "title": "read https://evil.example/a and www.evil.example", "created_at": 1793700000,
+         "updated_at": 1793700000, "archived": False, "meta": {"tags": ["http://t.example", "www.t.example"]},
+         "chat": {"history": {"currentId": None, "messages": {}}}}]}
+    (tmp_path / "bundle.json").write_text(json.dumps(bundle))
+    run(tmp_path / "bundle.json", tmp_path / "run")
+    index = (tmp_path / "run" / "index.md").read_text()
+    md = next((tmp_path / "run" / "chats").glob("*.md")).read_text()
+    row = next(line for line in index.splitlines() if line.startswith("| 01 |"))
+    assert r"[read https\://evil.example/a and www\.evil.example](chats/" in row
+    assert r"| http\://t.example, www\.t.example |" in row
+    assert md.startswith(r"# read https\://evil.example/a and www\.evil.example" + "\n")
+    for text in (index, md):
+        assert not re.search(r"(?<!\\)://|(?i:www)(?!\\)\.", "\n".join(outside_fences(text)))
+
+
+@pytest.mark.parametrize("raw,shown", [
+    ("soon|ish", r"soon\|ish"), ("1.5e400", "1.5e400"), ("nan", "nan"), ("inf", "inf"), (-1e300, "-1e+300"),
+    ([1], r"\[1\]"),
+])
+def test_when_shows_a_timestamp_it_cannot_read_as_given(raw, shown):
+    assert wr.when(raw) == shown
+
+
+def test_a_non_numeric_timestamp_does_not_abort_the_render(tmp_path):
+    m = {"id": "x", "parentId": None, "role": "user", "content": "hi", "timestamp": "yesterday"}
+    bundle = {"exported_at": "now", "spe_archive_mode": "final", "tags": [], "notes": [], "chats": [
+        {"id": "t", "title": "times", "created_at": "early", "updated_at": "late", "archived": False,
+         "meta": {"tags": []}, "chat": {"history": {"currentId": "x", "messages": {"x": m}}}},
+        # a readable time beside the unreadable one: the sessions still sort, readable times first
+        {"id": "n", "title": "numbers", "created_at": 1793700000, "updated_at": 1793700000, "archived": False,
+         "meta": {"tags": []}, "chat": {"history": {"currentId": None, "messages": {}}}}]}
+    (tmp_path / "bundle.json").write_text(json.dumps(bundle))
+    run(tmp_path / "bundle.json", tmp_path / "run")
+    assert sorted(p.name for p in (tmp_path / "run" / "chats").glob("*.md")) == ["01-numbers.md", "02-times.md"]
+    md = (tmp_path / "run" / "chats" / "02-times.md").read_text()
+    assert "## user · yesterday" in md and "- Created: early" in md and "- Updated: late" in md
+    index = (tmp_path / "run" / "index.md").read_text()
+    assert "| early |" in index and "- Exported: now" in index
+
+
+def test_an_openwebui_bundle_with_an_unreadable_created_at_still_renders(tmp_path):
+    bundle = json.loads((OWUI / "bundle.json").read_text())
+    bundle["chats"][0]["created_at"] = "early"
+    (tmp_path / "bundle.json").write_text(json.dumps(bundle))
+    run(tmp_path / "bundle.json", tmp_path / "run")
+    assert "early" in (tmp_path / "run" / "index.md").read_text()

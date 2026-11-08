@@ -23,6 +23,7 @@ Stdlib only.
 """
 import datetime
 import json
+import math
 import os
 import re
 import shutil
@@ -34,12 +35,28 @@ def slug(s):
 
 
 def when(t):
+    """Epoch seconds, ms or ns -> '2026-11-03 10:00 UTC'; anything unreadable as a time escaped as given."""
     if not t:
         return ""
-    t = float(t)
-    while t > 1e11:  # OpenWebUI mixes s, ms and ns timestamps
-        t /= 1000
-    return datetime.datetime.fromtimestamp(t, datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    try:
+        s = float(t)
+        if not math.isfinite(s):
+            raise ValueError(t)
+        while s > 1e11:  # OpenWebUI mixes s, ms and ns timestamps
+            s /= 1000
+        return datetime.datetime.fromtimestamp(s, datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    except (TypeError, ValueError, OverflowError, OSError):
+        return md_inline(t)
+
+
+def time_key(t):
+    """A sort key for a raw timestamp: readable ones by value (none as 0), unreadable ones after them, so a
+    hand-edited bundle mixing the two still sorts."""
+    try:
+        s = float(t or 0)
+    except (TypeError, ValueError, OverflowError):
+        return (1, 0.0)
+    return (0, s) if math.isfinite(s) else (1, 0.0)
 
 
 def active_branch(chat):
@@ -108,11 +125,15 @@ def write(path, text):
 
 MARKER_PREFIX = "spe-compaction-"
 IGNORED_HEADING = "## sent by the client, not used"
+# What the agent sends after a marker (compaction.py, `_head`): the summary in place of everything before it,
+# plus the latest user message before it while no user message follows the marker.
+COMPACTED_LINE = ("From here the model saw this summary instead of the messages above, except the latest user "
+                  "message above, which it kept until the next user message.")
 STATUS_NOTES = {
     "failed": "the agent's stream ended in an error, or without a final event",
     "cancelled": "stopped by the participant before it ended",
     "aborted": "the chat UI could not save the run, so it ended it",
-    "refused": "the chat UI did not call the agent (the reason follows)",
+    "refused": "the chat UI did not call the agent",
     "incomplete": "no end was recorded; in a live archive the run may still have been going",
 }
 ARCHIVE_MODES = {
@@ -128,8 +149,12 @@ def one_line(s):
 
 
 def md_inline(s):
-    """Untrusted text as one line of Markdown text: every character that could start markup is escaped."""
-    return re.sub(r"([\\`*_\[\]<>|#&])", r"\\\1", one_line(s))
+    """Untrusted text as one line of Markdown text: every character that could start markup is escaped, and the
+    `:` of `://` and the `.` of `www.` too, so GFM makes no autolink of a bare URL (a backslash before
+    punctuation renders as the character alone). A bare e-mail or `xmpp:` address still links: GFM finds those
+    after escapes are resolved, so no escape breaks them, and a link needing an `@` forges no structure."""
+    s = re.sub(r"([\\`*_\[\]<>|#&])", r"\\\1", one_line(s))
+    return re.sub(r"(?i)(www)\.", r"\1\\.", s.replace("://", "\\://"))
 
 
 def code_span(s):
@@ -193,7 +218,10 @@ def render_status(run):
     if not status or status == "completed":
         return ""
     line = f"**Run {md_inline(status)}**: {STATUS_NOTES.get(status, 'a status this script does not know')}."
-    return f"{line} Error: {md_inline(run['error'])}" if run.get("error") else line
+    if not run.get("error"):
+        return line
+    # A refused run's error is the chat UI's reason for not calling the agent, not an error the run hit.
+    return f"{line} {'Reason' if status == 'refused' else 'Error'}: {md_inline(run['error'])}"
 
 
 def render_ignored(entries):
@@ -236,7 +264,7 @@ def render_output(m):
         t = it.get("type")
         if is_compaction(it):
             out.append("## Compacted\n\n" + (cmd + "\n\n" if cmd else "")
-                       + "From here the model saw this summary instead of the messages above.\n\n"
+                       + COMPACTED_LINE + "\n\n"
                        + fence(texts(it.get("content"))))
             cmd = ""
         elif t == "message":
@@ -350,7 +378,7 @@ def render_agui_chat(c):
 
 def write_agui(b, run_dir):
     chats = sorted((c for c in b.get("chats") or [] if isinstance(c, dict)),
-                   key=lambda c: (c.get("created_at") or 0, str(c.get("id") or "")))
+                   key=lambda c: (time_key(c.get("created_at")), str(c.get("id") or "")))
     chats_dir = os.path.join(run_dir, "chats")
     # A re-render starts chats/ afresh, so no chat is left under an old title.
     if os.path.islink(chats_dir):
@@ -440,7 +468,7 @@ def main(argv):
 
     # Chats, oldest first.
     rows = []
-    chats = sorted(b.get("chats") or [], key=lambda c: c.get("created_at") or 0)
+    chats = sorted(b.get("chats") or [], key=lambda c: time_key(c.get("created_at")))
     for i, c in enumerate(chats, 1):
         msgs = active_branch(c.get("chat") or {})
         tags = [tag_names.get(t, t) for t in (c.get("meta") or {}).get("tags") or []]

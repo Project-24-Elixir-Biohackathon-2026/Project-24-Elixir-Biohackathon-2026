@@ -110,7 +110,7 @@ Fields starting with `spe_` are ours; Open WebUI itself never writes them, so it
 ```
 
 `write_run.py` also renders the three things only the AG-UI record has (decision 16): a run's status when it
-is not `completed`, with its `error` if any; its ignored content as a block "sent by the client, not used",
+is not `completed`, with its `error` if any (as its *Reason* for a refused run); its ignored content as a block "sent by the client, not used",
 with its kind and the content fenced, between the turns it was sent with; and a compaction marker as a
 "Compacted" section. Fences are one backtick longer than the longest run of backticks in the content (at
 least three). A bundle with no chats gives an `index.md` saying no session was recorded; without

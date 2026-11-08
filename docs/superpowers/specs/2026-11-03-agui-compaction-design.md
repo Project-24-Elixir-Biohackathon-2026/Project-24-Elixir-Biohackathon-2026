@@ -1,6 +1,6 @@
 # AG-UI compaction — design
 
-**Status:** approved, PR #15. **Latest clarification:** 9 (2026-11-03, `/compact`); 5 folded in slice 3.
+**Status:** approved, PR #15. **Latest clarification:** 10 (2026-11-08, the archive's Compacted line); 5 folded in slice 3.
 Read against this repo at `4a59a6c` (`main`), with `pydantic-ai-slim` 2.56.0, `ag-ui-protocol` 0.1.22,
 `@ag-ui/core`/`@ag-ui/client` 1.0.2 and CopilotKit 1.79.0 as pinned there.
 
@@ -222,8 +222,9 @@ How the chat sessions spec's constraints change:
   the marker message. The admission, finalisation and status rules are untouched.
 - **§4, the archive renders every message**: still every message. `write_agui_run.py` renders a marker (an
   assistant message whose id starts with `spe-compaction-`) as a section `## Compacted` with the line
-  "From here the model saw this summary instead of the messages above." and the summary in a fence (decision
-  14 of the chat sessions spec). Other activity messages keep today's JSON rendering. `index.md` gains a
+  "From here the model saw this summary instead of the messages above, except the latest user message above,
+  which it kept until the next user message." (§3, items 2 and 3; clarification 10) and the summary in a fence
+  (decision 14 of the chat sessions spec). Other activity messages keep today's JSON rendering. `index.md` gains a
   `compactions` column.
 
 The living AG-UI spec's §14 (the archive as built, `index.md` columns), into which #19 folded the chat
@@ -401,3 +402,10 @@ this work (`docs/guides/contributing-upstream.md`). No upstream PR is part of th
    after it. *Reason:* the run log must tell a requested compaction from an automatic one, and the focus shapes
    the summary an analysis reads. *Cost if wrong:* a reader of the run log that expects only `threshold` or
    `overflow` meets a third value. *Amends:* decision 11, §8. *Status:* folded.
+
+10. **The archive's Compacted line says the latest request was kept** (2026-11-08; the fork's PR #44). The line
+   under `## Compacted` reads "From here the model saw this summary instead of the messages above, except the
+   latest user message above, which it kept until the next user message." *Reason:* the line said the model saw
+   only the summary, but §3 item 3 (`compaction.py`, `_head`) also sends the latest user message before the
+   marker for as long as no user message follows it, so a reader of the archive would have thought that request
+   gone from what the model saw (found by PR #18's local review). *Amends:* §7. *Status:* folded.
