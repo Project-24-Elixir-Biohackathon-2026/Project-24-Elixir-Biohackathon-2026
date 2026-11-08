@@ -57,3 +57,6 @@ its commit again (the guide's step 7).
 - `338eb8e` AG-UI archive Markdown: Compacted wording, autolinks, refusal reason, bad timestamps (#44) → kraatz (not opened yet: `contrib/agui-archive-markdown` pushed, title and body in fork issue #45)
 - `70d6505` AG-UI chat: reopened sessions land on their end; menu focus after a click outside (#46) → kraatz (not opened yet: `contrib/agui-chat-ui-polish` pushed, title and body in fork issue #47)
 - `8e0b891` denbi example: set spe_data_root, say where the API IP comes from → kraatz (not opened yet: `contrib/denbi-example-data-root` pushed, title and body in fork issue #49)
+- `171398a` Migrate the methodology off the submodule (253d08561b5640f4c1227e3e807be466c82a588a) → not for upstream: its shared files (`.gitignore`, `.gitmodules`) only drop the fork's methodology submodule
+- `231ba4c` Merge upstream/main (2026-11-08): kraatz #17 merged, report app, dependency bumps, TM-005 → not for upstream: a merge of upstream itself; the fork work it carries has its own lines
+- `23a944b` AG-UI chat: group tool calls across model steps (#50) → kraatz (not opened yet: `contrib/agui-tool-group-steps` pushed, title and body in fork issue #51)
