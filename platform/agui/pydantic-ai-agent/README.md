@@ -17,7 +17,7 @@ SPE_AGENT_CONFIG=agent.yaml SPE_AGENT_API_KEY=… SANDBOX_API_KEY=… OPENAI_API
 | Route | What |
 |---|---|
 | `POST /agent` | AG-UI `RunAgentInput` in, server-sent events out. `Authorization: Bearer <SPE_AGENT_API_KEY>`, checked before readiness: 401 without it, 422 on a malformed body, 503 until the sandbox's tools are discovered |
-| `POST /title` | A 2-4 word title for a session's first exchange; same key; 404 when `title.enabled` is false |
+| `POST /title` | A 2-4 word title for a session's first message (or first exchange); same key; 404 when `title.enabled` is false |
 | `GET /healthz` | No auth, no model call. 200 `{"status": "ok", "tools": N}` once ready, else 503 with a reason |
 
 **Readiness.** A background task discovers the sandbox (`/openapi.json`,

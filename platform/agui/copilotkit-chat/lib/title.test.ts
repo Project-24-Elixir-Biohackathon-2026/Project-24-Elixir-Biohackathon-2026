@@ -42,41 +42,38 @@ function fakeTitler(title = "Greeting the agent", before?: () => Promise<void>) 
   return { titler, calls };
 }
 
-test("no title yet: the agent is asked with the journal's first message and answer, its title is written", async () => {
+test("no title yet: the agent is asked with the journal's first question alone, its title is written", async () => {
   const journals = await tmpJournals();
   const { id } = await seedRun(journals, "hello there");
   const { titler, calls } = fakeTitler("  Greeting   the agent ");
   const response = await titleSession(journals, id, titler, titleRequest());
   assert.equal(response.status, 200);
   assert.equal((await response.json()).title, "Greeting the agent");
-  assert.deepEqual(calls, [{ threadId: id, messages: [
-    { role: "user", content: "hello there" }, { role: "assistant", content: "echo: hello there" },
-  ] }]);
+  assert.deepEqual(calls, [{ threadId: id, messages: [{ role: "user", content: "hello there" }] }]);
   assert.deepEqual((await metaLines(journals, id)).map((l) => l.title), ["Greeting the agent"]);
   assert.equal((await journals.list())[0].title, "Greeting the agent");
 });
 
-test("the first message and answer are the first completed run's, from the journal, not later runs'", async () => {
+test("while the first run is still going: titled from its question, before any answer", async () => {
   const journals = await tmpJournals();
-  const failed = await seedRun(journals, "first try", { status: "failed" });
-  const done = await seedRun(journals, "second try", { id: failed.id, anchor: null });
-  await seedRun(journals, "a later question", { id: failed.id, anchor: done.replyId });
-  const { titler, calls } = fakeTitler();
-  await titleSession(journals, failed.id, titler, titleRequest());
-  assert.deepEqual(calls[0].messages, [
-    { role: "user", content: "second try" }, { role: "assistant", content: "echo: second try" },
-  ]);
+  const { id } = await seedRun(journals, "list the files", { running: true });
+  assert.equal((await journals.list())[0].title, "list the files"); // listed, with the fallback title, mid-run
+  const { titler, calls } = fakeTitler("Listing files");
+  const response = await titleSession(journals, id, titler, titleRequest());
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).title, "Listing files");
+  assert.deepEqual(calls[0].messages, [{ role: "user", content: "list the files" }]);
 });
 
-test("a retry after a failed first run: the messages are the retry's, not the failed run's", async () => {
-  const journals = await tmpJournals();
-  const failed = await seedRun(journals, "first try", { status: "failed" });
-  await seedRun(journals, "second try", { id: failed.id, anchor: failed.replyId });
-  const { titler, calls } = fakeTitler();
-  await titleSession(journals, failed.id, titler, titleRequest());
-  assert.deepEqual(calls[0].messages, [
-    { role: "user", content: "second try" }, { role: "assistant", content: "echo: second try" },
-  ]);
+test("the question is the first run's, whatever its status, not a later run's", async () => {
+  for (const status of ["failed", "cancelled"] as const) {
+    const journals = await tmpJournals();
+    const first = await seedRun(journals, "first try", { status });
+    await seedRun(journals, "second try", { id: first.id, anchor: first.replyId });
+    const { titler, calls } = fakeTitler();
+    await titleSession(journals, first.id, titler, titleRequest());
+    assert.deepEqual(calls[0].messages, [{ role: "user", content: "first try" }], status);
+  }
 });
 
 test("renamed while the agent was writing: the rename is kept, no model title appended", async () => {
@@ -111,14 +108,14 @@ test("already titled (a rename or an earlier model title): no agent call, the me
   assert.equal(second.calls.length, 0);
 });
 
-test("no completed run: no agent call, the metadata unchanged", async () => {
+test("no question with text: no agent call, the metadata unchanged", async () => {
   const journals = await tmpJournals();
-  const { id } = await seedRun(journals, "hello", { status: "cancelled" });
+  const { id } = await seedRun(journals, "   ");
   const before = await fs.readFile(file(journals, id), "utf8");
   const { titler, calls } = fakeTitler();
   const response = await titleSession(journals, id, titler, titleRequest());
   assert.equal(response.status, 200);
-  assert.equal((await response.json()).title, "hello");
+  assert.equal((await response.json()).title, "Untitled");
   assert.equal(calls.length, 0);
   assert.equal(await fs.readFile(file(journals, id), "utf8"), before);
 });
