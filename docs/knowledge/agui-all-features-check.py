@@ -72,8 +72,25 @@ with sync_playwright() as p:
     ok("tool run ended", done)
     page.screenshot(path=f"{SHOTS}/1-tools.png", full_page=True)
     groups = page.locator(".spe-tool-group")
-    ok("tool calls grouped", groups.count() > 0 or page.locator(".spe-tool").count() > 0,
-       f"groups={groups.count()} cards={page.locator('.spe-tool').count()}")
+    # Calls made in a row group across model steps (Haiku makes one call per step): two cards outside a group with
+    # no text between them in document order mean a missed group. Text between calls (qwen narrates) ends a group,
+    # so single cards separated by text pass.
+    cards = page.locator(".spe-tool").count()
+    grouped = page.locator(".spe-tool-group .spe-tool").count()
+    seq = page.evaluate("""() => {
+      const out = [];
+      const walk = (n) => {
+        if (n.nodeType === 3) { if (n.textContent.trim()) out.push('T'); return; }
+        if (n.nodeType !== 1) return;
+        if (n.matches('.spe-tool-group')) { out.push('G'); return; }
+        if (n.matches('.spe-tool')) { out.push('C'); return; }
+        for (const c of n.childNodes) walk(c);
+      };
+      walk(document.body);
+      return out.join('').replace(/T+/g, 'T');
+    }""")
+    ok("tool calls grouped", cards > 0 and "CC" not in seq,
+       f"groups={groups.count()} cards={cards} grouped={grouped} order={seq[-40:]}")
     if groups.count():
         summ = groups.first.locator(":scope > summary").inner_text()
         ok("group header says Explored", "Explored" in summ, summ.replace("\n", " "))

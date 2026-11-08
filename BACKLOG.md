@@ -31,6 +31,16 @@ start reads this section; keep it short.
 
 <!-- - <item> — from <PR #n / review thread / spec Inputs for>, waits because <reason>. -->
 
+- agent-methodology: `methodology worktree` takes the main checkout from `git worktree list`'s first line, which in a
+  submodule is the parent's `.git/modules/<name>`, so here it misplaces the worktree and claims nothing
+  (`docs/knowledge/methodology-worktree-submodule.md`). Carry a fix to agent-methodology (resolve the checkout with
+  `git rev-parse --show-toplevel` from the main worktree, or `core.worktree`) — from #50's review; waits because it
+  is another repository's change.
+- AG-UI e2e: `platform/dev/e2e` checks tool grouping for two calls in one response only; add a fake-agent case with
+  calls across two model steps (no text between them) that must form one group, its header saying "Exploring"
+  while the run lasts, so a CopilotKit upgrade that
+  changes the rule fails a free check (spec clarification 25) — from #50's review; waits because only the paid
+  all-features check covers it today.
 - The AG-UI `ui-dev` profile (`spe_agui_ui_dev: true`, `chat-ui-dev`, upstream's hot-reload chat) has no archive:
   `run_archive`'s export copies and stops `chat-ui` and runs the exporter from its image, so it refuses `ui-dev`,
   and `destroy.yml` there needs `-e spe_archive_skip=true` (the chats are lost); `checks.yml` skips the
@@ -38,7 +48,6 @@ start reads this section; keep it short.
   no workspace runs `ui-dev` for a recorded run yet.
 - AG-UI chat: branching, editing or regenerating messages in the chat, plus export from the UI, full-text search over messages and folders (Open WebUI features not asked for) — from the living AG-UI spec's `docs/specs/2026-10-15-agui-frontend-design/out-of-scope.md` (PR #19); waits until someone asks for them.
 - AG-UI chat: leave a running chat — open another session or *New chat* while a run continues in the one left, as Open WebUI and ChatGPT allow; today §6 *During a run* of `docs/specs/2026-10-15-agui-frontend-design/06-chat-ui.md` disables switching and *New chat* so a run never ends in a session the participant has left. Needs a spec change: the run keeps streaming and is recorded (§13) though its chat is not shown (CopilotKit ties a run to the shown thread), and the sidebar marks a session that is still running — asked for by the user (2026-11-04, testing on de.NBI); waits because testing on de.NBI and the upstream (kraatz) PR come first.
-- AG-UI chat: group tool calls across successive assistant messages (model steps, with reasoning between them on qwen) under one "Explored list_files, 2 run_command" header, as Open WebUI 0.11.3's (as of 2026-11-04; the instance now runs 0.13.0) `ConsecutiveDetailsGroup.svelte` does; #31/#34 group one model response's calls only (clarifications 17 and 20 of `docs/specs/2026-10-15-agui-frontend-design/clarifications.md`). Not a list replacement: CopilotKit 1.79.0's message view (as of 2026-11-04; now 1.84.1) takes `groupMessages` (`messageGroup({key, messages, wrapper})`, state kept per group key), so one PR: a pure grouping function, a wrapper with the header, the per-message header removed; to decide: whether a stray text line beside a call (qwen) ends a run — from PR #31's local review (finding 8), asked for by the user (2026-11-04); waits because testing on de.NBI and the upstream (kraatz) PR come first.
 - AG-UI `/compact`: other slash commands, a compact button, an escape for sending the literal text `/compact …` to the model, and manual compaction while automatic compaction is off — from the living AG-UI spec's `docs/specs/2026-10-15-agui-frontend-design/out-of-scope.md` (PR #26); waits until someone asks for them.
 - AG-UI `/compact`: the agent backstops no focus length: a client that reaches the agent directly can send a focus of any size, which shrinks the transcript to its pinned entries without an error (`chat-ui` refuses more than 1000 characters, §15 *The run route*); a `RUN_ERROR` as for "Nothing to compact yet." would match — from PR #28's local review (correctness, finding 3), waits because only `chat-ui` reaches the agent and the spec names no agent-side limit.
 - AG-UI record: `chat-ui` forwards the client's `tools`, which the model sees (TM-005, scenario 5); the chat UI
