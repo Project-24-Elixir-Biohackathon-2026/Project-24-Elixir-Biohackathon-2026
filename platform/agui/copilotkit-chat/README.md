@@ -54,7 +54,9 @@ hidden, deleted. Nothing rewrites a journal.
   changes a message.
 - **The sidebar**: New chat, titles grouped by day, search by title and `tag:<name>`,
   pinned first, hidden behind *Show hidden*; a row menu with rename, pin, tags,
-  hide, delete. `?session=<id>` in the URL reopens a session.
+  hide, delete. The menu closes on a click outside, Escape or a choice, and gives
+  focus back to its `⋯` (after a click outside, only when the click left focus
+  nowhere). `?session=<id>` in the URL reopens a session, at its newest content.
 - **Shutdown**: on SIGTERM new runs are refused, runs in progress are cancelled and
   journaled, the queue drains within 25 s, the process exits. The image sets
   `NEXT_MANUAL_SIG_HANDLE=true` so Next.js does not exit first. The final archive

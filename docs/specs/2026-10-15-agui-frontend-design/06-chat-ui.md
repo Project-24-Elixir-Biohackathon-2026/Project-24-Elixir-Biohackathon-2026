@@ -107,8 +107,9 @@ Plain React and CSS in `app/` (no new dependencies); all session data is rendere
   the open row and the row whose menu is open (on a touch screen, `hover: none`, always); at the bottom a
   *Show hidden* toggle and the note "Deleted sessions are kept in the run archive."
 - **Row menu (`⋯`):** a popover anchored to the button, one open at a time; it closes on a click outside,
-  Escape, choosing an item, opening a session or *New chat*; Escape and a choice return focus to its `⋯` (a
-  click outside leaves it where the click put it); arrow keys move between items. *Rename* (inline in the
+  Escape, choosing an item, opening a session or *New chat*; Escape and a choice return focus to its `⋯`, and
+  so does a click outside that leaves focus nowhere (on text or empty space), while a click on a field, button
+  or link keeps the focus it gave (clarification 24); arrow keys move between items. *Rename* (inline in the
   row, also by double-click; text selected; Enter, Tab or a click outside saves, Esc cancels), *Pin* /
   *Unpin*, *Tags* (Open WebUI's tag editor: the session's tags as pills, each removed by its ×, and an "Add
   a tag…" input whose suggestions are the tags in use; Enter adds), *Hide* / *Unhide*, *Delete* (a dialog
@@ -121,7 +122,9 @@ Plain React and CSS in `app/` (no new dependencies); all session data is rendere
 - **Open session in the URL:** `?session=<id>`. Loading the page with it fetches the session; without it,
   or with an id that answers 404, the page starts a new session (and drops the parameter).
 - **Opening a session:** `GET /api/sessions/{id}`, then CopilotChat's `threadId` set to the id and
-  `agent.setMessages(messages)`; the tool cards render again from the stored tool-call messages. **New
+  `agent.setMessages(messages)`; the tool cards render again from the stored tool-call messages, and the chat
+  opens on its newest content, without scrolling through the history first, as after a reload (clarification
+  24). **New
   chat:** a fresh `crypto.randomUUID()` and an empty history; the session joins the list once its first
   run has started.
 - **During a run** (the agent's `isRunning`), switching and *New chat* are disabled, so a run never ends
