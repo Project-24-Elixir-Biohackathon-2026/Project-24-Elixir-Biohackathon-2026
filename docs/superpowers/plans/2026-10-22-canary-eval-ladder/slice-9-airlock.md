@@ -289,7 +289,8 @@ git commit -s -m "Agent: airlock module redacting classes of sensitive data (dec
 
 **Files:** modify `platform/agui/pydantic-ai-agent/src/spe_agent/{app,__main__}.py`,
 `platform/agui/pydantic-ai-agent/README.md`, `platform/ansible/roles/agui/templates/agent.env.j2`,
-`platform/ansible/inventory/group_vars/all.yml`, `platform/ansible/README.md`, the plan's `README.md`; create
+`platform/ansible/inventory/group_vars/all.yml`, `platform/ansible/playbooks/create.yml`,
+`platform/ansible/README.md`, the plan's `README.md`; create
 `platform/agui/pydantic-ai-agent/tests/test_app_airlock.py`, `platform/dev/tests/test_agui_env.py`.
 
 **Interfaces:** `create_app(..., airlock_prefix: str | None = None)` (keyword; `None` is off). `__main__` passes
@@ -309,7 +310,9 @@ unaffected. Off, events pass unchanged. Tool results and reasoning events are no
 (spec part 01 scopes L5 to the answer; the gap goes to `BACKLOG.md` in task 3).
 
 **Decisions:** 3 (`test_off_renders_byte_identical_to_before`), 12 (the answer filter in the AG-UI agent:
-`test_app_airlock.py`).
+`test_app_airlock.py`; `test_create_refuses_the_airlock_with_open_webui`: only the AG-UI agent has the airlock, and
+every instance runs both frontends by default, `spe_frontends`, so the build refuses the switch while Open WebUI,
+an unfiltered path to the same sandbox, is on).
 
 - [ ] **Step 1: Write the failing tests.** `platform/agui/pydantic-ai-agent/tests/test_app_airlock.py`:
 
@@ -399,6 +402,7 @@ from pathlib import Path
 
 import jinja2
 import pytest
+import yaml
 
 TEMPLATE = Path(__file__).resolve().parents[2] / "ansible" / "roles" / "agui" / "templates" / "agent.env.j2"
 BASE = {"spe_agent_api_key": "agent-key", "spe_terminal_api_key": "terminal-key",
@@ -431,12 +435,33 @@ def test_on_adds_the_switch_and_the_prefix(on):
     assert out.startswith(BEFORE)
     comment, *lines = out[len(BEFORE):].splitlines()
     assert comment.startswith("# L5 airlock") and lines == ["SPE_AIRLOCK=1", "SPE_STUDY_ID_PREFIX=TRIAL"]
+
+
+CREATE = TEMPLATE.parents[3] / "playbooks" / "create.yml"
+
+
+def instance_accepted(**v) -> bool:
+    """create.yml's first check (*Instance parameters present*), evaluated as Ansible would."""
+    play = yaml.safe_load(CREATE.read_text())[0]
+    task = next(t for t in play["pre_tasks"] if t["name"] == "Instance parameters present")
+    env = jinja2.Environment()
+    env.filters["bool"] = ansible_bool
+    env.filters["difference"] = lambda a, b: [x for x in a if x not in b]
+    v = {"spe_instance": "t-01", "spe_seed": 1, "spe_provision": "existing", **v}
+    return all(env.compile_expression(c)(**v) for c in task["ansible.builtin.assert"]["that"])
+
+
+def test_create_refuses_the_airlock_with_open_webui():
+    assert instance_accepted(spe_frontends=["agui"], spe_harden_airlock=True)
+    assert instance_accepted(spe_frontends=["openwebui", "agui"], spe_harden_airlock="false")
+    assert not instance_accepted(spe_frontends=["openwebui", "agui"], spe_harden_airlock=True)
 ```
 
 - [ ] **Step 2: Run them.** `(cd platform/agui/pydantic-ai-agent && uv run --group dev pytest -q tests/test_app_airlock.py)`:
   FAIL, 5 failed, `TypeError: create_app() got an unexpected keyword argument 'airlock_prefix'`.
   `uv run --with pytest --with pyyaml --with jinja2 pytest platform/dev/tests/test_agui_env.py -q`: FAIL,
-  2 failed (`test_on_adds_the_switch_and_the_prefix`), 3 passed.
+  3 failed (`test_on_adds_the_switch_and_the_prefix` twice, `test_create_refuses_the_airlock_with_open_webui`:
+  `create.yml` still accepts the pair), 3 passed.
 
 - [ ] **Step 3: Implement.** In `src/spe_agent/app.py`: import `TextMessageContentEvent, TextMessageEndEvent` from
   `ag_ui.core` and `from . import airlock`; add the keyword `airlock_prefix: str | None = None` to `Service.__init__`
@@ -496,14 +521,19 @@ SPE_STUDY_ID_PREFIX={{ spe_study_id_prefix }}
   has not already added it, add next to the other `spe_harden_*` switches:
   `spe_harden_airlock: false   # L5: the AG-UI agent redacts study ids, sensitive paths, credentials from answers`.
 
+  `playbooks/create.yml`, *Instance parameters present*: add to `that`
+  `- not (spe_harden_airlock | bool and 'openwebui' in spe_frontends)`, and to `fail_msg`
+  `; spe_harden_airlock filters the AG-UI agent only: set spe_frontends: [agui] with it`.
+
   Docs: in the agent's `README.md`, *Service*, a paragraph **Airlock (L5)** saying what the five classes are, that
   `SPE_AIRLOCK=1` with `SPE_STUDY_ID_PREFIX` turns it on (exit 2 if the prefix is missing), that messages then
   arrive whole at their end (the UX cost above), that tool results and reasoning are not filtered, and the CLI
   `python -m spe_agent.airlock`. In `platform/ansible/README.md`, beside the other hardening switches:
-  `spe_harden_airlock` (default `false`; only `spe_frontend: agui` has an airlock). In the plan's `README.md`,
-  *File structure*, row 9: add `inventory/group_vars/all.yml`, `platform/dev/tests/test_agui_env.py`.
+  `spe_harden_airlock` (default `false`; only the AG-UI agent has an airlock, so `create.yml` refuses it while
+  `openwebui` is in `spe_frontends`). In the plan's `README.md`, *File structure*, row 9: add
+  `inventory/group_vars/all.yml`, `playbooks/create.yml`, `platform/dev/tests/test_agui_env.py`.
 
-- [ ] **Step 4: Run them.** The two commands of step 2: PASS (5 passed; 5 passed). Then the full suites:
+- [ ] **Step 4: Run them.** The two commands of step 2: PASS (5 passed; 6 passed). Then the full suites:
   `(cd platform/agui/pydantic-ai-agent && uv run --group dev pytest -q)` and
   `uv run --with pytest --with pyyaml --with jinja2 pytest platform/dev/tests -q`, all passing, plus
   `(cd platform/promptfoo-evals && uv run --group dev pytest -q)`.
@@ -514,6 +544,7 @@ SPE_STUDY_ID_PREFIX={{ spe_study_id_prefix }}
 git add platform/agui/pydantic-ai-agent/src/spe_agent/app.py platform/agui/pydantic-ai-agent/src/spe_agent/__main__.py \
   platform/agui/pydantic-ai-agent/tests/test_app_airlock.py platform/agui/pydantic-ai-agent/README.md \
   platform/ansible/roles/agui/templates/agent.env.j2 platform/ansible/inventory/group_vars/all.yml \
+  platform/ansible/playbooks/create.yml \
   platform/ansible/README.md platform/dev/tests/test_agui_env.py docs/superpowers/plans/2026-10-22-canary-eval-ladder/README.md
 git commit -s -m "Agent: redact the answer before streaming when spe_harden_airlock is on" \
   -m "Each text message is buffered and sent whole, so a pattern split across chunks is still caught. Off, agent.env renders byte for byte as before."
@@ -534,7 +565,7 @@ de.NBI VM at L3 plus `spe_harden_airlock`, `hardening.json`'s `level` stays 3 (i
 `airlock` by design. The check therefore runs only the `airlock` probe and reads its observed `state` from the
 report: `closed`, with `probe_state` failing as *expected open, observed closed*, is the pass. No model calls.
 
-- [ ] **Step 1: Converge the VM to L3 plus the airlock** (`spe_provision: existing`, no paid calls,
+- [ ] **Step 1: Converge the VM to L3 plus the airlock** (`spe_provision: existing`, no model calls,
   `spe_agui_smoke` stays `false`): the create command the newest L3 handoff records, with
   `-e '{"spe_harden_airlock": true}'` appended, e.g.
   `ansible-playbook playbooks/create.yml -e @instances/denbi-agui-01.yml -e @instances/L3.example.yml -e '{"spe_harden_airlock": true}' </dev/null`.
@@ -557,13 +588,13 @@ jq -r '.results.results[] | [.vars.probe, .response.metadata.state, .success] | 
 - [ ] **Step 4: Hand L4/L5 over.** In `BACKLOG.md`, replace the L4 line with:
 
 ```markdown
-- Spec for the typed GA4GH tool server (`spe_agent_tool_surface: typed`), the canary ladder's L4, and in its plan: `instances/L4.example.yml` (L3 plus that switch), `instances/L5.example.yml` (L4 plus `spe_harden_airlock: true`), the controls suite at L4 and L5 (all probes, unfiltered), and the L4 and L5 agent-suite runs with their matrix columns (paid: ask first) — from `docs/superpowers/specs/2026-10-22-canary-eval-ladder-design/out-of-scope.md` and the canary ladder plan, slice 9; waits for that spec; its requirements are the L4 row of part 01; the airlock is built and checked at L3 + airlock (slice 9 handoff).
+- Spec for the typed GA4GH tool server (`spe_agent_tool_surface: typed`), the canary ladder's L4, and in its plan: `instances/L4.example.yml` (L3 plus that switch), `instances/L5.example.yml` (L4 plus `spe_harden_airlock: true`), the controls suite at L4 and L5 (all probes, unfiltered), and the L4 and L5 agent-suite runs with their matrix columns (de.NBI model calls) — from `docs/superpowers/specs/2026-10-22-canary-eval-ladder-design/out-of-scope.md` and the canary ladder plan, slice 9; waits for that spec; its requirements are the L4 row of part 01; the airlock is built and checked at L3 + airlock (slice 9 handoff).
 ```
 
   and add:
 
 ```markdown
-- The airlock filters only answer text: tool results (`TOOL_CALL_RESULT`) and reasoning events reach the chat UI unredacted, and `spe_harden_airlock` does nothing with `spe_frontend: openwebui` (a preflight check should refuse that pair) — from the canary ladder plan, slice 9; waits because spec part 01 scopes L5 to the answer, and whether these channels count as leaks is a question for the L4 spec or a later level.
+- The airlock filters only answer text: tool results (`TOOL_CALL_RESULT`) and reasoning events reach the chat UI unredacted, and Open WebUI has no airlock at all (`create.yml` refuses `spe_harden_airlock` while `openwebui` is in `spe_frontends`) — from the canary ladder plan, slice 9; waits because spec part 01 scopes L5 to the answer, and whether these channels count as leaks is a question for the L4 spec or a later level.
 ```
 
   In the plan's `README.md`, *PR slices*: row 9's status becomes `merged #N`, N this PR's number

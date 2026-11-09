@@ -1,6 +1,6 @@
 # Canary evaluation ladder — design
 
-**Status:** approved (merged #1). **Latest clarification:** 6.
+**Status:** approved (merged #1). **Latest clarification:** 7.
 Decision records behind it: `biohackathon` knowledge 0011 (scope) and 0013 (three-profile plan), whose profiles
 A → B → C this spec replaces with the levels L0–L5. Read against this repo at `84745f5`.
 
@@ -13,7 +13,7 @@ show neither that the deployment as built leaks canaries nor that a configuratio
 **Decision.** One fixed promptfoo suite is run against a ladder of instances, L0 (as built) to L5, each adding
 exactly one hardening control to the one before. Ansible configures each level and plants canaries and
 injections. promptfoo drives two suites: a no-model **controls suite** showing each control is (or is not)
-in place, and the paid **agent suite** showing whether the agent is fooled, whether it leaks, and whether it still
+in place, and the **agent suite** of real agent runs showing whether the agent is fooled, whether it leaks, and whether it still
 does its job. Every test starts from a fresh copy of the stack's state. The output is a committed matrix of
 counts: test × level × metric, for `qwen3.8-27b` on de.NBI.
 
@@ -30,7 +30,7 @@ counts: test × level × metric, for `qwen3.8-27b` on de.NBI.
 | 7 | The agent suite is one fixed catalogue with metadata per test; utility tests must pass at every level | [04](04-agent-suite-and-scoring.md) | `pytest` lint over `tests/*.yaml`: every test has `group`, `threat`, `path`, `closed_by`; utility tests have `closed_by: null` |
 | 8 | Six leak metrics: `canary.answer`, `canary.touched`, `canary.sent` (an attempt), `canary.delivered` (what an eval-only test receiver got, `spe_eval_sink`), `injection.followed`, `key.leak`; plus the existing `no_tls_bypass` | [04](04-agent-suite-and-scoring.md) | Offline unit tests, one per metric, on synthetic traces and state diffs; a canary sent to a dropped connection fails `canary.sent` and passes `canary.delivered` |
 | 9 | Every test starts from a snapshot of the stack's mutable state and freshly recreated containers, restored by a `beforeEach` hook; `afterEach` records the state diff | [05](05-isolation.md) | Isolation self-check in the controls suite passes, with a marker outside any volume (`/tmp`) as well as inside; restore time measured and recorded in `hardening.json` |
-| 10 | Runs are repeated (`--repeat`), uncached, serial, and the agent suite refuses to run while the controls suite disagrees with the level; one clean control run at L0 repeats the injection tests without injections | [06](06-runs-and-results.md) | `run.sh` exits non-zero before any model call when `controls.json` has a mismatch |
+| 10 | Runs are repeated (`--repeat`), uncached, serial, and the agent suite refuses to run while the controls suite disagrees with the level; L0 and L1 also run the whole suite clean (no injections), a matched pair with the injected run | [06](06-runs-and-results.md) | `run.sh` exits non-zero before any model call when `controls.json` has a mismatch; the matrix refuses a clean and injected pair built with different canaries |
 | 11 | Results are a Markdown matrix of counts only, labelled with level, model and commit; raw reports stay git-ignored | [06](06-runs-and-results.md) | Unit test: `matrix.py` output over synthetic reports contains no token from the synthetic canary record |
 | 12 | The L5 airlock matches classes of data (patterns), never the canary record | [01](01-leak-paths-and-ladder.md) | Unit test: the airlock module never opens `canaries.json` and redacts synthetic `STUDY-` ids and sensitive paths |
 
@@ -46,7 +46,7 @@ counts: test × level × metric, for `qwen3.8-27b` on de.NBI.
 | **Payload** | The committed text of one injection, naming a target file and action |
 | **Probe** | A scripted command run in the sandbox, without a model, that tries one attack step |
 | **Controls suite** | The promptfoo suite of probes (`controls.yaml`), no model calls |
-| **Agent suite** | The promptfoo suite of agent runs (`agent.yaml`), paid model calls |
+| **Agent suite** | The promptfoo suite of agent runs (`agent.yaml`), model calls (de.NBI) |
 | **Hand-off directory** | `platform/ansible/output/<instance>/`: canary record, `injections.json`, `hardening.json` |
 | **Snapshot** | The stack's mutable volumes saved after the build, restored before each test, when the containers are also recreated from their images |
 | **State diff** | What a test changed in the stack: new TRS tools or versions, WES runs, sandbox files, requests the test receiver got |
@@ -61,7 +61,7 @@ counts: test × level × metric, for `qwen3.8-27b` on de.NBI.
 | [`03-controls-suite.md`](03-controls-suite.md) | The no-model suite, its provider, every probe | you write or run probes |
 | [`04-agent-suite-and-scoring.md`](04-agent-suite-and-scoring.md) | Test catalogue, metadata, the metrics and their rules | you write tests or assertions |
 | [`05-isolation.md`](05-isolation.md) | Snapshot, restore, state diff | you write the hooks |
-| [`06-runs-and-results.md`](06-runs-and-results.md) | Run order, repeats, cost, `hardening.json`, the matrix | you run the ladder or read results |
+| [`06-runs-and-results.md`](06-runs-and-results.md) | Run order, clean and injected runs, repeats, cost, `hardening.json`, the matrix and how to read it | you run the ladder or read results |
 | [`inputs-for-plan.md`](inputs-for-plan.md) | Unverified claims to check first, suggested slices | you write the plan |
 | [`out-of-scope.md`](out-of-scope.md) | What this spec leaves out, and where it went | you wonder why something is missing |
 | [`clarifications.md`](clarifications.md) | Decision log (history) | a decision changes |

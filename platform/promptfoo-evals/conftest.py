@@ -100,7 +100,7 @@ def hardening(instance: str = "ladder-l0", level: int = 0, **overrides) -> dict:
 def hosts(instance: str = "ladder-l0", **overrides) -> dict:
     record = {"instance": instance, "server": f"{instance}-api", "api_host": "10.0.0.5", "floating_ip": "",
               "ssh_user": "ubuntu", "provision": "existing", "ssh_target": "denbi-vm", "ssh_key": "",
-              "ssh_args": "-F /home/op/.ssh/config", "frontend": "agui",
+              "ssh_args": "-F /home/op/.ssh/config", "frontends": ["agui"],
               "agent_url": "http://127.0.0.1:8100/agent", "webui_auth": True}
     record.update(overrides)
     return record

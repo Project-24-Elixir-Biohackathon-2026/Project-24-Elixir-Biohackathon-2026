@@ -19,6 +19,6 @@ Each is a task's first step; a claim that turns out false changes the part named
 1. Scoring offline: the metrics, `probe_state`, `matrix.py`, the catalogue lint, with their unit tests. No instance.
 2. Isolation: snapshot, restore, state diff, the hooks; measure the restore time.
 3. Controls suite: the provider and the L0 probes, `e2e-exploit` included; `hardening.json`; `run.sh`.
-4. Injections ([02](02-injections.md)) and the agent catalogue; the first L0 ladder run (paid: user's OK).
+4. Injections ([02](02-injections.md)) and the agent catalogue; the first L0 ladder run (de.NBI model calls).
 5. L1. 6. L2. 7. L3: each its switch, its instance example, its probes passing, the ladder run for that level.
 8. L5's airlock (L4 comes from its own spec; the L5 run waits for it).

@@ -63,7 +63,17 @@ def test_read_hosts_quoting(tmp_path):
     assert record["quote"] == 'say "hi"'
 
 
-@pytest.mark.parametrize("text", ["a:\n  b: c\n", "- a\n", "a: [1, 2]\n", "a: 'open\n", "novalue\n"])
+def test_read_hosts_reads_a_list_of_scalars(tmp_path):
+    # The handoff role writes spe_frontends as a block list, and an empty list as [] (to_nice_yaml).
+    write_hosts(tmp_path, hosts(frontends=["agui", "openwebui"], none=[]))
+    record = handoff.read_hosts(tmp_path)
+    assert record["frontends"] == ["agui", "openwebui"]
+    assert record["none"] == []
+    assert record["instance"] == "ladder-l0"
+
+
+@pytest.mark.parametrize("text", ["a:\n  b: c\n", "- a\n", "a: [1, 2]\n", "a: 'open\n", "novalue\n",
+                                  "a: b\n- c\n", "a:\n- [1]\n", "a:\n-   - b\n"])
 def test_read_hosts_rejects_what_it_cannot_parse(tmp_path, text):
     (tmp_path / "hosts.yml").write_text(text)
     with pytest.raises(handoff.ConfigError, match="hosts.yml"):

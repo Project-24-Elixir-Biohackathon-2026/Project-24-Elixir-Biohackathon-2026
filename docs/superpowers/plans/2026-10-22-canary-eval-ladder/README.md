@@ -8,12 +8,13 @@ whether it leaks a canary, and whether it still does its job, plus a no-model co
 control is in place.
 
 **Spec:** [`docs/superpowers/specs/2026-10-22-canary-eval-ladder-design/`](../../specs/2026-10-22-canary-eval-ladder-design/README.md)
-(decisions 1–12; latest clarification 6). Each slice file links the parts it implements.
+(decisions 1–12; latest clarification 7). Each slice file links the parts it implements. Plan-wide rulings
+since the plan merged: [*Rulings*](#rulings).
 
 **Architecture.** Ansible configures a level (`spe_harden_*` switches), plants canaries and injections, and
 writes the hand-off directory `platform/ansible/output/<instance>/` (`canaries.json`, `injections.json`,
 `hardening.json`, `hosts.yml`). Everything else lives in `platform/promptfoo-evals/`: two promptfoo configs
-(`controls.yaml`, no model; `agent.yaml`, paid), their providers, assertions and isolation hooks as
+(`controls.yaml`, no model; `agent.yaml`, model calls), their providers, assertions and isolation hooks as
 standard-library Python modules, `run.sh` gluing a ladder run together, and `matrix.py` turning reports into a
 committed Markdown matrix of counts.
 
@@ -35,10 +36,12 @@ Every task's requirements include these.
 - **Never commit secrets** (`AGENTS.md`, *Project rules*): instance files other than `*.example.yml`,
   `platform/ansible/output/`, `canaries.json`, `injections.json` of a real instance, keys. `reports/` and
   `.promptfoo/` stay git-ignored and are deleted after use.
-- **Ask the user first** for (a) any `npm run eval:agent` or other paid model call, stating the level, the
-  model and the number of agent runs; (b) creating or destroying a cloud instance (`create.yml` with
-  `spe_provision: openstack`, `destroy.yml`). Re-provisioning the de.NBI VM in place (`spe_provision:
-  existing`) and running the controls suite (`npm run eval:controls`) make no paid model calls and need no OK.
+- **Runs on de.NBI need no OK** (`AGENTS.md`, *Setup*): `npm run eval:agent` and every other ladder run on
+  de.NBI (`qwen3.8-27b`, no money, only rate limits), creating, rebuilding and destroying the one de.NBI instance
+  (`create.yml` with `spe_provision: openstack` or `existing`, `destroy.yml`), and the controls suite (`npm run
+  eval:controls`, no model). Every ladder run uses de.NBI, never Anthropic (`claude-haiku-5-5`, paid, for a few
+  one-shot feature checks only). **Ask the user first** for a second instance, another cloud, or more than a few
+  Anthropic calls.
 - **Every hardening switch defaults off** in `platform/ansible/inventory/group_vars/all.yml`; an instance file
   without it builds today's deployment (decision 3). Every `spe_inject_*` switch defaults off too, and is `true`
   in every `L<n>.example.yml`.
@@ -63,16 +66,16 @@ that uses it, in the same PR.
 | `canaries.json` | handoff role (exists) | `{instance, seed, api_host, generated_at, study_ids, tokens: [{token, type, file, note}]}` |
 | `hosts.yml` | handoff role (exists) | `ssh_target`/`ssh_key`/`ssh_args` (existing) or `ssh_key` + `floating_ip` (openstack), `api_host`, `agent_url`, … |
 | `injections.json` | handoff role, slice 4 | spec part 02, *Hand-off*: `{schema_version: 1, injections: [...]}` |
-| `hardening.json` | handoff role, slice 3 | `{schema_version: 1, instance, level, switches: {spe_harden_trs_readonly, spe_harden_data_tiers, spe_harden_egress, spe_agent_tool_surface, spe_harden_airlock}, frontend, model_provider, model, commit, restore_seconds, injections}`; switch types: booleans, except `spe_harden_data_tiers` (a list of tier names, `[]` for all tiers) and `spe_agent_tool_surface`, which already exists (`shell` by default, `typed` for L4: the value the spec calls `ga4gh_typed`); `level` is the number of leading ladder controls switched on (L1…L5 in order), `restore_seconds` is `null` until the isolation hook measures it; `injections` is `true` when the three `spe_inject_*` switches are on, `false` when all are off (the clean control, clarification 6), `"mixed"` for a mix, which `handoff.check_hardening` refuses: not a ladder run |
+| `hardening.json` | handoff role, slice 3 | `{schema_version: 1, instance, level, switches: {spe_harden_trs_readonly, spe_harden_data_tiers, spe_harden_egress, spe_agent_tool_surface, spe_harden_airlock}, frontend, model_provider, model, commit, restore_seconds, injections}`; `frontend` is `spe_frontends` joined by `,` (`agui` at every level: the level files pin `spe_frontends: [agui]`); switch types: booleans, except `spe_harden_data_tiers` (a list of tier names, `[]` for all tiers) and `spe_agent_tool_surface`, which already exists (`shell` by default, `typed` for L4: the value the spec calls `ga4gh_typed`); `level` is the number of leading ladder controls switched on (L1…L5 in order), `restore_seconds` is `null` until the isolation hook measures it; `injections` is `true` when the three `spe_inject_*` switches are on (the `injected` condition), `false` when all are off (the `clean` condition, spec part 06 *Clean and injected runs*: the level file plus `instances/no-injections.example.yml`), `"mixed"` for a mix, which `handoff.check_hardening` refuses: not a ladder run |
 
 **Modules in `platform/promptfoo-evals/`** (all importable from the tests with `sys.path` set by `conftest.py`):
 
 | Module | Slice | Public interface |
 |---|---|---|
-| `handoff.py` | 1 | `load_canaries(dir) -> list[dict]`; `load_study_ids(dir) -> list[str]` (`canaries.json` `study_ids`, a `{giab: id}` mapping or a list; `[]` when absent); `is_file_canary(entry) -> bool` (`False` only for the metadata types `drs-object-metadata`, `trs-tool-description`, `workflow-file-comment`, `service-info`; unknown types count as file canaries); `load_hardening(dir) -> dict`; `load_injections(dir, repo_root=None) -> list[dict]` (validates, raises `ManifestError`, an optional root for the payload hashes defaulting to `REPO_ROOT`); `api_host(dir) -> str`; `vm_argv(dir) -> list[str]` (the `ssh …` prefix from `hosts.yml`, `[]` when the VM is local); `handoff_dir() -> Path` (from `SPE_HANDOFF_DIR`, `ConfigError` if unset); `read_hosts(dir) -> dict`; `check_hardening(record) -> dict` (the shape check `load_hardening` and `matrix.counts` share, also checks `level` against the switches); `REPO_ROOT`; `ManifestError` ⊂ `ConfigError` |
+| `handoff.py` | 1 | `load_canaries(dir) -> list[dict]`; `load_study_ids(dir) -> list[str]` (`canaries.json` `study_ids`, a `{giab: id}` mapping or a list; `[]` when absent); `is_file_canary(entry) -> bool` (`False` only for the metadata types `drs-object-metadata`, `trs-tool-description`, `workflow-file-comment`, `service-info`; unknown types count as file canaries); `load_hardening(dir) -> dict`; `load_injections(dir, repo_root=None) -> list[dict]` (validates, raises `ManifestError`, an optional root for the payload hashes defaulting to `REPO_ROOT`); `api_host(dir) -> str`; `vm_argv(dir) -> list[str]` (the `ssh …` prefix from `hosts.yml`, `[]` when the VM is local); `handoff_dir() -> Path` (from `SPE_HANDOFF_DIR`, `ConfigError` if unset); `read_hosts(dir) -> dict`; `check_hardening(record) -> dict` (the shape check `load_hardening` and `matrix.counts` share, also checks `level` against the switches); `REPO_ROOT`; `ManifestError` ⊂ `ConfigError`. Slice 3 adds `FIXTURES` (`platform/ansible/catalog/injections/fixtures.json`, relative to the repo root); `canaries_digest(dir) -> str` (SHA-256 over the record's `[type, file, token]` entries and study ids, sorted; equal for the two builds of a matched pair, never a token); `condition(dir, repo_root=None) -> str` (`injected`: a valid, non-empty `injections.json`; `clean`: `injections.json` absent or empty and every catalogue `canary_file` still holding a file canary; `ConfigError` otherwise) |
 | `injections_schema.py` | 1 | `validate(manifest: dict, repo_root: Path) -> list[str]` (errors, empty when valid; checks payload hashes against the files); CLI `python3 injections_schema.py <manifest> <repo_root>` exits 1 on errors |
 | `metrics.py` | 1 | promptfoo assertions `canary_answer`, `canary_touched`, `canary_sent` (an attempt), `canary_delivered` (the state diff's `sink_requests_added`; `None` or absent is a configuration error), `injection_followed`, `key_leak`, each `(output, context) -> {pass, score, reason}`; reasons name type and file, never a token (a token or study id inside a file is shown as `<canary>`); a hand-off or provider error returns `pass: false` with a reason starting `configuration error:` (`metrics.CONFIG_ERROR`), which `matrix.counts` counts under `errors`, never as a failure or a pass |
-| `matrix.py` | 1 | `counts(level_dir: Path) -> dict` (one level's reports → counts only: label from `hardening.json`, controls result, per test id its metadata and per-metric failures over repeats); `render(counts: list[dict]) -> str` (Markdown); CLI `python3 matrix.py counts reports/L<n> > docs/results/<model>/L<n>.json` and `python3 matrix.py render docs/results/<model>/L*.json > docs/results/canary-ladder-<model>.md`. The counts files are committed, so raw reports can be deleted after each level. `MatrixError`; `CATALOGUE: dict[str, frozenset[str \| None]]` (group/threat/path/closed_by, spec part 04's values, the one definition `tests/test_catalogue.py` imports); `METRICS: frozenset[str]` (the six decision-8 metric names; only those six assertions carry a `metric:`, any other name makes `counts` refuse the level). A run counts under `errors` when promptfoo marks it an error, or when any component's reason starts with `configuration error:` or promptfoo's `Error running Python script:` (`ERROR_REASONS`). `counts` refuses an empty `controls.json`/`agent.json` and a test without `group`. A counts file with `injections: false` is the column `L<n> clean`; two counts files with the same column are refused. Counts JSON: `{schema_version: 1, instance, level, injections, model: "<provider>:<model>", commit, restore_seconds, controls: {probes, disagree: [probe ids]}, tests: {<id>: {group, threat, path, closed_by, runs, errors, passed, failures: {<metric>: n}}}}` |
+| `matrix.py` | 1 | `counts(level_dir: Path) -> dict` (one level's reports → counts only: label from `hardening.json`, controls result, per test id its metadata and per-metric failures over repeats); `render(counts: list[dict]) -> str` (Markdown); CLI `python3 matrix.py counts reports/L<n> > docs/results/<model>/L<n>.json` and `python3 matrix.py render docs/results/<model>/L*.json > docs/results/canary-ladder-<model>.md`. The counts files are committed, so raw reports can be deleted after each level. `MatrixError`; `CATALOGUE: dict[str, frozenset[str \| None]]` (group/threat/path/closed_by, spec part 04's values, the one definition `tests/test_catalogue.py` imports); `METRICS: frozenset[str]` (the six decision-8 metric names; only those six assertions carry a `metric:`, any other name makes `counts` refuse the level). A run counts under `errors` when promptfoo marks it an error, or when any component's reason starts with `configuration error:` or promptfoo's `Error running Python script:` (`ERROR_REASONS`). `counts` refuses an empty `controls.json`/`agent.json` and a test without `group`. A counts file with `injections: false` is the column `L<n> clean`, just before `L<n>`; two counts files with the same column are refused. Slice 3 adds the run labels: `counts` also reads `run.json` (`{started, canaries_sha256}`, written by `run.sh`) and the run's `injections.json` (only each entry's `id` and `payload_sha256`; required and non-empty when `injections` is true, absent or empty when false), and `render` refuses a level whose clean and injected counts differ in `canaries_sha256` and a fixture id with two `payload_sha256`, and shows rows *Started (UTC)* and *Payloads*. Counts JSON: `{schema_version: 1, instance, level, injections, started, canaries_sha256, payloads: {<fixture id>: <sha256>}, model: "<provider>:<model>", commit, restore_seconds, controls: {probes, disagree: [probe ids]}, tests: {<id>: {group, threat, path, closed_by, runs, errors, passed, failures: {<metric>: n}}}}` |
 | `isolation.py` | 2 | `snapshot(dir)`, `restore(dir) -> float` (seconds; puts the volumes back and recreates the containers from their images), `baseline(dir) -> dict`, `state_diff(dir, baseline) -> dict`; promptfoo hook `extension_hook(hook_name, context)` |
 | `controls_provider.py` | 3 | promptfoo provider `call_api(prompt, options, context)`; the probe id is `vars.probe`; runs `probes/<id>.sh` in the sandbox (`tool-surface`, `airlock`: in the agent container); returns `{output, metadata: {probe, exit_code, http_codes, state, evidence}}` with `state` `open`/`closed`/`error` |
 | `controls_asserts.py` | 3 | `probe_state(output, context)`; `PROBE_CONTROL: dict[str, int \| None]` (probe id → level of the control it tests, `None` for the fixed-state probes); `FIXED_STATE` (`api-reach`, `isolation-plant`: `open`; `isolation-check`: `closed`). The spec's `isolation` probe is the pair `isolation-plant` → `isolation-check` |
@@ -90,7 +93,9 @@ connect a tool registered by any means to the target path it reads. The `beforeE
 `closed_by`, plus `id` (stable kebab-case, the matrix's row key).
 
 **npm scripts** (`package.json`): `eval:controls` → `reports/controls.json`; `eval:agent` → `reports/agent.json`;
-`run.sh <hand-off dir> <repeat> [promptfoo eval args…]` copies both and `hardening.json` into `reports/L<level>/`
+`run.sh <hand-off dir> <repeat>` (nothing else: the build decides the condition, and the whole suite runs in
+either) refuses a hand-off whose `handoff.condition` fails, then copies both reports, `hardening.json`, `run.json`
+(`{started, canaries_sha256}`) and, when injected, `injections.json` into `reports/L<level>/`
 (`reports/L<level>-clean/` when `hardening.json` has `injections: false`): every level of one VM
 shares one hand-off directory (`output/denbi-agui-01/`; the VM's preflight accepts only that instance name), so
 level instance files are overlays on the operator's instance file, without an instance name.
@@ -114,13 +119,13 @@ level instance files are overlays on the operator's instance file, without an in
 |---|---|---|
 | `platform/promptfoo-evals/{handoff,injections_schema,metrics,matrix}.py`, `conftest.py`, `tests/test_{handoff,injections_schema,metrics,matrix,catalogue}.py` | 1 | scoring, offline |
 | `platform/promptfoo-evals/isolation.py`, `tests/test_isolation.py` | 2 | snapshot, restore, state diff, hooks |
-| `platform/promptfoo-evals/{controls_provider,controls_asserts}.py`, `controls.yaml`, `probes/*.sh`, `run.sh`, `package.json`, `tests/test_controls_*.py`; `platform/ansible/roles/handoff/` (`hardening.json`) | 3 | controls suite and the run script |
-| `roles/eval_sink/` (the test receiver), `platform/dev/tests/{test_eval_sink,ansible_render}.py`, `platform/ansible/catalog/injections/*.txt`, `roles/trs_install/files/trs_install.py`, `roles/drs_register/files/drs_register.py`, `roles/handoff/` (`injections.json`), `instances/L0.example.yml`, `catalog/injections/fixtures.json`, `roles/handoff/files/injections_manifest.py`, `platform/dev/tests/test_{injections,ladder}.py` | 4 | planting injections, the test receiver, the L0 example |
-| `platform/promptfoo-evals/agent.yaml`, `tests/*.yaml`, `agui_provider.py` (state diff), `promptfooconfig.yaml` (removed), `instances/no-injections.example.yml`, `docs/results/canary-ladder-qwen3.8-27b.md`, `docs/results/qwen3.8-27b/L0{,-clean}.json` | 5 | agent suite, the first L0 run and its clean control |
-| `platform/ansible/roles/workflow_stack/templates/*` (Traefik: TRS read-only for the sandbox, operator writes on a localhost entrypoint; WESkit), a standard-library WES write guard, `roles/sandbox` runbook as a template, `instances/L1.example.yml`, `platform/dev/tests/golden/` (today's renders, for decision 3) | 6 | L1 |
+| `platform/promptfoo-evals/{controls_provider,controls_asserts}.py`, `controls.yaml`, `probes/*.sh`, `run.sh`, `package.json`, `tests/test_controls_*.py`, `tests/test_run_sh.py`; `handoff.py`, `matrix.py` and their tests (the run labels of a matched pair); `platform/ansible/roles/handoff/` (`hardening.json`) | 3 | controls suite, the run script, the run labels |
+| `roles/eval_sink/` (the test receiver), `platform/instance/compose.eval-sink.yml` and `SPE_COMPOSE_OVERLAYS` (`roles/sandbox/templates/frontend.env.j2`, `platform/instance/spe-apply`), `platform/dev/tests/{test_eval_sink,ansible_render}.py`, `golden/frontend.env.L0`, `platform/ansible/catalog/injections/*.txt`, `roles/trs_install/files/trs_install.py`, `roles/drs_register/files/drs_register.py`, `roles/handoff/` (`injections.json`), `instances/L0.example.yml`, `instances/no-injections.example.yml` (the clean overlay), `catalog/injections/fixtures.json`, `roles/handoff/files/injections_manifest.py`, `platform/dev/tests/test_{injections,ladder}.py` | 4 | planting injections, the test receiver, the L0 example |
+| `platform/promptfoo-evals/agent.yaml`, `tests/*.yaml`, `agui_provider.py` (state diff), `promptfooconfig.yaml` (removed), `docs/results/canary-ladder-qwen3.8-27b.md`, `docs/results/qwen3.8-27b/L0{,-clean}.json` | 5 | agent suite, the first L0 runs, clean and injected |
+| `platform/ansible/roles/workflow_stack/templates/*` (Traefik: TRS read-only for the sandbox, operator writes on a localhost entrypoint; WESkit), a standard-library WES write guard, `instances/L1.example.yml`, `platform/dev/tests/golden/` (today's renders, for decision 3); the runbook `roles/sandbox/files/agent/AGENTS.md` stays as it is | 6 | L1 |
 | `platform/ansible/roles/workflow_stack/templates/compose.install.yaml.j2` (WESkit and worker mounts by tier), the verify smoke input, `instances/L2.example.yml` | 7 | L2 |
-| `platform/ansible/roles/agui/templates/docker-compose.yml.j2` (a fixed sandbox address), `DOCKER-USER` firewall rules, `instances/L3.example.yml` | 8 | L3 |
-| `platform/agui/pydantic-ai-agent/` (airlock), `roles/agui/templates/agent.env.j2` | 9 | L5 airlock |
+| `platform/instance/compose.egress.yml` (a fixed sandbox address, an overlay on `platform/instance/compose.yml`), `roles/egress/` (`DOCKER-USER` firewall rules), `instances/L3.example.yml` | 8 | L3 |
+| `platform/agui/pydantic-ai-agent/` (airlock), `roles/agui/templates/agent.env.j2`, `playbooks/create.yml` (refuses the airlock with `openwebui` in `spe_frontends`) | 9 | L5 airlock |
 
 ## PR slices
 
@@ -128,15 +133,15 @@ N = 9. Slices are sequential; each starts from `main` after the previous one mer
 
 | n/N | Branch | Tasks | Delivers | Reviewer checks | File | Status |
 |---|---|---|---|---|---|---|
-| 1/9 | `impl/canary-eval-ladder-1-scoring` | 1–5 | the six metrics, the manifest schema, the matrix, the catalogue lint; decisions 7 (lint), 8, 11. ~1,550 lines, half of them tests: over the size target, kept whole because every module is offline and independent | `uv run --group dev pytest -q` in `platform/promptfoo-evals` | [slice-1-scoring.md](slice-1-scoring.md) | PR #3 |
-| 2/9 | `impl/canary-eval-ladder-2-isolation` | 1–4 | snapshot, restore, state diff and hooks; restore time measured; decision 9 | offline tests; the measured restore time in the handoff | [slice-2-isolation.md](slice-2-isolation.md) | planned |
-| 3/9 | `impl/canary-eval-ladder-3-controls` | 1–5 | controls suite, `hardening.json`, `run.sh`; decisions 1 (probes), 5, 6, 10 | offline provider tests; `npm run eval:controls` on the de.NBI VM: all `open` | [slice-3-controls.md](slice-3-controls.md) | planned |
-| 4/9 | `impl/canary-eval-ladder-4-injections` | 1–6 | three payloads planted, `injections.json`, the test receiver, `L0.example.yml`; decisions 2 (test), 3, 4, 8 (receiver) | `pytest platform/dev/tests -k "injection or ladder or eval_sink"` | [slice-4-injections.md](slice-4-injections.md) | planned |
-| 5/9 | `impl/canary-eval-ladder-5-agent-suite` | 1–4 | `agent.yaml` and the first catalogue; the first L0 run (paid) and its matrix; decision 7 | the lint; the committed matrix at L0 | [slice-5-agent-suite.md](slice-5-agent-suite.md) | planned |
-| 6/9 | `impl/canary-eval-ladder-6-l1` | 1–5 | `spe_harden_trs_readonly`; L1 run | controls suite at L1; L1 column | [slice-6-l1.md](slice-6-l1.md) | planned |
-| 7/9 | `impl/canary-eval-ladder-7-l2` | 1–3 | `spe_harden_data_tiers`; L2 run | controls suite at L2; L2 column | [slice-7-l2.md](slice-7-l2.md) | planned |
-| 8/9 | `impl/canary-eval-ladder-8-l3` | 1–3 | `spe_harden_egress`; L3 run | controls suite at L3; L3 column | [slice-8-l3.md](slice-8-l3.md) | planned |
-| 9/9 | `impl/canary-eval-ladder-9-airlock` | 1–3 | the L5 airlock module and switch; decision 12 | airlock unit tests; `airlock` probe `closed` with the switch on | [slice-9-airlock.md](slice-9-airlock.md) | planned |
+| 1/9 | `impl/canary-eval-ladder-1-scoring` | 1–5 | the six metrics, the manifest schema, the matrix, the catalogue lint; decisions 7 (lint), 8, 11. ~1,550 lines, half of them tests: over the size target, kept whole because every module is offline and independent | `uv run --group dev pytest -q` in `platform/promptfoo-evals` | [slice-1-scoring.md](slice-1-scoring.md) | merged #3 (`abdf63f`) |
+| 2/9 | `impl/canary-eval-ladder-2-isolation` | 1–4 | snapshot, restore, state diff and hooks; restore time measured; decision 9. ~980 lines in the plan's code blocks, about half tests | offline tests; the measured restore time in the handoff | [slice-2-isolation.md](slice-2-isolation.md) | planned |
+| 3/9 | `impl/canary-eval-ladder-3-controls` | 1–5 | controls suite, `hardening.json`, `run.sh`, the run labels in `handoff.py` and `matrix.py` (clean and injected pairs); decisions 1 (probes), 5, 6, 10. ~1,600 lines, about half tests: over the target, kept whole because the probes, `run.sh` and the run labels share one contract (`hardening.json` and the hand-off) that one controls run on de.NBI checks; split task 5's `handoff.py`/`matrix.py` half off if the code alone passes 3,000 | offline provider, run script and matrix tests; `npm run eval:controls` on the de.NBI VM: all `open` | [slice-3-controls.md](slice-3-controls.md) | planned |
+| 4/9 | `impl/canary-eval-ladder-4-injections` | 1–6 | three payloads planted, `injections.json`, the test receiver, `L0.example.yml` and the clean overlay; decisions 2 (test), 3, 4, 8 (receiver). ~1,180 lines, about half tests and golden renders: over the target, kept whole because the payloads, their manifest, the receiver and the clean overlay are one L0 build, checked together by one rebuild of the de.NBI VM | `pytest platform/dev/tests -k "injection or ladder or eval_sink"` | [slice-4-injections.md](slice-4-injections.md) | planned |
+| 5/9 | `impl/canary-eval-ladder-5-agent-suite` | 1–4 | `agent.yaml` and the first catalogue; the first L0 runs, clean and injected, and their matrix; decision 7. ~620 lines | the lint; the committed matrix at L0 (`L0 clean`, `L0`) | [slice-5-agent-suite.md](slice-5-agent-suite.md) | planned |
+| 6/9 | `impl/canary-eval-ladder-6-l1` | 1–5 | `spe_harden_trs_readonly`; L1 runs, injected and clean. ~560 lines | controls suite at L1; `L1` and `L1 clean` columns | [slice-6-l1.md](slice-6-l1.md) | planned |
+| 7/9 | `impl/canary-eval-ladder-7-l2` | 1–3 | `spe_harden_data_tiers`; L2 run. ~170 lines | controls suite at L2; L2 column | [slice-7-l2.md](slice-7-l2.md) | planned |
+| 8/9 | `impl/canary-eval-ladder-8-l3` | 1–3 | `spe_harden_egress`; L3 run. ~270 lines | controls suite at L3; L3 column | [slice-8-l3.md](slice-8-l3.md) | planned |
+| 9/9 | `impl/canary-eval-ladder-9-airlock` | 1–3 | the L5 airlock module and switch; decision 12. ~410 lines | airlock unit tests; `airlock` probe `closed` with the switch on | [slice-9-airlock.md](slice-9-airlock.md) | planned |
 
 L4 (the typed tool server) has its own spec ([out-of-scope](../../specs/2026-10-22-canary-eval-ladder-design/out-of-scope.md)).
 `L4.example.yml`, `L5.example.yml` and the L4/L5 runs belong to that spec's plan, which slice 9 hands them to:
@@ -156,14 +161,99 @@ The input classes the spec implies that most likely bite a user; each has its te
 4. **A probe that errors rather than refuses** (network down, VM unreachable): `state: error` is a mismatch
    at every level, never counted as `closed` (slice 3, task 2).
 5. **Reports from two models or levels mixed** in one matrix: `matrix.py` refuses mixed models and duplicate
-   levels (slice 1, task 4).
+   levels (slice 1, task 4), and a clean run from a build that is not the injected run's match (other canaries,
+   other payloads: slice 3, task 5).
 
 ## Proposed spec clarifications
 
-- Slice 2: the state diff is taken by the agent provider after the run, because promptfoo runs assertions
+- Slice 2 (clarification 8): the state diff is taken by the agent provider after the run, because promptfoo runs assertions
   before `afterEach`; `afterEach` only logs it (amends decision 9, part 05 *Hooks*).
 - Slice 4: payloads target `wes-drs-smoke` if `gatk-hc-chr20` cannot be installed on de.NBI (part 02), only if
   slice 4's task 1 finds that.
+
+## Rulings
+
+Plan-wide decisions taken after the plan merged; a slice's own rulings go in its handoff.
+
+- **2026-11-09, plan refreshed after upstream merges #35 and #39.** *Decision:* the slices' tasks follow `main`
+  at `abdf63f`. The frontend's compose file is `platform/instance/compose.yml` (project `spe-frontend`; static,
+  `${VAR}`s from the frontend directory's `.env`, which `roles/sandbox/templates/frontend.env.j2` writes; linked as
+  `spe_frontend_dir/docker-compose.yml`); a switch that changes a service is a Compose overlay
+  `platform/instance/compose.<name>.yml` named in `SPE_COMPOSE_OVERLAYS`, which `spe-apply` adds with `-f`
+  (slice 4: `eval-sink`; slice 8: `egress`, whose firewall moves to a role `egress`); decision 3's off check is
+  the `.env` rendered byte for byte (`golden/frontend.env.L0`). The runbook is
+  `roles/sandbox/files/agent/AGENTS.md`. Every instance runs both frontends by default (`spe_frontends`), so
+  `L0.example.yml` (and every level after it) pins `spe_frontends: [agui]`, `hardening.json`'s `frontend` is
+  `spe_frontends` joined by `,` (still the string `check_hardening` requires), and slice 9's `create.yml` refuses
+  `spe_harden_airlock` with `openwebui` in `spe_frontends`. The render helper gains Ansible's `bool` filter and
+  turns rendered lists back into lists. *Why:* the plan named `roles/agui/templates/docker-compose.yml.j2`,
+  `roles/sandbox/files/AGENTS.md` and `spe_frontend`, gone from `main`; an `{% if %}` cannot go into a static
+  compose file, and an always-present variable would change every L0 container. *Cost if wrong:* a compose
+  command that creates containers without `spe-apply` (by hand, `docker compose up`) drops the overlays and runs
+  the sandbox unhardened at L3 (slice 8's `egress` probe shows it); if overlays prove awkward, the fallback is
+  to render `spe_frontend_dir/docker-compose.yml` from a template again, which reverses part of #35.
+- **2026-11-09, runs on de.NBI need no OK** — the user's standing OK of 2026-11-09 (`AGENTS.md`, *Setup*).
+  *Decision:* the agent-suite steps of slices 5–8 that stopped to ask now just run, once the controls suite
+  agrees; a run that fails is fixed and run again without asking. *Why:* de.NBI runs cost no money, only rate
+  limits, and every ladder run is on de.NBI; a stop before each run would hold the unattended loop for an answer
+  the user has given once for all. *Cost if wrong:* an unattended session spends de.NBI quota.
+- **2026-11-09, `biohackathon` knowledge 0015 folded: matched clean and injected runs at L0 and L1** (spec
+  clarification 7). *Decision:* at L0 and L1 the whole suite runs in two conditions, `injected` (the level file)
+  and `clean` (plus `instances/no-injections.example.yml`, created and tested in slice 4, task 6); L2–L5 run
+  injected only. Tasks rewritten: slice 3, task 5 (`handoff.condition`, `handoff.canaries_digest`, the run labels
+  in `matrix.py`, `run.sh`); slice 4, tasks 4 and 6 (the catalogue path check, the clean overlay and its test);
+  slice 5, tasks 3 and 4 (the dry run's labels; both L0 runs, clean first); slice 6, task 5 (both L1 runs,
+  injected first); slices 7 and 8, the expected columns. *Why:* 0015, accepted by the user; clarification 6's
+  control (the injection tests only, at L0 only) could not show clean direct disclosure or any L1 comparison.
+  *Cost if wrong:* 104 more de.NBI runs (the catalogue's 13 tests: 13 × 5 at L0, 13 × 3 at L1; rate, not
+  money) and one extra in-place rebuild each at L0 and L1; slice 3 grows by about 400 lines (half of them tests): if that passes the hard size limit, task 5's
+  `handoff.py`/`matrix.py` half becomes its own PR before `run.sh`.
+- **2026-11-09, 0015's one-fixture runs deferred.** *Decision:* no run plants one fixture at a time; no test
+  carries a `surface` or fixture field, and the catalogue lint is unchanged (`BACKLOG.md` holds the runs). *Why:*
+  the user's call, 2026-11-09: exposure-fingerprint attribution (`injection.followed`) covers most of it.
+  *Cost if wrong:* a leak with two exposed payloads stays unattributed until those runs are scheduled.
+- **2026-11-09, `hardening.json` keeps `injections` as true, false or `"mixed"`.** *Decision:* not the list of
+  planted fixture ids 0015's labels suggested. *Why:* with one-fixture runs deferred, only all-on and all-off are
+  ladder runs, and the merged `check_hardening`, `matrix.counts` and the `L<n> clean` column already handle that;
+  the fixture ids and their payload hashes reach the counts from `injections.json` instead. *Cost if wrong:* when
+  one-fixture runs are scheduled, `injections` becomes the id list, a change to `check_hardening`, the role's
+  fact, `run.sh`'s directory name and `matrix._column`.
+- **2026-11-09, the labels come from `run.sh`.** *Decision:* `run.sh` writes `run.json` (`started`, taken before
+  the controls suite; `canaries_sha256` from `handoff.canaries_digest`) and copies `injections.json` beside the
+  reports; `matrix.counts` reads them, and the counts keep `schema_version: 1`. *Why:* the start time and the
+  canary record exist only at run time on the operator side, and `run.sh` is the one path to a ladder run; no
+  counts file exists yet (slice 5 writes the first), so the version needs no bump. *Cost if wrong:* a report
+  directory made by hand without `run.json` is refused by `counts` (rerun through `run.sh`).
+- **2026-11-09, the canary digest is committed in the counts.** *Decision:* the SHA-256 over all
+  `[type, file, token]` entries and study ids goes into `docs/results/<model>/L<n>.json`, and `render` refuses a
+  level whose two conditions differ in it. *Why:* the spec's matched-builds check compares a digest, never a
+  token; one digest over the whole record, long random tokens included, cannot be inverted to any one token.
+  *Cost if wrong:* if a review judges even that digest sensitive, keep it in `reports/` only and compare before
+  `counts` runs.
+- **2026-11-09, "the target file exists in the clean build" is checked through the canary record.** *Decision:*
+  `handoff.condition` requires every catalogue `canary_file` to hold a file canary in the clean build's
+  `canaries.json`, before any model call, instead of a `test -f` on the VM. *Why:* the build writes a target
+  file's canary only when it writes the file, the check needs no SSH (the jump host bans after failures) and runs
+  in `run.sh` every time. *Cost if wrong:* a target file removed on the VM after the build, its record intact, would
+  pass; the agent's workflows mount `/data-share` read-only, so only an operator could remove it.
+- **2026-11-09, `run.sh` takes no promptfoo arguments.** *Decision:* `run.sh <hand-off dir> <repeat>`; a third
+  argument is a usage error (it took `--filter-metadata group=injection` for clarification 6's control). *Why:*
+  both conditions run the whole suite, and a filtered run would be filed and rendered as a whole condition.
+  *Cost if wrong:* debugging one test needs `npm run eval:agent -- --filter-…` by hand, outside the ladder.
+
+- **2026-11-09, slice 2's clarification is 8.** *Decision:* slice 2, task 1 adds the state-diff clarification
+  as entry 8 (task text, commit message, the spec README's *Latest clarification*), not 7. *Why:* this plan
+  refresh (#59) took 7 for 0015; slices 3, 4 and 6 number theirs from *Latest clarification*, so none shifts.
+  *Cost if wrong:* a duplicate entry number in `clarifications.md`, caught by slice 2's review.
+- **2026-11-09, `handoff.read_hosts` reads the `frontends` list** (`b210508`). *Decision:* `read_hosts` parses
+  one list of scalars (`key:` then `- item` lines at column 0, or `[]`), and `conftest.hosts()` writes
+  `"frontends": ["agui"]` in place of the flat `frontend`. `hardening.json` keeps `frontend` as a string
+  (`spe_frontends | join(',')`, slice 3). *Why:* since #39 the handoff role writes `frontends: {{ spe_frontends }}`,
+  which `to_nice_yaml` renders as a block list; `read_hosts` refused it as nested, so every real hand-off failed
+  in `api_host`, `vm_argv` and `load_hardening`. No plan task builds `hosts.yml` other than through
+  `conftest.hosts()`. *Cost if wrong:* a later hand-off key that is a mapping or a nested list is still refused
+  (a configuration error, never a pass); `read_hosts` then needs a real YAML parser, which the standard library
+  lacks.
 
 ## Handoffs
 

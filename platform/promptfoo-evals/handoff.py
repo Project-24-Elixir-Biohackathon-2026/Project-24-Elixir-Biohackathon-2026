@@ -4,8 +4,9 @@ A missing, malformed or mismatched hand-off file raises ConfigError (ManifestErr
 injections.json): scoring stops with a configuration error, never a pass.
 
 hosts.yml is YAML, written by the handoff role with to_nice_yaml from a flat mapping of string
-and boolean values. read_hosts parses exactly that subset (`key: value` lines, plain, single- or
-double-quoted scalars, true/false/null) and rejects anything nested rather than guessing.
+and boolean values and one list of strings (`frontends`). read_hosts parses exactly that subset
+(`key: value` lines, plain, single- or double-quoted scalars, true/false/null; a key with no value
+followed by `- scalar` lines at column 0, or `[]`) and rejects anything nested rather than guessing.
 """
 from __future__ import annotations
 
@@ -114,16 +115,28 @@ def read_hosts(dir: Path | str) -> dict:
     except OSError as e:
         raise ConfigError(f"cannot read {path}: {e.strerror}") from None
     hosts: dict = {}
+    open_key = None  # a key with no value: the `- item` lines after it are its list
     for n, line in enumerate(text.splitlines(), 1):
         if not line.strip() or line.lstrip().startswith("#"):
             continue
         where = f"hosts.yml line {n}"
+        if line.startswith("- ") and open_key is not None:
+            raw = line[2:].strip()
+            item = None if raw.startswith("- ") else _scalar(raw, where)
+            if item is None:
+                raise ConfigError(f"{where}: a list item must be a scalar")
+            if hosts[open_key] is None:
+                hosts[open_key] = []
+            hosts[open_key].append(item)
+            continue
         if line[0] in " \t-":
             raise ConfigError(f"{where}: nested values are not supported (flat keys only)")
         key, sep, raw = line.partition(":")
         if not sep or not key or (raw and raw[0] != " "):
             raise ConfigError(f"{where}: expected 'key: value'")
-        hosts[key] = _scalar(raw.strip(), where)
+        raw = raw.strip()
+        hosts[key] = [] if raw == "[]" else _scalar(raw, where)
+        open_key = key if raw == "" else None
     return hosts
 
 

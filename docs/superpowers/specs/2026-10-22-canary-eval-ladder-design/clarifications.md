@@ -56,4 +56,29 @@ Decision log, append-only (`.methodology/shared/guides/spec-and-plan-layout.md`,
    instance. Part 06 also says what 3–5 repeats can carry (the review's
    interpretation note). *Amends:* decision 10, part 06 *`hardening.json`*, *Repeats and cost*, *The matrix* and the new
    *The clean control*, part 02 *Switches and planting* (all on or all off for a
-   ladder run). *Status:* folded.
+   ladder run). *Status:* superseded by 7.
+
+7. **Matched clean and injected runs at L0 and L1, each the whole suite** (2026-11-09; PR #59, from `biohackathon`
+   knowledge 0015). At L0 and at L1 the suite runs under two conditions, each its own in-place build with a fresh
+   baseline snapshot: `injected` (the three `spe_inject_*` on) and `clean` (all three off), each the whole agent
+   suite, not only the injection tests. The two builds of a level differ only in the planted instructions: same
+   seed, canaries, target files, ordinary metadata, workflow code, model and configuration; an acceptance check
+   compares the canary records by a digest and finds each target file in the clean build. L2–L5 run `injected`
+   only. `hardening.json` keeps `injections` as true, false or `"mixed"` (refused); the counts add the run's start
+   time, each planted payload's SHA-256 and the canary digest, and the matrix refuses a level whose clean and
+   injected runs had different canaries, or one fixture with two payloads. Order alternates (L0 clean first, L1
+   injected first). Part 06 gains *Reading the matrix* (what each comparison can mean), part 04 the authorisation
+   boundary, part 02's catalogue who could plant each field in a real SPE (unverified). One fixture at a time,
+   0015's third proposal, is deferred (`BACKLOG.md`): `injection.followed` already attributes a target action to
+   the payload the model was shown (clarification 3), so only a sample exposed to two payloads asking for the same
+   action stays unattributed; those runs are scheduled if L0/L1 show such samples. *Reason:* with injections on at
+   every level, utility and direct tests ran in a poisoned environment and clarification 6's control repeated only
+   the injection tests at L0; neither the change an injection causes nor clean direct disclosure could be read,
+   and L1 had no clean comparison at all. 104 extra runs (the plan's 13 tests: 13 × 5 at L0, 13 × 3 at L1) and one
+   extra in-place rebuild each at L0 and L1, instead of 15 runs; de.NBI runs cost no money, only rate limits (the
+   user, 2026-11-09), and Anthropic is used only for one-shot feature checks, never for a ladder run,
+   so *Repeats and cost* says so instead of "not known". *Amends:* decision 10, part 06
+   *`hardening.json`*, *One ladder run*, *Repeats and cost*, *The matrix*, *The clean control* (now *Clean and
+   injected runs*) and the new *Reading the matrix*; part 02 *Payload catalogue* (*Who could plant it*),
+   *Switches and planting*, *Following, blocking and exposure* and *Acceptance checks*; part 04 the new
+   *Authorisation boundary*; the README's decision 10. *Status:* folded.

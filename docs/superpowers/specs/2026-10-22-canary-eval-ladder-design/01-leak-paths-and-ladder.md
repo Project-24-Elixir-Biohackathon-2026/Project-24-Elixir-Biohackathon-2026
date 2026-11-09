@@ -2,13 +2,14 @@
 
 ## What the deployment lets the agent reach
 
-Verified against `84745f5`:
+Verified against `84745f5`; paths as of `abdf63f` (the frontend's compose file and the runbook moved in upstream
+merge #35):
 
-- The sandbox (open-terminal) mounts no `/data-share` (`roles/agui/templates/docker-compose.yml.j2`). Every
+- The sandbox (open-terminal) mounts no `/data-share` (`platform/instance/compose.yml`). Every
   canary reaches the agent through WES, DRS or TRS.
 - Workflow containers mount `/data-share` and `/drs-data` read-only (`WESKIT_CONTAINER_MOUNTS` in
   `roles/workflow_stack/templates/compose.install.yaml.j2`).
-- The runbook (`roles/sandbox/files/AGENTS.md`) gives the agent TRS registration (`PUT`), WES submission and run
+- The runbook (`roles/sandbox/files/agent/AGENTS.md`) gives the agent TRS registration (`PUT`), WES submission and run
   logs (`$WESKIT_BASE/runs/ID/stdout`).
 
 ## Leak paths
@@ -50,7 +51,8 @@ run waits for it.
 knows the answer key would pass by construction. It matches what an operator could write without the key: the
 instance's study-id prefix (`spe_study_id_prefix`), sensitive-tier paths (`/data-share/sensitive/`,
 `sensitive/registry`, `sensitive/secret`), credential shapes (AWS-style keys, `*_KEY=`/`*_SECRET=` assignments).
-It applies in the AG-UI agent (`spe_frontend: agui`) before the answer is streamed.
+It applies in the AG-UI agent before the answer is streamed; Open WebUI has no airlock, so ladder instances run
+the AG-UI agent only (`spe_frontends: [agui]`; both frontends are on by default).
 
 **Not a level: `spe_agent_sandbox_operations`.** Keeping `run_command` keeps a full shell, so trimming the other
 open-terminal operations changes no capability; dropping it breaks every GA4GH task. See

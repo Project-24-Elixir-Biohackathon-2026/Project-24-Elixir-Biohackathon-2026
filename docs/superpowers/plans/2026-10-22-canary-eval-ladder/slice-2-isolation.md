@@ -3,13 +3,13 @@
 Delivers `platform/promptfoo-evals/isolation.py`: a snapshot of the stack's mutable Docker volumes on the instance
 VM, keyed to the build, a restore before every test that fails loudly, the state baseline and state diff read
 through the APIs from inside the sandbox, and the promptfoo hook `extension_hook` that ties them together. The
-promptfoo hook behaviour is verified against 0.124.1 first, the volume list against the compose templates and the
+promptfoo hook behaviour is verified against 0.124.1 first, the volume list against the compose files and the
 live de.NBI VM, and the restore time is measured there.
 
 **Implements** (spec [`docs/superpowers/specs/2026-10-22-canary-eval-ladder-design/`](../../specs/2026-10-22-canary-eval-ladder-design/README.md)):
 
 - [05](../../specs/2026-10-22-canary-eval-ladder-design/05-isolation.md), *What others do, and what we do*,
-  *Mutable state*, *Hooks* — decision **9**, amended by clarifications 5 (containers recreated, not restarted) and 7
+  *Mutable state*, *Hooks* — decision **9**, amended by clarifications 5 (containers recreated, not restarted) and 8
   (task 1).
 - [03](../../specs/2026-10-22-canary-eval-ladder-design/03-controls-suite.md), *Probes*, `isolation` row: the
   restore it checks (the probe itself is slice 3).
@@ -20,16 +20,16 @@ live de.NBI VM, and the restore time is measured there.
 interfaces and the claims table: [plan README](README.md). Builds on slice 1: `handoff.py` (`vm_argv`,
 `handoff_dir`, `ConfigError`) and `conftest.py` (puts `platform/promptfoo-evals/` on `sys.path`).
 
-**Names fixed by this slice** (read from the templates at `0783708`; task 1 checks them live):
+**Names fixed by this slice** (read from the compose files at `abdf63f`; task 1 checks them live):
 
-| Compose project (template) | Volumes restored | Declared, not restored | Containers stopped and recreated |
+| Compose project (compose file) | Volumes restored | Declared, not restored | Containers stopped and recreated |
 |---|---|---|---|
 | `workflow-stack` (`roles/workflow_stack/templates/compose.install.yaml.j2`) | `workflow-stack_wes-mongodb`, `_redis-data`, `_weskit-data`, `_weskit-workflows`, `_trs-mongodb`, `_drs-mongodb` | `_slurm-master-var`, `_slurm-master-spool` (mounted by no service) | `workflow-stack-{database,result_broker,trs-mongodb,drs-mongodb,rest,submission_worker,monitoring_worker,monitoring_scheduler,trs-filer,drs-filer}-1`; `traefik` (stateless) and the one-shot `weskit-data-init` stay as they are |
-| `spe-frontend` (`roles/agui/templates/docker-compose.yml.j2`) | `spe-frontend_open-terminal-data` | `spe-frontend_agent-runs` (the agent's run log, part 05); `spe-frontend_chat-sessions` (the chat UI's sessions, part 05) once the template declares it | `spe-frontend-sandbox-1`; the agent keeps running |
+| `spe-frontend` (`platform/instance/compose.yml`, static: `${VAR}`s from the frontend directory's `.env`, written by `roles/sandbox/templates/frontend.env.j2`) | `spe-frontend_open-terminal-data` | `spe-frontend_agent-runs` (the agent's run log, part 05); `spe-frontend_chat-sessions` (the chat UI's sessions, part 05); `spe-frontend_open-webui-data` (Open WebUI's database: no ladder level runs Open WebUI, `spe_frontends: [agui]`); `spe-frontend_chat-ui-node-modules`, `spe-frontend_chat-ui-next` (the `ui-dev` chat UI's build caches) | `spe-frontend-sandbox-1`; the agent keeps running |
 
 Part 05's table names `weskit-data`, `wes-mongodb`, `redis-data`, the filers' MongoDB volumes and
-`open-terminal-data`; the template adds `weskit-workflows` (WESkit's workflow directory, where TRS workflows are
-cached), which is restored too. The sandbox volume is restored from the snapshot rather than recreated empty: the
+`open-terminal-data`; the workflow-stack template adds `weskit-workflows` (WESkit's workflow directory, where TRS
+workflows are cached), which is restored too. The sandbox volume is restored from the snapshot rather than recreated empty: the
 same state when the build leaves it empty, and correct if a later build plants something there.
 
 **The containers are recreated, not restarted** (spec part 05, clarification 5). `docker start` would bring back
@@ -37,13 +37,16 @@ each container's writable layer: a file the agent left in the sandbox's `/tmp`, 
 would reach the next test. After the volumes are back, each project's listed services are recreated from their
 images with `docker compose up -d --force-recreate --renew-anon-volumes --no-deps --no-build --pull never`, using
 the project's own compose files and directory read from the containers' Compose labels before they stop. Nothing
-on the agent path is written into a running container by the build (the sandbox's runbook and CA are in its
-image; no role runs `docker exec` or `docker cp` on these services), so a recreated container is the built one.
+on the agent path is written into a running container by the build (the sandbox's CA is in its image; its runbook
+and helper scripts are a read-only bind mount of the clone's `roles/sandbox/files/agent/` at `/opt/agent`; no role
+runs `docker exec` or `docker cp` on these services), so a recreated container is the built one. The
+`config_files` label lists every `-f` file `spe-apply` passed, so a compose overlay a level adds
+(`SPE_COMPOSE_OVERLAYS`, slices 4 and 8) is recreated with the sandbox too.
 
 ### Task 1: Verify the promptfoo hooks and the volumes
 
 **Files:** Create: `docs/knowledge/promptfoo-extension-hooks.md`. Modify: `docs/knowledge/README.md` (index line),
-`docs/superpowers/specs/2026-10-22-canary-eval-ladder-design/clarifications.md` (entry 7),
+`docs/superpowers/specs/2026-10-22-canary-eval-ladder-design/clarifications.md` (entry 8),
 `.../05-isolation.md` (*Hooks*), `.../README.md` (decision 9 row, *Latest clarification*).
 
 **Interfaces:** Consumes: promptfoo 0.124.1 (`node_modules/promptfoo/dist/src/`), `handoff.vm_argv(dir)`.
@@ -159,16 +162,16 @@ EOF
 Record in the handoff: the project names (`workflow-stack`, `spe-frontend` expected), the volume list, and every
 read-write mount. **True when** every `volume:…:rw=true` mount is in the table above (restored or "not restored"),
 the container names match, every container to recreate has a Compose working directory and config file
-(the restore reads them), and the only read-write bind mount is none (Traefik's socket and the config mounts are
-`rw=false`). **If false:** add each missing volume to `VOLUMES` (task 2) and to its `test_volumes_match_the_compose_templates`
+(the restore reads them), and the only read-write bind mount is none (Traefik's socket, the config mounts and the
+sandbox's `/opt/agent` from the clone are `rw=false`). **If false:** add each missing volume to `VOLUMES` (task 2) and to its `test_volumes_match_the_compose_files`
 expectation, and record it as a ruling in the handoff; a renamed container goes into `CONTAINERS`.
 
-- [ ] **Step 5: Clarification 7, folded into part 05 (only if step 2 showed assertions before `afterEach`)**
+- [ ] **Step 5: Clarification 8, folded into part 05 (only if step 2 showed assertions before `afterEach`)**
 
 Append to `clarifications.md`:
 
 ```markdown
-7. **The state diff is taken by the agent provider after the run** (2026-10-22; slice 2). promptfoo 0.124.1 runs
+8. **The state diff is taken by the agent provider after the run** (2026-10-22; slice 2). promptfoo 0.124.1 runs
    the assertions before `afterEach` (`docs/knowledge/promptfoo-extension-hooks.md`), so a diff recorded there
    never reaches `injection.followed`. The `beforeEach` hook writes the baseline to the file named by
    `SPE_EVAL_BASELINE` (default `platform/promptfoo-evals/reports/.baseline.json`); the agent provider reads it
@@ -189,19 +192,19 @@ In `05-isolation.md`, *Hooks*, replace the `beforeEach` and `afterEach` bullets 
   aborts the eval: no test runs on unrestored state.
 - the agent provider, after its run: the state diff against that baseline, in the response's
   `metadata.state_diff`, for `injection.followed` ([04](04-agent-suite-and-scoring.md)) and for the report ("the
-  agent registered a workflow"). promptfoo runs the assertions before `afterEach` (clarification 7).
+  agent registered a workflow"). promptfoo runs the assertions before `afterEach` (clarification 8).
 - `afterEach`: logs the state diff's counts; it changes nothing.
 ```
 
 In the spec `README.md`: decision 9's row reads "…restored by a `beforeEach` hook; the agent provider records the
-state diff after the run (clarification 7)", and the status line reads `**Latest clarification:** 7.`
+state diff after the run (clarification 8)", and the status line reads `**Latest clarification:** 8.`
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add docs/knowledge/promptfoo-extension-hooks.md docs/knowledge/README.md \
   docs/superpowers/specs/2026-10-22-canary-eval-ladder-design/{clarifications.md,05-isolation.md,README.md}
-git commit -s -m "Verify promptfoo hook order; the provider takes the state diff (clarification 7)"
+git commit -s -m "Verify promptfoo hook order; the provider takes the state diff (clarification 8)"
 ```
 
 ### Task 2: Snapshot and restore
@@ -220,7 +223,7 @@ git commit -s -m "Verify promptfoo hook order; the provider takes the state diff
 volume survives (clarification 5): `test_restore_recreates_every_container_from_its_project`,
 `test_restore_refuses_a_container_without_compose_labels`; snapshot keyed to the
 build: `test_restore_refuses_without_snapshot_of_this_build`; Review Focus 3 (a renamed volume, a stack that
-does not come back): `test_restore_fails_loudly_on_a_missing_volume`, `test_volumes_match_the_compose_templates`,
+does not come back): `test_restore_fails_loudly_on_a_missing_volume`, `test_volumes_match_the_compose_files`,
 `test_restore_raises_when_stack_stays_unhealthy`, `test_restore_raises_when_apis_do_not_answer`.
 
 The snapshot is one `docker run` of a small image with every volume mounted under `/v/<volume>` and
@@ -444,14 +447,15 @@ def test_vm_runner_quotes_for_ssh(hdir, monkeypatch):
 
 
 def _compose(path):
+    # The workflow stack's file is a Jinja template; the frontend's is plain Compose with ${VAR}s, which YAML reads as is.
     data = yaml.safe_load(re.sub(r"\{\{.*?\}\}", "x", path.read_text()))
     return data["name"], set(data.get("volumes") or {}), set(data["services"])
 
 
-def test_volumes_match_the_compose_templates():
+def test_volumes_match_the_compose_files():
     declared, services = set(), set()
     for tpl in (ROLES / "workflow_stack/templates/compose.install.yaml.j2",
-                ROLES / "agui/templates/docker-compose.yml.j2"):
+                ROLES.parents[1] / "instance/compose.yml"):
         project, vols, svcs = _compose(tpl)
         declared |= {f"{project}_{v}" for v in vols}
         services |= {f"{project}-{s}-1" for s in svcs}
@@ -500,7 +504,12 @@ VOLUMES = ("workflow-stack_wes-mongodb", "workflow-stack_redis-data", "workflow-
            "spe-frontend_open-terminal-data")
 NOT_RESTORED = {"workflow-stack_slurm-master-var": "declared, mounted by no service",
                 "workflow-stack_slurm-master-spool": "declared, mounted by no service",
-                "spe-frontend_agent-runs": "the agent's run log, which the agent cannot read (part 05)"}
+                "spe-frontend_agent-runs": "the agent's run log, which the agent cannot read (part 05)",
+                "spe-frontend_chat-sessions": "the chat UI's sessions; evaluations call the agent directly, "
+                                              "never chat-ui (part 05)",
+                "spe-frontend_open-webui-data": "Open WebUI's database; ladder levels run spe_frontends: [agui]",
+                "spe-frontend_chat-ui-node-modules": "the ui-dev chat UI's build cache, not on the agent path",
+                "spe-frontend_chat-ui-next": "the ui-dev chat UI's build cache, not on the agent path"}
 SANDBOX = "spe-frontend-sandbox-1"
 # Databases first; recreated per Compose project (compose_projects), which orders them by depends_on.
 CONTAINERS = tuple(f"workflow-stack-{s}-1" for s in (
@@ -671,9 +680,8 @@ def restore(directory: Path, run: Runner | None = None, timeout: float = 300.0,
     return clock() - start
 ```
 
-If the template on `main` declares the volume `chat-sessions` (the AG-UI chat's sessions, added by the AG-UI
-chat sessions track), `NOT_RESTORED` also holds `"spe-frontend_chat-sessions": "the chat UI's sessions;
-evaluations call the agent directly, never chat-ui (part 05)"`, so the template test above passes.
+`NOT_RESTORED` names every other volume `platform/instance/compose.yml` declares (the table above), so the
+compose-file test passes.
 
 - [ ] **Step 4: Run, expect PASS**
 
@@ -703,7 +711,7 @@ sink_requests_added: [{method, host, path, body}] | None}` with `descriptors: {p
 provider's entry point, slice 5); `record_restore_seconds(dir, seconds) -> float` (median);
 `extension_hook(hook_name, context) -> None`; CLI `python3 isolation.py snapshot|exists|restore|sh`.
 
-**Decisions:** 9 as amended by clarification 7: `test_before_each_restores_then_writes_baseline_and_restore_seconds`,
+**Decisions:** 9 as amended by clarification 8: `test_before_each_restores_then_writes_baseline_and_restore_seconds`,
 `test_baseline_and_state_diff`; the API reading on recorded JSON: `test_state_script_against_recorded_api`; Review
 Focus 3 (a restore that fails must stop the run): `test_before_each_restore_failure_raises_and_leaves_no_baseline`;
 the diff never silently empty: `test_state_read_failure_is_an_error`, `test_a_shrunk_receiver_log_is_an_error`;
@@ -1215,7 +1223,7 @@ hand-off directory, `restore_times.json` and the snapshot stay uncommitted.
 and the markers gone (step 4). Claim "a restore takes about a minute" (claims table).
 
 If the VM's build predates slice 1's hand-off fields, re-provision it in place first
-(`ansible-playbook playbooks/create.yml -e @instances/denbi-agui-01.yml`, `spe_provision: existing`; no paid calls with
+(`ansible-playbook playbooks/create.yml -e @instances/denbi-agui-01.yml`, `spe_provision: existing`; no model calls with
 `spe_agui_smoke: false`). The SSH caution of task 1, step 4 applies to every step.
 
 - [ ] **Step 1: Snapshot**

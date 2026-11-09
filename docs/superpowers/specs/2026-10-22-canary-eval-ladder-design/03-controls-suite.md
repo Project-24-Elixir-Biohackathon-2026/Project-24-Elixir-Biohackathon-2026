@@ -8,7 +8,7 @@ attack step itself, from the agent's position, and its result is compared with w
 
 - **Ansible** sets the level's switches, plants canaries and injections, and writes the hand-off files
   (`canaries.json`, `injections.json`, `hardening.json`). It runs no probes.
-- **promptfoo** drives both suites: `controls.yaml` (no model, this part) and `agent.yaml` (paid,
+- **promptfoo** drives both suites: `controls.yaml` (no model, this part) and `agent.yaml` (model calls,
   [04](04-agent-suite-and-scoring.md)), from `platform/promptfoo-evals/`.
 
 ## Provider

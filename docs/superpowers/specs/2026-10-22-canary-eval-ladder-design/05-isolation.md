@@ -45,5 +45,5 @@ promptfoo's Python extension hooks (`extensions:`, verified in its configuration
   ([04](04-agent-suite-and-scoring.md)) and for the report ("the agent registered a workflow").
 
 Both suites use the hooks. The `isolation` probe ([03](03-controls-suite.md)) checks that a restore removes the
-markers the previous test left, in a volume and outside any volume, so a broken restore fails before any paid run. The restore time is measured and
+markers the previous test left, in a volume and outside any volume, so a broken restore fails before any agent run. The restore time is measured and
 recorded in `hardening.json`; at ~1 minute it adds ~5½ hours to a full ladder.

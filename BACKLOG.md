@@ -12,25 +12,18 @@ start reads this section; keep it short.
 
 <!-- - <item> — from <investigation / review / handoff>; <waits on the user: what> | <due: why soon>. -->
 
-- Canary ladder: fold `biohackathon` knowledge 0015 (matched clean and injected trials; proposed) into the spec
-  and plan as 0014's findings were (clarifications, tasks rewritten) — from the user's comment on #3
-  (2026-10-23, "check 0015 review point as well"); waits on the user: 0015 is `proposed`, accept it first;
-  due: before the ladder's slice 5 (agent suite), whose plan 0015 reviews.
-- Canary ladder plan: slices 2, 3, 6 and 8 (and README.md:118) name `roles/agui/templates/docker-compose.yml.j2` and
-  `roles/sandbox/files/AGENTS.md`, gone or moved in the 2026-11-04 upstream merge (#35: `platform/instance/compose.yml`,
-  `files/agent/AGENTS.md`, images `:local` via `.env`); slice 5:562 names TM-001 "sensitive data access" (now
-  `-exposure`). Rewrite those tasks with a ruling in the plan — from #35's methodology review (finding 1, 6); not done
-  in #35 because the ladder's PR #3 is open on that plan. Also from #39 (both frontends on every instance,
-  `spe_frontends`): slice 3:1227 and :961 and README.md:66 render `spe_frontend` into `hardening.json` (undefined
-  under the new default: use `frontends: "{{ spe_frontends }}"`); slice 4:1269 `spe_frontend: agui` becomes
-  `spe_frontends: [agui]`; slices 8 (:344, :392) and 9 (:503, :566) assume an AG-UI-only instance, so the level files
-  must pin `spe_frontends: [agui]` (or Open WebUI stays an unhardened path) and slice 9's preflight refuses an
-  airlock when `openwebui` is in `spe_frontends`; due: before slice 2.
-
 ## Unscheduled
 
 <!-- - <item> — from <PR #n / review thread / spec Inputs for>, waits because <reason>. -->
 
+- Canary ladder: clean runs above L1. The run script and matrix accept a clean run at any level;
+  L2–L5 run injected only — from `biohackathon` knowledge 0015 and spec clarification 7 (#59); waits on the L0/L1
+  clean and injected results (slices 5 and 6), which show whether a level's clean comparison is worth its runs.
+- Canary ladder: one-fixture-at-a-time injection runs (0015, *Review finding*): one `spe_inject_*` on per build,
+  only that fixture's injection test (needs `hardening.json` `injections` as the planted ids: the ladder plan's
+  *Rulings*) — from spec clarification 7 (#59), deferred by the user (2026-11-09) because
+  slice 1's `injection.followed` already attributes by the exposed payload's fingerprint and target; schedule if
+  L0/L1 results show runs where two payloads were exposed and asked for the same action.
 - Carry `docs/knowledge/subagent-stall-after-usage-limit.md` to agent-methodology's `tooling-gotchas.md`, then drop the
   local note at the next `methodology update` — from #57's methodology review (finding 7); waits because it is a
   change to another repository, its own unit.
