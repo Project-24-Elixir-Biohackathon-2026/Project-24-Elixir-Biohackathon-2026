@@ -1,7 +1,7 @@
 "use client";
 // Chat with agent `spe`, and a sidebar of sessions. Each tool call is a collapsible card: a status icon and
 // title, the arguments as rows (run_command's as a `$ <command>` line) and the first lines of the result;
-// the calls of one model response are grouped (./tool-calls.tsx). Everything is rendered as text, never HTML.
+// calls made in a row, across model steps, are grouped (./tool-calls.tsx). Everything is rendered as text, never HTML.
 // Sessions are recorded on the server (lib/recorder.ts); this page only reads them and changes
 // their metadata. The open session is in the URL (`?session=<id>`), so a reload reopens it.
 import type { Message } from "@ag-ui/client";
@@ -67,7 +67,8 @@ function Chat() {
   // latest (a second click while the first's fetch is still in flight) is ignored on arrival.
   const requestRef = useRef(0);
   const { agent, isReady } = useAgent({ agentId: "spe" });
-  useDefaultRenderTool({ render: (props) => <ToolCard {...props} /> });
+  // `group`: CopilotKit groups the calls this draws, across the model's steps (./tool-calls.tsx).
+  useDefaultRenderTool({ render: (props) => <ToolCard {...props} />, group: true });
   // One owner of "safe to click": passed down to every button that starts an action from the
   // sidebar and header, so a click before hydration is disabled rather than dropped. Hydration
   // alone is not enough: the first-load effect below (startNew()/open(), gated on `isReady`) must

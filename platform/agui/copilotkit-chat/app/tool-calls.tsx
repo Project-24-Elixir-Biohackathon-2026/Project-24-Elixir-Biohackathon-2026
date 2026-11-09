@@ -1,10 +1,15 @@
 "use client";
 // Tool-call cards, after Open WebUI's ToolCallDisplay: a status icon, "Executing <name>…" while the call
 // runs and the bare name once it is done (the check already says so), and, unfolded, the arguments and the
-// result, under Open WebUI's "Input" and "Output" labels. The calls of one model response sit under one group
-// header, "Explored list_files, 2 run_command" as Open WebUI words it. All of it is React text, never HTML.
+// result, under Open WebUI's "Input" and "Output" labels. Calls made in a row, across the model's steps until
+// text, a user message or reasoning comes between them, sit under one group header, "Explored list_files,
+// 2 run_command" as Open WebUI words it. CopilotKit lays the groups out (`toolCallDisplay`, "grouped"); this
+// file draws them. All of it is React text, never HTML.
 import { contentToText } from "@ag-ui/client";
-import { CopilotChatToolCallsView, type CopilotChatToolCallsViewProps } from "@copilotkit/react-core/v2";
+import {
+  CopilotChatToolCallsView, type CopilotChatToolCallGroupProps, type CopilotChatToolCallsViewProps,
+} from "@copilotkit/react-core/v2";
+import { Fragment } from "react";
 import {
   argumentRows, cardState, commandOf, groupState, readResult, toolSummary, type CallStatus, type CardState,
 } from "../lib/tool-card.ts";
@@ -50,18 +55,18 @@ export function ToolCard({ name, parameters, status, result }: ToolProps) {
   );
 }
 
-// The assistant message's toolCallsView slot: one call as its card, several under a header that says
-// "Exploring" or "Explored", which tools how often, and how many failed. A call counts as running until its tool message arrives.
-export function ToolCallsView({ message, messages = [] }: CopilotChatToolCallsViewProps) {
-  const calls = message.toolCalls ?? [];
-  if (calls.length < 2) return <CopilotChatToolCallsView message={message} messages={messages} />;
-  const states = calls.map((call) => {
-    const reply = messages.find((m) => m.role === "tool" && m.toolCallId === call.id);
-    return reply ? cardState("complete", contentToText(reply.content as Parameters<typeof contentToText>[0]), call.function.name) : "running";
-  });
-  const state = groupState(states);
+// A group of calls made in a row (CopilotKit's group slot): one call as its card, several under a header that
+// says "Exploring" or "Explored", which tools how often, and how many failed. A call counts as running until its
+// tool message arrives, and the header says "Exploring" while the run may still add calls to the group.
+function ToolGroup({ calls, renderCall, isActive = false }: CopilotChatToolCallGroupProps) {
+  const cards = calls.map((call) => <Fragment key={call.toolCall.id}>{renderCall(call)}</Fragment>);
+  if (calls.length < 2) return <>{cards}</>;
+  const states = calls.map(({ toolCall, toolMessage }) => toolMessage
+    ? cardState("complete", contentToText(toolMessage.content as Parameters<typeof contentToText>[0]), toolCall.function.name)
+    : "running");
+  const state = isActive ? "running" : groupState(states);
   const failed = states.filter((s) => s === "failed").length;
-  const names = toolSummary(calls.map((call) => call.function.name));
+  const names = toolSummary(calls.map((call) => call.toolCall.function.name));
   return (
     <details className={`spe-tool-group spe-tool-${state}`}>
       <summary>
@@ -73,9 +78,13 @@ export function ToolCallsView({ message, messages = [] }: CopilotChatToolCallsVi
         </span>
         <ChevronRight className="spe-tool-chevron" />
       </summary>
-      <div className="spe-tool-group-calls">
-        <CopilotChatToolCallsView message={message} messages={messages} />
-      </div>
+      <div className="spe-tool-group-calls">{cards}</div>
     </details>
   );
+}
+
+// The assistant message's toolCallsView slot. A group belongs to the message where it starts; a later message
+// whose calls joined it renders none itself.
+export function ToolCallsView(props: CopilotChatToolCallsViewProps) {
+  return <CopilotChatToolCallsView {...props} group={ToolGroup} />;
 }

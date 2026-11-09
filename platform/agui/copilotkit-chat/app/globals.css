@@ -502,7 +502,7 @@ body {
 /* ---------- Tool cards ---------- */
 
 /* A tool call, after Open WebUI's ToolCallDisplay: a status icon and a title line; unfolded, the
-   arguments as rows and the result in a code block. Several calls of one response share a group. */
+   arguments as rows and the result in a code block. Calls made in a row share a group. */
 .spe-tool, .spe-tool-group { margin: 8px 0; max-width: 100%; border: 1px solid var(--line);
   border-radius: var(--radius-row); background: var(--surface); font-size: 13px; line-height: 20px;
   color: var(--text); overflow: hidden; }

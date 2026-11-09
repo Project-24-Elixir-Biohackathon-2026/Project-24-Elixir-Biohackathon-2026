@@ -14,10 +14,14 @@
   under Open WebUI's "Input" and "Output" labels, the arguments as key/value rows (`run_command`'s command
   as a `$ <command>` line instead) and the first lines of the result in a code block (`run_command`'s output parts joined, not its JSON envelope). A call
   failed when its result is a JSON object with a string `error` or a nonzero `exit_code`; a failed card and
-  its result are tinted with the danger colour. The calls of one assistant message (one model response)
-  sit under one group header worded as Open WebUI's `ConsecutiveDetailsGroup`: "Exploring" (shimmering)
-  or "Explored", then each tool's name once with its count when called more than once (`list_files,
-  2 run_command`), then the number that failed, set through the assistant message's `toolCallsView` slot. All of it is React text, never HTML.
+  its result are tinted with the danger colour. Calls made in a row, across the model's steps (successive
+  assistant messages) until assistant text, a user message or reasoning comes between them, sit under one
+  group header worded as Open WebUI's `ConsecutiveDetailsGroup`: "Exploring" (shimmering) while a call runs or
+  the run may still add calls to the group, else "Explored", then each tool's name once with its count when
+  called more than once (`list_files, 2 run_command`), then the number that failed. A single call stays a card
+  of its own. CopilotKit lays the groups out (the message view's `toolCallDisplay`, `"grouped"`, for a renderer
+  registered with `group: true`); the header is its group slot, passed through the assistant message's
+  `toolCallsView` slot. All of it is React text, never HTML.
 - No secrets in the browser. The conversation is kept on the server, in `chat-ui`, which owns it (§13);
   the browser changes only a session's metadata.
 - Exact package versions are pinned in `package-lock.json`; the image runs
