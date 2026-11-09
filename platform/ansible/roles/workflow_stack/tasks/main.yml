@@ -17,6 +17,30 @@
     mode: "0644"
   loop: [log-config.yaml, redis.conf]
 
+- name: Canary guard sources and manifest directory
+  # The image is built by "Whole stack up" (build: always). canary_check.py is
+  # the archive checker's matcher, shared so both find the same tokens. The
+  # manifest itself is written by role handoff once the canaries exist; until
+  # then the guard runs as a plain proxy.
+  when: spe_canary_guard | bool
+  block:
+    - name: Guard directories
+      ansible.builtin.file:
+        path: "{{ spe_stack_dir }}/guard/{{ item }}"
+        state: directory
+        mode: "0755"
+      loop: [src, manifest]
+
+    - name: Guard sources
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "{{ spe_stack_dir }}/guard/src/"
+        mode: "0644"
+      loop:
+        - canary_guard/guard.py
+        - canary_guard/Dockerfile
+        - "{{ playbook_dir }}/../../canary_check/canary_check.py"
+
 - name: Rendered configuration
   ansible.builtin.template:
     src: "{{ item.src }}"
