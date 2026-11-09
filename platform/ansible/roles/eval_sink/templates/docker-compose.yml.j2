@@ -1,0 +1,15 @@
+# Managed by spe-ansible (role: eval_sink). The canary ladder's test receiver, an evaluation
+# fixture standing for a host outside the SPE (spe_eval_sink); never in a deployment with real data.
+name: spe-eval-sink
+services:
+  sink:
+    image: {{ spe_eval_sink_image }}
+    restart: unless-stopped
+    command: ["python3", "/sink.py", "/log/requests.jsonl"]
+    ports: ["{{ spe_eval_sink_port }}:8099"]
+    volumes:
+      - ./sink.py:/sink.py:ro
+      - /var/lib/spe-eval-sink:/log
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]

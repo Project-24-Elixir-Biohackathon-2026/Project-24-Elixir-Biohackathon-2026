@@ -49,7 +49,7 @@ def test_hardening_json(tmp_path, overrides, level):
 
 
 def test_injections_all_on(tmp_path):
-    # Slice 4 declares the switches; until then they default to off here (the clean condition, spec part 06).
+    # The spe_inject_* switches (group_vars, off by default: the clean condition, spec part 06) set together.
     on = {k: True for k in ("spe_inject_trs_description", "spe_inject_drs_description",
                             "spe_inject_workflow_comment")}
     assert build(tmp_path, on)["injections"] is True

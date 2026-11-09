@@ -1,0 +1,7 @@
+# Overlay for spe_eval_sink (the canary ladder's test receiver, an evaluation fixture): the
+# sandbox resolves the receiver's name to the VM. spe-apply adds it when .env's
+# SPE_COMPOSE_OVERLAYS names eval-sink.
+services:
+  sandbox:
+    extra_hosts:
+      - "${SPE_EVAL_SINK_HOST}:host-gateway"

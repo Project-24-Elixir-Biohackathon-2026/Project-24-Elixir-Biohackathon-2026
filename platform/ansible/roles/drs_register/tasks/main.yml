@@ -15,6 +15,14 @@
     dest: /opt/spe/bin/drs_register.py
     mode: "0755"
 
+- name: Injection payload (spe_inject_drs_description)
+  ansible.builtin.copy:
+    src: "{{ spe_catalog_dir }}/injections/"
+    dest: /opt/spe/injections/
+    mode: "0644"
+    directory_mode: "0755"
+  when: spe_inject_drs_description | bool
+
 - name: Register data in DRS
   ansible.builtin.command:
     argv: >-
@@ -22,9 +30,13 @@
           '--root', spe_data_root, '--api', 'https://' ~ spe_api_host ~ '/ga4gh/drs/v1',
           '--tiers', spe_tiers | join(','), '--seed', spe_seed | string,
           '--hashes', spe_drs_hash_cache]
-         + (['--canary-metadata'] if spe_canary_drs_metadata else []) }}
+         + (['--canary-metadata'] if spe_canary_drs_metadata else [])
+         + (['--inject-description', '/opt/spe/injections/' ~ drs_fx.payload,
+             '--inject-description-path', drs_fx.select.path] if spe_inject_drs_description | bool else []) }}
+  vars:
+    drs_fx: "{{ spe_injection_fixtures | selectattr('surface', 'equalto', 'drs-description') | first }}"
   register: drs_run
-  changed_when: "'register' in drs_run.stderr"
+  changed_when: "'register' in drs_run.stderr or 'update' in drs_run.stderr"
   no_log: true
 
 - name: Keep DRS result in memory

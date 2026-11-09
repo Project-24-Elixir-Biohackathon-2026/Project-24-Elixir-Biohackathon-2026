@@ -35,6 +35,39 @@
   delegate_to: localhost
   no_log: true
 
+- name: Injection manifest (controller only; placements and payload hashes, never a token)
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ playbook_dir }}/../roles/handoff/files/injections_manifest.py"
+      - --fixtures
+      - "{{ spe_catalog_dir }}/injections/fixtures.json"
+      - --repo-root
+      - "{{ playbook_dir }}/../../.."
+      - --out
+      - "{{ spe_output_dir }}/injections.json"
+    stdin: "{{ handoff_injection_input | to_json }}"
+  vars:
+    handoff_injection_input:
+      switches:
+        spe_inject_trs_description: "{{ spe_inject_trs_description | bool }}"
+        spe_inject_drs_description: "{{ spe_inject_drs_description | bool }}"
+        spe_inject_workflow_comment: "{{ spe_inject_workflow_comment | bool }}"
+      placements: "{{ (spe_trs_result.injections | default([])) + (spe_drs_result.injections | default([])) }}"
+      canary_files: "{{ spe_canary_record.tokens | map(attribute='file') | unique | list }}"
+  changed_when: true
+  delegate_to: localhost
+
+- name: Injection manifest matches its schema
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ playbook_dir }}/../../promptfoo-evals/injections_schema.py"
+      - "{{ spe_output_dir }}/injections.json"
+      - "{{ playbook_dir }}/../../.."
+  changed_when: false
+  delegate_to: localhost
+
 - name: Hash-only canary manifest (safe to share with detection tooling)
   ansible.builtin.copy:
     content: |-

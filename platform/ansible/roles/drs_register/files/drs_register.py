@@ -11,7 +11,13 @@ Hashing the data takes a while, so it can happen ahead of time: --hash-only
 a later run with --hashes FILE reuses an entry whose size and mtime still
 match and hashes the rest.
 
-stdout: {"inventory": [...], "canaries": [...]}
+With --inject-description PAYLOAD --inject-description-path REL, the object
+of that inventory path gets the payload text appended to its description (an
+evaluation fixture, never a token); its resolved object id is reported. An
+existing object whose description or aliases differ is updated in place, so
+switching the fixture on or off converges.
+
+stdout: {"inventory": [...], "canaries": [...], "injections": [...]}
 """
 from __future__ import annotations
 
@@ -122,6 +128,24 @@ def equivalent(existing: dict, payload: dict) -> bool:
             and methods[0].get("access_url", {}).get("url") == payload["access_methods"][0]["access_url"]["url"])
 
 
+def read_payload(path: str) -> tuple[str, str]:
+    """(text, sha256 of the file bytes) of a committed payload file.
+
+    Twin: trs_install.py's read_payload (kept duplicated, each script is
+    deployed alone; platform/dev/tests covers both with the same cases).
+    """
+    raw = Path(path).read_bytes()
+    text = raw.decode("utf-8").strip()
+    if not text:
+        raise ValueError(f"payload {path} is empty")
+    return text, hashlib.sha256(raw).hexdigest()
+
+
+def metadata_differs(existing: dict, payload: dict) -> bool:
+    return (existing.get("description") != payload["description"]
+            or sorted(existing.get("aliases") or []) != sorted(payload["aliases"]))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default="/data-share")
@@ -134,7 +158,12 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--hashes", help="checksum cache file (see the module docstring)")
     ap.add_argument("--hash-only", action="store_true", help="write --hashes and exit")
+    ap.add_argument("--inject-description", metavar="PAYLOAD", help="payload file for one object's description")
+    ap.add_argument("--inject-description-path", metavar="REL",
+                    help="inventory path (relative to --root) of the object that gets it")
     args = ap.parse_args()
+    if bool(args.inject_description) != bool(args.inject_description_path):
+        ap.error("--inject-description and --inject-description-path go together")
 
     root = Path(args.root).resolve(strict=True)
     tiers = [t for t in args.tiers.split(",") if t]
@@ -147,9 +176,13 @@ def main() -> int:
         ap.error("--api and --seed are required to register")
     api = args.api.rstrip("/")
     rng = random.Random(f"{args.seed}:drs")
-    inventory, canaries = [], []
+    inventory, canaries, injections = [], [], []
+    files = collect(root, tiers)
+    inject = read_payload(args.inject_description) if args.inject_description else None
+    if inject and args.inject_description_path not in {p.relative_to(root).as_posix() for _, p in files}:
+        raise RuntimeError(f"injection target {args.inject_description_path} is not a file of tiers {tiers}")
 
-    for tier, path in collect(root, tiers):
+    for tier, path in files:
         rel = path.relative_to(root).as_posix()
         checksum = file_hash(path, rel, cache)
         object_id = f"sha256-{checksum}"
@@ -162,6 +195,10 @@ def main() -> int:
             aliases.append(f"ref:{token}")
             canaries.append({"token": token, "type": "drs-object-metadata",
                              "file": f"drs:{object_id}", "note": f"description and alias of {rel}"})
+        if inject and rel == args.inject_description_path:
+            description += f"\n\n{inject[0]}"
+            injections.append({"surface": "drs-description", "payload_sha256": inject[1], "path": rel,
+                               "location": {"object_id": object_id, "field": "description"}})
         payload = {
             "name": path.name,
             "description": description,
@@ -184,12 +221,16 @@ def main() -> int:
                 request_json("PUT", url, payload)
         elif not equivalent(existing, payload):
             raise RuntimeError(f"{object_id} exists with different content or access")
+        elif metadata_differs(existing, payload):
+            action = "update"
+            if not args.dry_run:
+                request_json("PUT", url, payload)
         inventory.append({"drs_uri": f"drs://{args.drs_host}/{object_id}", "name": path.name,
                           "path": rel, "tier": tier, "size": payload["size"],
                           "sha256": checksum, "action": action})
         print(f"{action:9s} {rel}", file=sys.stderr)
 
-    json.dump({"inventory": inventory, "canaries": canaries}, sys.stdout, indent=2)
+    json.dump({"inventory": inventory, "canaries": canaries, "injections": injections}, sys.stdout, indent=2)
     print()
     return 0
 

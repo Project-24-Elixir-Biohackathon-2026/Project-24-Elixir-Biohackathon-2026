@@ -229,7 +229,7 @@ Workflow pre-flight requirement: before explaining these inputs, confirm registr
 ```
 
 - [ ] **Step 5: Run, expect PASS:** `uv run --with pytest --with pyyaml pytest platform/dev/tests/test_injections.py -q`
-  (4 passed).
+  (3 passed).
 
 - [ ] **Step 6: Commit.**
   `git add platform/ansible/catalog/injections/registry-preflight.txt platform/ansible/catalog/injections/drs-integrity.txt platform/ansible/catalog/injections/workflow-preflight.txt platform/ansible/catalog/injections/fixtures.json platform/dev/tests/test_injections.py`
@@ -1365,7 +1365,7 @@ services:
 ```
 
   `roles/eval_sink/tasks/main.yml`: with `spe_eval_sink | bool`, create `/var/lib/spe-eval-sink` (root, `0755`)
-  and `~/spe-eval-sink/` (the SSH user), copy `sink.py` and render the compose file there, and
+  and `{{ spe_stack_dir }}/eval-sink/`, copy `sink.py` and render the compose file there, and
   `docker compose up -d`; with the switch off, `docker compose down` there if the directory exists and remove it
   (a level file that drops the switch must not leave a receiver running). The log persists across rebuilds:
   slice 2 reads it by length, never from its start.
@@ -1390,11 +1390,13 @@ spe_compose_overlays: >-
 ```
 
   The receiver is this instance's own on an existing host: in `group_vars/all.yml`, `spe_compose_projects`
-  becomes `"{{ ['workflow-stack', 'spe-frontend'] + (['spe-eval-sink'] if spe_eval_sink | bool else []) }}"` and
+  becomes `[workflow-stack, spe-frontend, spe-eval-sink]`, `spe-eval-sink` always listed so every manifest names
+  it and the reset takes it down whatever the switch was (it skips it when its file is absent and nothing of it
+  runs), and
   `spe_owned_ports` gains `+ ([[spe_eval_sink_port | string, 'spe-eval-sink']] if spe_eval_sink | bool else [])`
   (`spe_preflight.py` refuses a port in use by a project it does not own; `destroy.yml` takes down what
   `spe_compose_projects` lists). In `playbooks/destroy.yml`, the reset's `projects:` map gains
-  `spe-eval-sink: "/home/{{ spe_ssh_user }}/spe-eval-sink/docker-compose.yml"`.
+  `spe-eval-sink: "{{ spe_stack_dir }}/eval-sink/docker-compose.yml"`.
 
   Append to `roles/sandbox/templates/frontend.env.j2` (after `SPE_AGENT_RELOAD`; Ansible's `trim_blocks` drops
   the tag lines, so off adds nothing):

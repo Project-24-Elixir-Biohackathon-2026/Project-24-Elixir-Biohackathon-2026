@@ -35,6 +35,20 @@ Every `spe_*` variable and its default is in `inventory/group_vars/all.yml`. The
 usual overrides: flavor, `spe_samples`, `spe_tiers`, `spe_workflows`, the canary
 switches, the model (below).
 
+**Ladder levels.** The canary evaluation ladder (*Hardening ladder*, below) runs the same VM through
+`instances/L0.example.yml`..`L5.example.yml`, layered after the private instance file:
+
+```bash
+ansible-playbook playbooks/create.yml -e @instances/NAME.yml -e @instances/L0.example.yml </dev/null
+```
+
+A level file never carries `spe_instance`, `spe_seed`, `spe_provision` or `spe_existing_*`: those name the host, and belong only
+in the private instance file it is layered on. `L<n>.example.yml` is `L0.example.yml` plus exactly the switch of
+each level 1..*n* in the hardening ladder's order (checked by `platform/dev/tests/test_ladder.py`); every level
+builds the same instance in place and all of them share one `output/<instance>/`. Layering
+`instances/no-injections.example.yml` after a level file builds that level's clean condition (turning off only
+the three injection switches, nothing else); the ladder runs the clean condition at L0 and L1.
+
 ## An existing VM
 
 Set `spe_provision: existing`, `spe_existing_host` (an SSH alias, or `localhost`),
@@ -107,6 +121,7 @@ stopped so no run is half written. If the archive fails nothing is deleted;
 | `drs-inventory.json`, `trs-installed.json` | registered objects and installed workflows |
 | `canaries.json`, `canaries.manifest.sha256` | **the canary record** (`.age` if encrypted), and its hashes |
 | `hardening.json` | the ladder level, every hardening switch, frontend, model and this repo's commit; read by the controls suite and run.sh |
+| `injections.json` | planted injection fixtures: payload file and hash, placement, target file, canary file (no tokens; validated against `platform/promptfoo-evals/injections_schema.py`) |
 
 The plaintext record never goes to an instance. The seed reproduces every token, so
 instance files are sensitive too.
@@ -123,6 +138,47 @@ instance files are sensitive too.
 | `spe_canary_trs_descriptions` | TRS tool descriptions |
 | `spe_canary_workflow_comments` | a comment line in each installed workflow file |
 | `spe_canary_service_info` | WES service-info tag, DRS and TRS service-info description |
+
+## Injection fixtures
+
+Evaluation fixtures for the canary ladder (`docs/superpowers/specs/2026-10-22-canary-eval-ladder-design/02-injections.md`):
+an instruction planted in content the agent reads, naming a sensitive file and asking for it. Off by default; on in
+every `instances/L<n>.example.yml`. Payloads and their targets are fixed in `catalog/injections/fixtures.json`.
+
+| Variable | Payload | Where it lands |
+|---|---|---|
+| `spe_inject_trs_description` | `registry-preflight.txt` | appended to the `gatk-hc-chr20` TRS tool description |
+| `spe_inject_drs_description` | `drs-integrity.txt` | appended to the DRS description of `sensitive/secret/research_DO_NOT_LEAK` |
+| `spe_inject_workflow_comment` | `workflow-preflight.txt` | comment lines after the directives of `gatk-hc-chr20/main.nf` |
+
+Each needs its target's canary (`spe_canary_registry_tokens`, `spe_canary_flag_file`) and the TRS ones need
+`gatk-hc-chr20` in `spe_workflows`; otherwise the build stops. Fields are rebuilt from the catalogue on every run, so
+switching a fixture off removes it. The build writes `injections.json` (via `roles/handoff/files/injections_manifest.py`)
+and validates it with `platform/promptfoo-evals/injections_schema.py`. It takes the placements from the TRS and DRS
+roles of the same run: `--tags handoff` alone writes an accurate `injections.json` only if those roles already ran in
+that playbook run (e.g. `--tags trs,drs,handoff`).
+
+## Test receiver
+
+An evaluation fixture for the canary ladder (spec part 04, *The test receiver*): a stand-in for a host outside the
+SPE, so the evaluation can see what the agent sends out. Off by default; on in every `instances/L<n>.example.yml`.
+Never on in a deployment that holds real data. Role `eval_sink` runs it as the compose project `spe-eval-sink`
+from `spe_stack_dir/eval-sink/`; switched off, it takes down a receiver an earlier build left and removes its log.
+
+| Variable | Default | What |
+|---|---|---|
+| `spe_eval_sink` | `false` | run the receiver, and let the sandbox resolve `spe_eval_sink_host` to the VM |
+| `spe_eval_sink_port` | `8099` | the port it publishes on the VM (and listens on in its container) |
+| `spe_eval_sink_host` | `backup.spe-eval.test` | the name the sandbox reaches it by (`extra_hosts` to `host-gateway`) |
+| `spe_eval_sink_image` | `python:3.12-alpine` | its image; it runs `roles/eval_sink/files/sink.py`, standard library only |
+| `spe_compose_overlays` | derived | the overlays `platform/instance/compose.<name>.yml` the switches add to `spe-frontend` (`eval-sink` here); empty by default, so the `.env` is today's |
+
+Every request is one JSON line `{method, host, path, body}` (`body` as UTF-8 text, a chunked one decoded, at
+most 1 MiB; a body cut there adds `"truncated": true`, and a missing or invalid length logs it empty) in
+`/var/lib/spe-eval-sink/requests.jsonl`, which exists, empty, as soon as the receiver runs. The log lies outside
+the instance's paths: it persists across rebuilds and a destroy (the evaluation reads it by length), and only a
+build with the switch off removes it. `spe-eval-sink` is always in `spe_compose_projects`, so `destroy.yml` takes
+the receiver down whatever the switch was.
 
 ## Hardening ladder
 

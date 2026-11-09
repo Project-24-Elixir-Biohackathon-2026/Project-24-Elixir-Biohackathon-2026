@@ -30,8 +30,12 @@
   delay: 5
   when: "'agui' in spe_frontends"
 
+# With the overlays a ladder level adds (spe_compose_overlays), so a broken one stops the
+# build before spe-apply up merges it.
 - name: Validate compose file
-  ansible.builtin.command: docker compose -f docker-compose.yml config --quiet
+  ansible.builtin.command: >-
+    docker compose -f docker-compose.yml
+    {% for o in spe_compose_overlays %}-f {{ spe_repo_dir }}/platform/instance/compose.{{ o }}.yml {% endfor %}config --quiet
   args:
     chdir: "{{ spe_frontend_dir }}"
   changed_when: false

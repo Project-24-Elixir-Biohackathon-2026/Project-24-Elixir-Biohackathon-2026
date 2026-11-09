@@ -143,6 +143,8 @@
           projects:
             workflow-stack: "{{ spe_stack_dir }}/deployment/compose.install.yaml"
             spe-frontend: "{{ spe_frontend_dir }}/docker-compose.yml"
+            # The test receiver (spe_eval_sink); skipped when its file is absent and nothing runs.
+            spe-eval-sink: "{{ spe_stack_dir }}/eval-sink/docker-compose.yml"
           # On the controller itself, never touch the base dataset or the output directory.
           shared: "{{ [spe_source_data_root, spe_output_root] if ansible_connection == 'local' else [] }}"
       register: spe_reset_run

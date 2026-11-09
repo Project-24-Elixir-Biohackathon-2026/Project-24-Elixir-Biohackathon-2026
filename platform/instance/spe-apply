@@ -32,7 +32,9 @@
 # .env written by Ansible (SPE_REPO_DIR, COMPOSE_PROFILES: the frontends that run,
 # both by default, with the shared sandbox; image names, ports),
 # the secret env files and agent.yaml, and docker-compose.yml, a link to
-# platform/instance/compose.yml in the clone. Secrets never appear in the output.
+# platform/instance/compose.yml in the clone. SPE_COMPOSE_OVERLAYS in .env (absent by
+# default) names the Compose overlays a ladder level adds, platform/instance/compose.<name>.yml
+# in the clone, each passed with -f after the compose file. Secrets never appear in the output.
 set -euo pipefail
 
 dir=${SPE_FRONTEND_DIR:-/home/ubuntu/spe-frontend}
@@ -42,6 +44,10 @@ set -a; . "$dir/.env"; set +a
 agui_dir=$SPE_REPO_DIR/platform/agui
 sandbox_dir=$SPE_REPO_DIR/platform/ansible/roles/sandbox/files
 compose=(docker compose --project-directory "$dir" -f "$dir/docker-compose.yml")
+# The overlays a ladder level adds (SPE_COMPOSE_OVERLAYS in .env, e.g. eval-sink,egress), each
+# platform/instance/compose.<name>.yml in the clone, merged after the compose file.
+IFS=, read -ra overlays <<< "${SPE_COMPOSE_OVERLAYS:-}"
+for o in "${overlays[@]}"; do compose+=(-f "$SPE_REPO_DIR/platform/instance/compose.$o.yml"); done
 # Without provenance attestations a fully cached build reproduces the same image id, so
 # compose recreates a container only when its image really changed.
 build_cmd=(docker build --provenance=false)

@@ -335,6 +335,45 @@ def test_reset_takes_a_symlinked_compose_file_down_through_its_link(pf, tmp_path
     assert {"name": "spe-frontend", "file": str(link)} in plan["projects"]
 
 
+def linked_frontend(c, tmp_path):
+    """The frontend's docker-compose.yml linked into the clone, as create.yml leaves it."""
+    c["paths"]["repo_dir"] = str(tmp_path / "srv" / "sperange")
+    created(c)
+    link = Path(c["projects"]["spe-frontend"])
+    instance_dir = Path(c["paths"]["repo_dir"]) / "platform" / "instance"
+    instance_dir.mkdir(parents=True)
+    (instance_dir / "compose.yml").write_text("services: {}\n")
+    link.unlink()
+    link.symlink_to(instance_dir / "compose.yml")
+    return link, instance_dir
+
+
+def test_reset_accepts_an_overlay_from_the_recorded_clone(pf, tmp_path):
+    # up.yml and spe-apply add -f <repo_dir>/platform/instance/compose.eval-sink.yml to spe-frontend.
+    c = reset_cfg(tmp_path)
+    link, instance_dir = linked_frontend(c, tmp_path)
+    overlay = instance_dir / "compose.eval-sink.yml"
+    overlay.write_text("services: {}\n")
+    host = running(c)
+    host.project_files["spe-frontend"] = {str(link), str(overlay)}
+    plan = pf.reset_plan(c, host)
+    assert plan["problems"] == []
+    assert {"name": "spe-frontend", "file": str(link)} in plan["projects"]
+
+
+def test_reset_refuses_an_overlay_shaped_file_from_another_directory(pf, tmp_path):
+    c = reset_cfg(tmp_path)
+    link, _ = linked_frontend(c, tmp_path)
+    other = tmp_path / "other" / "platform" / "instance" / "compose.eval-sink.yml"
+    other.parent.mkdir(parents=True)
+    other.write_text("services: {}\n")
+    host = running(c)
+    host.project_files["spe-frontend"] = {str(link), str(other)}
+    plan = pf.reset_plan(c, host)
+    assert any("spe-frontend" in p and str(other) in p for p in plan["problems"])
+    assert plan["projects"] == []
+
+
 def test_reset_with_compose_link_pointing_outside_owned_paths_is_refused(pf, tmp_path):
     c = reset_cfg(tmp_path)
     created(c)
@@ -363,6 +402,42 @@ def test_reset_of_project_not_in_manifest_is_refused(pf, tmp_path):
     created(c, projects=["workflow-stack"])
     plan = pf.reset_plan(c, running(c))
     assert any("spe-frontend" in p for p in plan["problems"])
+
+
+def unrecorded_eval_sink(c):
+    """A host built before spe-eval-sink was a project: the manifest and the host lack it, destroy.yml names it."""
+    c["projects"]["spe-eval-sink"] = c["paths"]["stack_dir"] + "/eval-sink/docker-compose.yml"
+    created(c, projects=["spe-frontend", "workflow-stack"])
+    Path(c["projects"]["spe-eval-sink"]).unlink()
+    return ResetHost(project_files={n: {c["projects"][n]} for n in ("workflow-stack", "spe-frontend")},
+                     projects_running={"workflow-stack", "spe-frontend"})
+
+
+def test_reset_skips_an_unrecorded_project_that_never_ran_here(pf, tmp_path):
+    c = reset_cfg(tmp_path)
+    plan = pf.reset_plan(c, unrecorded_eval_sink(c))
+    assert plan["problems"] == []
+    assert [p["name"] for p in plan["projects"]] == ["spe-frontend", "workflow-stack"]
+
+
+def test_reset_of_an_unrecorded_project_with_its_file_is_refused(pf, tmp_path):
+    c = reset_cfg(tmp_path)
+    host = unrecorded_eval_sink(c)
+    Path(c["projects"]["spe-eval-sink"]).write_text("services: {}\n")
+    plan = pf.reset_plan(c, host)
+    assert any("spe-eval-sink" in p and "not recorded" in p for p in plan["problems"])
+
+
+@pytest.mark.parametrize("how", ["running", "created"])
+def test_reset_of_an_unrecorded_project_with_containers_is_refused(pf, tmp_path, how):
+    c = reset_cfg(tmp_path)
+    host = unrecorded_eval_sink(c)
+    if how == "running":
+        host.projects_running.add("spe-eval-sink")
+    else:
+        host.project_files["spe-eval-sink"] = {c["projects"]["spe-eval-sink"]}
+    plan = pf.reset_plan(c, host)
+    assert any("spe-eval-sink" in p and "not recorded" in p for p in plan["problems"])
 
 
 def test_reset_with_compose_file_outside_owned_paths_is_refused(pf, tmp_path):

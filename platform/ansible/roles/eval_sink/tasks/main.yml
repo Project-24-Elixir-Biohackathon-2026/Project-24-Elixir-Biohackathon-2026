@@ -1,0 +1,77 @@
+---
+# The canary ladder's test receiver (spe_eval_sink; spec part 04, *The test receiver*): an
+# evaluation fixture standing for a host outside the SPE. It logs every request it gets to
+# /var/lib/spe-eval-sink/requests.jsonl (one JSON line {method, host, path, body}, plus truncated: true past 1 MiB), which the
+# evaluation reads by length (promptfoo-evals isolation.SINK_LOG), so the log persists across
+# rebuilds. The sandbox resolves spe_eval_sink_host to the VM through the compose overlay
+# platform/instance/compose.eval-sink.yml (role sandbox, .env's SPE_COMPOSE_OVERLAYS).
+# Off, a receiver left by an earlier build is taken down and its log removed: a missing log
+# means "no receiver" to the evaluation. Never on in a deployment that holds real data.
+- name: Test receiver on
+  when: spe_eval_sink | bool
+  block:
+    - name: Receiver log directory
+      ansible.builtin.file:
+        path: /var/lib/spe-eval-sink
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      become: true
+
+    - name: Receiver compose directory
+      ansible.builtin.file:
+        path: "{{ spe_stack_dir }}/eval-sink"
+        state: directory
+        owner: "{{ spe_ssh_user }}"
+        group: "{{ spe_ssh_user }}"
+        mode: "0755"
+
+    - name: Receiver script
+      ansible.builtin.copy:
+        src: sink.py
+        dest: "{{ spe_stack_dir }}/eval-sink/sink.py"
+        mode: "0644"
+      register: eval_sink_script
+
+    - name: Receiver compose file
+      ansible.builtin.template:
+        src: docker-compose.yml.j2
+        dest: "{{ spe_stack_dir }}/eval-sink/docker-compose.yml"
+        mode: "0644"
+
+    - name: Receiver up
+      community.docker.docker_compose_v2:
+        project_src: "{{ spe_stack_dir }}/eval-sink"
+        files: [docker-compose.yml]
+        state: present
+        # The script is a bind mount Compose does not watch, and copy replaces the file (a new inode the
+        # running container does not see): a changed script recreates the receiver.
+        recreate: "{{ 'always' if eval_sink_script.changed else 'auto' }}"
+
+- name: Test receiver off
+  when: not (spe_eval_sink | bool)
+  block:
+    - name: Receiver compose file left by an earlier build
+      ansible.builtin.stat:
+        path: "{{ spe_stack_dir }}/eval-sink/docker-compose.yml"
+      register: eval_sink_compose
+
+    - name: Receiver down
+      community.docker.docker_compose_v2:
+        project_src: "{{ spe_stack_dir }}/eval-sink"
+        files: [docker-compose.yml]
+        state: absent
+        remove_orphans: true
+      when: eval_sink_compose.stat.exists
+
+    - name: Receiver compose directory removed
+      ansible.builtin.file:
+        path: "{{ spe_stack_dir }}/eval-sink"
+        state: absent
+
+    - name: Receiver log removed (a missing log means no receiver)
+      ansible.builtin.file:
+        path: /var/lib/spe-eval-sink
+        state: absent
+      become: true

@@ -35,6 +35,9 @@ start reads this section; keep it short.
 - e2e `--scenario all` failed once in seven local runs on #58's branch (2026-11-09; the traceback was not kept, the
   other six passed 47 ok) — from #58's checks; waits for a second sighting: keep the log (`> file 2>&1`) and note
   the failing step here.
+- Canary ladder: `spe_local_vars` lacks the `spe_harden_*` switches (and `spe_agent_tool_surface`), so `spe-apply
+  stack|all` on the VM rebuilds L0 controls under a hardened `hardening.json` — from slice 4's pre-flight (F6);
+  waits for slice 6, which closes it when L1 first needs re-apply to rebuild the same level.
 - Canary ladder: clean runs above L1. The run script and matrix accept a clean run at any level;
   L2–L5 run injected only — from `biohackathon` knowledge 0015 and spec clarification 7 (#59); waits on the L0/L1
   clean and injected results (slices 5 and 6), which show whether a level's clean comparison is worth its runs.
@@ -104,3 +107,7 @@ start reads this section; keep it short.
 - AG-UI record: a journal that cannot be read (`isDeleted` or `load` throwing in `admit`, `lib/recorder.ts`) refuses the run with "this session could not be saved", which tells the user and operator that saving failed when reading did; a distinct "this session could not be read" is a spec change: §13 step 1, `REFUSAL_MESSAGES` and `reconcile.ts`'s refused-run list, as the spec fixes six refusal messages — from #24's review (finding 4), waits because the run is refused either way and the log line says `reading … failed`.
 - AG-UI record: the chat route refuses a second in-flight run on one session ("Thread already running": CopilotRuntime's default `InMemoryAgentRunner`, `onConcurrentRun: "throw"`, no `runner` override in `app/api/copilotkit/[[...slug]]/route.ts`), so decision 9's overlap holds in `lib/recorder.ts` (`npm test`) but not through the route — from the conversation record's slice 4, task 2 (Playwright checks); waits because it fails safe (the second run errors, nothing is recorded wrong) and the user ruled two tabs sending on one session at once acceptable as refused (2026-11-03) and fixing it needs a `runner` override or a different `AgentRunner`, outside the slice.
 - AG-UI archive: a final archive re-run after its barrier failed (e.g. `chat-ui` exited 1, a drain timeout) finds the services already stopped, so `export.yml`'s exit-code check has nothing to check and the bundle and `index.md` say `final` ("copied after the chat UI and the agent had stopped") although the last run's end may be missing from its journal; the failure message says so, the archive does not — from PR #25's local review (correctness, finding 4); waits because the run then shows as incomplete in the archive rather than wrong, and marking it needs a new bundle field through the exporter and `write_run.py`.
+- Canary ladder: the test receiver's log `/var/lib/spe-eval-sink/` lies outside the instance's owned paths, so
+  `destroy.yml` leaves it on an existing host (only a build with `spe_eval_sink` off removes it) — from slice 4's
+  pre-flight (F2); waits because the reset refuses any path outside the owned ones, and the evaluation reads the
+  log by length, so an old log is harmless.

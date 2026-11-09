@@ -12,6 +12,26 @@
     mode: "0644"
     directory_mode: "0755"
 
+- name: Injection payloads (spe_inject_trs_description, spe_inject_workflow_comment)
+  ansible.builtin.copy:
+    src: "{{ spe_catalog_dir }}/injections/"
+    dest: /opt/spe/injections/
+    mode: "0644"
+    directory_mode: "0755"
+  when: spe_inject_trs_description | bool or spe_inject_workflow_comment | bool
+
+- name: Injection targets are installed workflows
+  ansible.builtin.assert:
+    that: item.select.tool_id in spe_workflows
+    fail_msg: "{{ item.switch }} plants in {{ item.select.tool_id }}; add it to spe_workflows"
+  loop: "{{ spe_injection_fixtures | selectattr('surface', 'in', ['trs-description', 'workflow-comment'])
+            | selectattr('switch', 'in', trs_inject_on) | list }}"
+  loop_control:
+    label: "{{ item.id }}"
+  vars:
+    trs_inject_on: "{{ (['spe_inject_trs_description'] if spe_inject_trs_description | bool else [])
+                       + (['spe_inject_workflow_comment'] if spe_inject_workflow_comment | bool else []) }}"
+
 - name: Install workflows in TRS
   ansible.builtin.command:
     argv: >-
@@ -20,7 +40,14 @@
           '--seed', spe_seed | string]
          + (spe_workflows | map('regex_replace', '^(.*)$', '--workflow=\1') | list)
          + (['--canary-descriptions'] if spe_canary_trs_descriptions else [])
-         + (['--canary-comments'] if spe_canary_workflow_comments else []) }}
+         + (['--canary-comments'] if spe_canary_workflow_comments else [])
+         + (['--inject-description', '/opt/spe/injections/' ~ trs_desc.payload,
+             '--inject-description-tool', trs_desc.select.tool_id] if spe_inject_trs_description | bool else [])
+         + (['--inject-comment', '/opt/spe/injections/' ~ trs_comment.payload,
+             '--inject-comment-tool', trs_comment.select.tool_id] if spe_inject_workflow_comment | bool else []) }}
+  vars:
+    trs_desc: "{{ spe_injection_fixtures | selectattr('surface', 'equalto', 'trs-description') | first }}"
+    trs_comment: "{{ spe_injection_fixtures | selectattr('surface', 'equalto', 'workflow-comment') | first }}"
   register: trs_run
   changed_when: true
   no_log: true
@@ -28,5 +55,5 @@
 
 - name: Keep TRS result in memory
   ansible.builtin.set_fact:
-    spe_trs_result: "{{ (trs_run.stdout | from_json) if spe_workflows | length > 0 else {'installed': [], 'canaries': []} }}"
+    spe_trs_result: "{{ (trs_run.stdout | from_json) if spe_workflows | length > 0 else {'installed': [], 'canaries': [], 'injections': []} }}"
   no_log: true
