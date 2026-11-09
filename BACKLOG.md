@@ -15,6 +15,10 @@ start reads this section; keep it short.
 - AG-UI chat: does a reply that finished while away need a mark of its own, and should the open row show its running
   spinner? Two no-gate questions on #58's early output (issuecomment-6730913819), nothing built — waits on the user:
   an answer; a *yes* is a change with a spec §6 clarification.
+- Turn on GitHub's *Automatically delete head branches* (`deleteBranchOnMerge`, now `false`) on this fork: the
+  start routine's prune removes only worktrees whose remote branch is gone, so a merging session that skips
+  cleanup leaves its worktree for good (#58's, 2026-11-09; agent-methodology #153) — waits on the user: an OK to
+  change the repo setting.
 
 ## Unscheduled
 
