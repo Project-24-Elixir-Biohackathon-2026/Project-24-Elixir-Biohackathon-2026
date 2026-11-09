@@ -113,3 +113,25 @@ export class TitleTrigger {
     return this.fresh.delete(id);
   }
 }
+
+/** A rejoined run's end, whose start this page does not know: fetch the list once, then up to
+ *  RECONCILE_RETRIES more times RECONCILE_DELAY_MS apart, until it shows the session `id` with `running`
+ *  false (`saved` true). Still running after the last: `saved` false (the page shows SAVE_FAILED_MESSAGE).
+ *  A list without the session ends the wait at once, `saved` false: the session left the list (deleted), so
+ *  no fetch would show it saved; the caller tells that apart by the list it gets back (the live sessions'
+ *  `gone`), not by an error bar. The last list fetched is returned either way. A fetch that throws ends the
+ *  loop, as in reconcile(). */
+export async function waitNotRunning(
+  fetchList: FetchList,
+  id: string,
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+): Promise<{ list: SessionMeta[]; saved: boolean }> {
+  for (let retry = 0; ; retry++) {
+    const { list } = await fetchList();
+    const s = list.find((x) => x.id === id);
+    if (s === undefined) return { list, saved: false };
+    if (!s.running) return { list, saved: true };
+    if (retry === RECONCILE_RETRIES) return { list, saved: false };
+    await sleep(RECONCILE_DELAY_MS);
+  }
+}

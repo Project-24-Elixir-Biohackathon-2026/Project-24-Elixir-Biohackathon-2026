@@ -22,6 +22,9 @@ export function useRunReconcile(agent: AbstractAgent, opts: RunWatchOptions) {
   /** Pass every run error here too: a refusal that reaches the page outside the stream (a failed request
    *  rather than a RUN_ERROR event) is then not reported as a failed save. */
   const noteRunError = useCallback((message: string) => watch.current?.noteRunError(message), []);
+  /** Around a connect (lib/rejoin.ts): the run it starts ends by waitNotRunning, not by reconcile. */
+  const rejoining = useCallback(() => watch.current?.rejoining(), []);
+  const rejoined = useCallback(() => watch.current?.rejoined(), []);
 
-  return { noteRunError };
+  return { noteRunError, rejoining, rejoined };
 }

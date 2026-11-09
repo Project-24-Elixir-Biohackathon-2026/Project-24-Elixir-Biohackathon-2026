@@ -7,8 +7,9 @@ live archive (decision 30, since clarification 2): approved 2026-11-03 (the fork
 `/compact` (§15, decisions 31–39): approved 2026-11-03 (the fork's PR #26), built in the fork's PRs #28 and #30 (clarification 18; decision 39 checked on de.NBI `qwen3.8-27b`); its slash-menu entry and marked composer in #32 (clarification 19). The history before this
 directory is that of the single file it replaced: `git log -- docs/specs/2026-10-15-agui-frontend-design.md`.
 Leaving a running chat (§6 *A session's agent* to *Refresh*, decisions 26 and 40–44, clarification 27): approved
-2026-11-08 (the fork's PR #55).
-**Latest clarification:** 27.
+2026-11-08 (the fork's PR #55), built in the fork's PRs #57, #58 and #62, decision 42 rejoining live (clarification
+28; §12 *Leaving a running chat*).
+**Latest clarification:** 28.
 PR numbers here and in the clarifications are those of the fork where this was developed and reviewed,
 `thodkatz/elixir-biohackathon-2026-test`; `kraatz #N` is a pull request of this repository.
 §13 and §14 were read against `@ag-ui/client` 1.0.2 and CopilotKit 1.79.0 (`@copilotkit/runtime`,
@@ -45,7 +46,7 @@ edits made through the chat; it assumes the participant holds neither the agent 
 ## Decisions taken
 
 Decisions 1–18 are the conversation record's; 19–30 are the chat sessions', restated for the record. All thirty
-are built (clarification 14). 31–39 are `/compact`'s (§15), built (clarification 18). 40–44, with 26 rewritten, are leaving a running chat's (§6, clarification 27), not built yet. §§1–5 and 7–12 predate the table and state
+are built (clarification 14). 31–39 are `/compact`'s (§15), built (clarification 18). 40–44, with 26 rewritten, are leaving a running chat's (§6, clarification 27), built (clarification 28). §§1–5 and 7–12 predate the table and state
 their design in their text.
 
 | # | Decision | Section | Acceptance check |
@@ -159,7 +160,7 @@ reply that finished while away needs a mark of its own (out of scope until then)
 | [`09-checks.md`](09-checks.md) | §9 Checks (role end and `verify.yml`) | you change the checks |
 | [`10-testing.md`](10-testing.md) | §10 Testing: agent unit tests, chat UI, archive, promptfoo | you write or run tests |
 | [`11-verify-during-implementation.md`](11-verify-during-implementation.md) | §11 Things to verify during implementation | you check what was open when §§1–10 were built |
-| [`12-implementation-findings.md`](12-implementation-findings.md) | §12 Implementation findings (2026-10-15): versions, §11 settled, behaviour made precise, observed results | you need what implementation verified |
+| [`12-implementation-findings.md`](12-implementation-findings.md) | §12 Implementation findings (2026-10-15): versions, §11 settled, behaviour made precise, observed results; and leaving a running chat's (2026-11-09) | you need what implementation verified |
 | [`13-conversation-record.md`](13-conversation-record.md) | §13 The conversation record: approach, run route, journal, concurrency, rebuild, boundary | you change how `chat-ui` keeps a conversation, or analyse what a run was sent |
 | [`14-archive.md`](14-archive.md) | §14 The archive: the live copy and the final archive's barrier, the Open WebUI chat export, the rendered run directory | you change or read an AG-UI run's archive |
 | [`15-compact-command.md`](15-compact-command.md) | §15 `/compact`: what counts as a command, the run route's differences, the agent, a marker cut short, the archive | you change or use manual compaction |

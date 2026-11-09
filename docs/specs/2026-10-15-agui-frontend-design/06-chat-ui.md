@@ -135,7 +135,7 @@ Plain React and CSS in `app/` (no new dependencies); all session data is rendere
 - **Open session in the URL:** `?session=<id>`. Loading the page with it fetches the session; without it,
   or with an id that answers 404, the page starts a new session (and drops the parameter).
 - **A session's agent:** each session the page shows or is streaming has a CopilotKit agent of its own, a private
-  one (CopilotKit 1.79's thread-scoped `useAgent({ agentId: "spe-<id>", runtimeAgentId: "spe", threadId: <id> })`),
+  one (CopilotKit 1.84.1's thread-scoped `useAgent({ agentId: "spe-<id>", runtimeAgentId: "spe", threadId: <id> })`),
   held by a component the page keeps mounted while it is needed: the agent, its messages and its run last only as
   long as that component (clarification 27). The chat (`CopilotChat`) is on the open session's agent, remounted per session (keyed by its id) and never
   told its thread is explicit (`hasExplicitThreadId` false): an explicit `CopilotChat` connects on every mount and
@@ -148,8 +148,11 @@ Plain React and CSS in `app/` (no new dependencies); all session data is rendere
   another tab), the session's holder component rejoins the run by calling the runtime's `connect` itself
   (`connectAgent`, not through `CopilotChat`) and streams the rest of it live, each message shown once: a message
   the runtime's replay repeats (the thread's past runs it still holds in memory, then the current run from its
-  start) is matched by id against the journal's history, not shown again. Only a session answered `running`
-  connects; any other opens from the journal alone, with no `connect`. The rejoined chat is the session's own
+  start) is matched by id against the journal's history, not shown again; once the run is saved, the chat is
+  set to the journal's messages (`GET`) where it still differs. Only a session answered `running`
+  connects; any other opens from the journal alone, with no `connect`. A connect that fails leaves the chat on the
+  journal's history, and its error shows in the error bar (*Errors*); it is not tried again until a list
+  shows the session no longer `running`. The rejoined chat is the session's own
   chat: its stop button ends the run, and while the run lasts its composer is as in any running chat. An open session with no run in this page that a list fetch shows
   `running` (a run started on it from another tab) is rejoined the same way, so its composer is never offered
   for a send the runtime would refuse. **New chat:** a fresh `crypto.randomUUID()`, a new agent and an empty history; the session
@@ -173,13 +176,17 @@ Plain React and CSS in `app/` (no new dependencies); all session data is rendere
   after the browser's run has ended, and so can land after that fetch: after a run ends, until the list
   shows its session with a `last_run_at` not older than the run's start, the page fetches it again, up
   to 5 times at 500 ms; a rejoined run, whose start this page does not know, instead until the list shows its
-  session no longer `running`. If it still does not, the error bar says "this session could not be saved".
-- **Errors:** a failed API call shows in the existing error bar; the open chat is never cleared. A run
-  refused by `chat-ui` (§13) shows its `RUN_ERROR` there; a run error in a session that is not open shows
-  there too, with that session's title first (`“<title>”: <message>`, "New chat" for one with no title yet).
+  session no longer `running`. If it still does not, the error bar says "this session could not be saved", with
+  the session's title first when it is not open (*Errors*).
+- **Errors:** a failed API call shows in the existing error bar; the open chat is never cleared. A failed list
+  fetch's error goes once a later list fetch succeeds (the polling and *Refresh* fetch again); any other error
+  stays until dismissed or replaced. A run refused by `chat-ui` (§13) shows its `RUN_ERROR` there; a run error
+  in a session that is not open shows there too, with that session's title first (`“<title>”: <message>`, "New
+  chat" for one with no title yet), and so does its "this session could not be saved".
   Only the open session's chat is mounted, and `CopilotChat`'s `onError` hears only its own agent, so each
   holder component subscribes to its own agent's errors. If the runtime is still not ready after 15 s, the
-  bar says "The agent runtime is unreachable; reload the page.", and the message goes once it is ready.
+  bar says "The agent runtime is unreachable; reload the page.", and the message goes once it is ready. Only the
+  first load waits for the runtime: a connection that drops after it disables no control and shows no message.
 
 ### Security and limits
 
