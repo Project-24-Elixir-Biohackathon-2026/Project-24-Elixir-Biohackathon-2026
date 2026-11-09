@@ -206,7 +206,8 @@ in the parts it amends.
     the two items left on the AG-UI chat minors backlog item, and a theme toggle was asked for alongside them.
     Both the title generation and the theme control are modelled on Open WebUI 0.11.3 (`ENABLE_TITLE_GENERATION`
     and its model request, and the sidebar's theme setting). *Amends:* §5 *Endpoints*, *Configuration*, *Run
-    log*; §6 *Sessions*, *The sidebar*; README decision 22. *Status:* folded.
+    log*; §6 *Sessions*, *The sidebar*; README decision 22. *Status:* folded; the title's timing (after the first
+    run, from its message and answer) superseded by clarification 26.
 
 17. **Tool-call cards after Open WebUI's `ToolCallDisplay`** (2026-11-04; the fork's PR #31). §6 *Tool calls
     are rendered* now gives the card a status icon and an "Executing `<name>`…" / "View Result from
@@ -323,3 +324,18 @@ in the parts it amends.
     between calls (qwen) gets several groups, as before; as in clarification 17, the first card remounts under
     the header when a second call joins, so a card opened while calls stream in closes. *Amends:* §6 *Tool calls
     are rendered*; supersedes the one-response limit of clarifications 17 and 20. *Status:* folded.
+
+26. **A New chat is titled as its first run starts, from its question alone** (2026-11-08, the user's choice).
+    §6 *Sessions* now has the browser fetch the list as a New chat's first run starts, so the
+    sidebar and header show the fallback title (first message, 60 characters) within a second of sending, and ask
+    for the model title at once; `POST /api/sessions/{id}/title` titles from the first run that added a user
+    message, whatever its status (running, finished, failed or stopped), with that question alone, instead of the
+    first completed run's message and answer. A session not listed in time (or a list fetch that fails) is asked
+    for once that run is recorded instead. The URL still names the session only once its first run is recorded;
+    the header's rename, tags, pin and hide now work on it while that run streams (delete stays disabled). *Reason:* the user, testing on de.NBI, saw no title until the answer had finished and expected one
+    while it streamed, as chatgpt.com shows. *Cost if wrong:* a title from the question alone can be less apt than
+    one that saw the answer; a first run the server refuses is never listed, so its title waits for the next run;
+    still one paid call per New chat, now made alongside the run, so a single shared model endpoint (de.NBI's) may
+    answer the first message slightly later. *Amends:* §6 *Sessions*, *Session API*, *Chat header*; §5 *Endpoints*
+    (`POST /title`'s caller sends one message); README decision 22; supersedes clarification 16's timing.
+    *Status:* folded.
