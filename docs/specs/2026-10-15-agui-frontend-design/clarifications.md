@@ -339,3 +339,31 @@ in the parts it amends.
     answer the first message slightly later. *Amends:* §6 *Sessions*, *Session API*, *Chat header*; §5 *Endpoints*
     (`POST /title`'s caller sends one message); README decision 22; supersedes clarification 16's timing.
     *Status:* folded.
+
+27. **A participant can leave a running chat; each session has its own agent in the page** (2026-11-08, the
+    user's choice; the fork's PR #55). §6 disabled switching session and *New chat* while a run was in progress,
+    because the page had one CopilotKit agent for whatever chat it showed, and a switch would have put another
+    session's history on the agent still streaming. Now each session the page shows or streams has a private
+    agent of its own (CopilotKit 1.79's thread-scoped `useAgent`, routed to the runtime's `spe`), held by a
+    component kept mounted while its run lasts: leaving a chat neither ends nor hides its run, and going back
+    shows it still streaming. A session whose run no agent in the page streams (a reload, another tab) rejoins it
+    through the runtime's `connect`. The list and `GET` one answer `running`, the sidebar marks running sessions,
+    Delete is disabled for them, and the list is fetched on regaining focus and every 2 s while it shows a run the page is not
+    streaming. *Approaches:* (1, the user's choice) an agent per session, kept in the page; (2) one shared agent
+    that lets go of the stream on a switch and rejoins through `connect` on every return: one mechanism, closest
+    to the old page, but every switch would depend on `connect`, whose replay of the past runs the runtime holds
+    in memory (`InMemoryAgentRunner.connect`) can add messages the page already loaded from the journal; (3) a
+    live feed of our own that tails the journal, dropped: CopilotKit's runtime already streams a run to whoever
+    connects. For the view on return the user chose the live stream over the saved part marked running and
+    filled in once the run ends; that view stays only as decision 42's fallback. *Reason:* asked for by the user
+    while testing on de.NBI (2026-11-04), as Open WebUI and ChatGPT allow: a run with several tool calls held
+    the whole chat until it ended. The server side was ready: a run is detached from the browser's request
+    (decision 24) and journaled to its end, the runtime admits runs on different threads at once, and
+    `Shared.running` already knows each run in progress. *Cost if wrong:* a page with many sessions running holds
+    an agent and a stream for each (no limit: one participant per instance, each run capped by §5's limits); if
+    `connect` cannot be made to show each message once, a session opened while running elsewhere shows its saved
+    part marked running and reloads at the run's end (decision 42's fallback); while another tab's run lasts the
+    page makes one list request every 2 s. *Amends:* §6 (the app's `page.tsx` line, *Session API*, *Layout*,
+    *Opening a session*, *During a run*, now *A session's agent* and *Leaving a running chat*, *Refresh*,
+    *Errors*), decision 26 (rewritten), README *Early output*; adds decisions 40–44, inputs for the plan, and
+    three out-of-scope items. *Status:* folded.
