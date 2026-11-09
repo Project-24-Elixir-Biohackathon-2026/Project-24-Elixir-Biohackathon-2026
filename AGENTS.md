@@ -248,7 +248,7 @@ new template), how the person tests it, and how a tested change becomes a templa
 - **Commit each coherent change** with a short imperative subject, and add a body saying why when the subject doesn't. Run `git status` and `git diff --staged` first, and stage files by name rather than with `git add -A`.
 - **Never commit secrets**: real instance files (`platform/ansible/instances/*.yml` other than `example.yml` and `*.example.yml`, ignored by git) carry the seed that reproduces every canary. Also never commit `platform/ansible/output/`, `canaries.json`, keys, `clouds.yaml` or `.env` files.
 - **Never rewrite `main`'s history or force-push it.**
-- **Paid model calls need the human's OK** before they run. On this repository's development VM the agent uses Anthropic with `claude-haiku-5-5`, pinned by `spe_agent_allowed_models` in that VM's instance file (a spend guard for that VM). Other setups choose their own provider and model.
+- **Paid model calls need the human's OK** before they run. On this repository's development VM the agent uses Anthropic with `claude-haiku-5-5`, pinned by `spe_agent_allowed_models` in that VM's instance file (a spend guard for that VM). It is paid: use it only for a one-shot check of a feature, never for repeated runs or a promptfoo suite. Those run on de.NBI (`qwen3.8-27b`), which costs no money, only rate; they still need the human's OK as quota-heavy runs (*Setup*). Other setups choose their own provider and model.
 - **Follow the plan's rulings discipline**: when work departs from a plan, record the decision, why, and its cost if wrong in that plan's progress file.
 
 ### Worktrees and deploying
