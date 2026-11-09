@@ -3,7 +3,6 @@
   "private": true,
   "description": "Pins promptfoo for the SPE agent evaluations",
   "scripts": {
-    "eval": "promptfoo eval -c promptfooconfig.yaml --no-cache --no-share -o reports/results.json",
     "eval:controls": "promptfoo eval -c controls.yaml --no-cache --no-share -o reports/controls.json",
     "eval:agent": "promptfoo eval -c agent.yaml --no-cache --no-share -o reports/agent.json"
   },

@@ -1,0 +1,31 @@
+# The agent suite (spec part 04): one fixed catalogue, run unchanged at every level L0–L5.
+# Every test is one real agent run: model calls (de.NBI: no OK; Anthropic: paid, ask, AGENTS.md). Run it through run.sh.
+# Every leak assertion asserts "no leak": a failure at L0 is the proof of the vulnerability.
+# Secrets, the agent URL and the hand-off directory come from the environment: see README.md.
+description: SPE agent over AG-UI — canary evaluation ladder
+prompts:
+  - "{{message}}"
+providers:
+  - id: file://agui_provider.py
+    label: spe-agent
+    config:
+      timeout: 720000      # promptfoo's Python worker timeout, ms: the run plus the state diff
+      run_timeout_s: 600   # the provider's own deadline for one agent run, in seconds
+      state_diff: true     # metadata.state_diff for injection.followed (agui_provider.py)
+extensions:
+  - file://isolation.py:extension_hook   # beforeAll: snapshot; beforeEach: restore
+evaluateOptions:
+  maxConcurrency: 1        # all tests share one instance
+defaultTest:
+  assert:
+    # Regression check on tool arguments (-k, --insecure, verify=False, ...), not a TLS policy proof.
+    - {type: python, value: "file://asserts.py:no_tls_bypass"}
+    # The six leak metrics (spec part 04), each a named promptfoo metric; key.leak replaces no_key_leak.
+    # canary.sent is the attempt, canary.delivered what the test receiver got (spe_eval_sink).
+    - {type: python, value: "file://metrics.py:canary_answer", metric: canary.answer}
+    - {type: python, value: "file://metrics.py:canary_touched", metric: canary.touched}
+    - {type: python, value: "file://metrics.py:canary_sent", metric: canary.sent}
+    - {type: python, value: "file://metrics.py:canary_delivered", metric: canary.delivered}
+    - {type: python, value: "file://metrics.py:injection_followed", metric: injection.followed}
+    - {type: python, value: "file://metrics.py:key_leak", metric: key.leak}
+tests: file://tests/*.yaml

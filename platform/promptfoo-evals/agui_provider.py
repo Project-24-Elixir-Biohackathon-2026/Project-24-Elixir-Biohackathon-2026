@@ -10,8 +10,15 @@ Environment (on the controller, never in the config):
 Returns {output: final assistant text, metadata: {tool_calls: [{id, name, args, result}],
 run_id, thread_id, terminal, events}} or {error: ...} for an HTTP error, RUN_ERROR, a
 timeout, a malformed event or a stream that ends without a terminal event. Optional
-`vars.history` ([{role, content}]) is sent before the prompt as earlier turns. Uses
-only the standard library; the bearer key is never logged or returned.
+`vars.history` ([{role, content}]) is sent before the prompt as earlier turns.
+
+With `config.state_diff: true` (agent.yaml) the provider, after the run, reads the
+baseline the beforeEach hook wrote (isolation.read_baseline()) and returns
+isolation.state_diff against it (hand-off directory: handoff.handoff_dir()) as
+`metadata.state_diff`, because promptfoo runs the assertions before `afterEach`. A
+missing or unreadable baseline, or a failed diff, is an `error`, never an empty diff.
+
+Uses only the standard library; the bearer key is never logged or returned.
 """
 from __future__ import annotations
 
@@ -23,6 +30,9 @@ import urllib.error
 import urllib.request
 import uuid
 from typing import Any
+
+import handoff
+import isolation
 
 DEFAULT_URL = "http://127.0.0.1:8100/agent"
 DEFAULT_TIMEOUT = 600.0
@@ -129,8 +139,7 @@ def _messages(prompt: str, context: dict | None) -> list[dict]:
     return msgs + [{"id": str(uuid.uuid4()), "role": "user", "content": prompt}]
 
 
-def call_api(prompt: str, options: dict | None = None, context: dict | None = None) -> dict:
-    config = (options or {}).get("config") or {}
+def _run(prompt: str, config: dict, context: dict | None) -> dict:
     url = config.get("url") or os.environ.get("SPE_AGENT_URL", DEFAULT_URL)
     timeout = float(config.get("run_timeout_s", DEFAULT_TIMEOUT))
     try:
@@ -165,3 +174,32 @@ def call_api(prompt: str, options: dict | None = None, context: dict | None = No
         res["error"] = f"request failed: {type(e).__name__}: {getattr(e, 'reason', e)}"
         return res
     return acc.result()
+
+
+def _failure(what: str, e: BaseException) -> str:
+    return f"{what} failed: {type(e).__name__}: {str(e)[:300]}"
+
+
+def _with_state_diff(res: dict) -> dict:
+    """Never an empty diff on failure: injection.followed would read it as "nothing done".
+
+    One try around both isolation.read_baseline() and isolation.state_diff(), as
+    isolation.extension_hook's afterEach does: a missing hand-off, a missing or
+    unreadable baseline and a failed diff are all the same kind of failure here.
+    """
+    try:
+        diff = isolation.state_diff(handoff.handoff_dir(), isolation.read_baseline())
+        if not isinstance(diff, dict):
+            raise TypeError(f"state_diff returned {type(diff).__name__}, not a dict")
+    except Exception as e:  # a missing hand-off, no baseline, ssh, docker, HTTP: all errors, never a pass
+        err = _failure("state diff", e)
+        res["error"] = f"{res['error']}; {err}" if res.get("error") else err
+        return res
+    res.setdefault("metadata", {})["state_diff"] = diff
+    return res
+
+
+def call_api(prompt: str, options: dict | None = None, context: dict | None = None) -> dict:
+    config = (options or {}).get("config") or {}
+    res = _run(prompt, config, context)
+    return _with_state_diff(res) if config.get("state_diff") else res

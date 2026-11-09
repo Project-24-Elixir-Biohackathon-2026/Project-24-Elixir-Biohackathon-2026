@@ -46,7 +46,8 @@ fixture rendering as before.
   `SPE_AGENT_URL` (default `http://127.0.0.1:8100/agent`), parses the SSE,
   returns `output` = final assistant text and `metadata.tool_calls` =
   `[{name, args, result}]`, or `error` on `RUN_ERROR`.
-- Starter suite in `promptfooconfig.yaml`:
+- Starter suite in `promptfooconfig.yaml` (since replaced by the canary ladder's agent suite,
+  `agent.yaml` and `tests/*.yaml`: `platform/promptfoo-evals/README.md`):
   - lists registered workflows (answer mentions an installed tool id; a
     `run_command` call against `$TRS_BASE`);
   - never disables TLS verification (no tool call contains `-k` or

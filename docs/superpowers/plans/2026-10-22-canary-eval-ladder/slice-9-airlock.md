@@ -1,10 +1,11 @@
-# Slice 9/9: the L5 airlock
+# Slice 9/10: the L5 airlock
 
 The agent's answer passes a pattern filter before it reaches the user: study ids with the instance's prefix,
 sensitive-tier paths and credential shapes are redacted, by class, without ever reading the canary record. The
 filter is a pure module in the AG-UI agent, with a CLI that the controls suite's `airlock` probe runs in the agent
 container, and a switch, `spe_harden_airlock`, that Ansible passes to the container as `SPE_AIRLOCK`. As the last
-slice, it hands `L4.example.yml`, `L5.example.yml` and the L4/L5 runs to the L4 spec.
+slice that builds a control, it hands `L4.example.yml`, `L5.example.yml` and the L4/L5 runs to the L4 spec; slice 10
+runs the agent suite at L0–L3 only.
 
 **Implements:** spec [`01-leak-paths-and-ladder.md`](../../specs/2026-10-22-canary-eval-ladder-design/01-leak-paths-and-ladder.md),
 *The ladder* (row L5) and *L5 matches classes, never the record* (decision 12);
@@ -568,14 +569,17 @@ report: `closed`, with `probe_state` failing as *expected open, observed closed*
 - [ ] **Step 1: Converge the VM to L3 plus the airlock** (`spe_provision: existing`, no model calls,
   `spe_agui_smoke` stays `false`): the create command the newest L3 handoff records, with
   `-e '{"spe_harden_airlock": true}'` appended, e.g.
-  `ansible-playbook playbooks/create.yml -e @instances/denbi-agui-01.yml -e @instances/L3.example.yml -e '{"spe_harden_airlock": true}' </dev/null`.
+  `ansible-playbook playbooks/create.yml -e @$PRIVATE/instances/denbi.yml -e @instances/L3.example.yml -e '{"spe_agent_allowed_models": [], "spe_harden_airlock": true}' -e spe_output_root=$PRIVATE/output </dev/null`,
+  with a placeholder `SPE_LLM_API_KEY` (no model call) and `PRIVATE` the main checkout's `platform/ansible`
+  (slice 6, task 5).
   The agent image is rebuilt from this branch; `verify.yml` (without the smoke run) passes.
 
 - [ ] **Step 2: Run only the `airlock` probe** (slice 3 names each controls test after its probe id):
 
 ```bash
 cd platform/promptfoo-evals
-export SPE_HANDOFF_DIR=$PWD/../ansible/output/denbi-agui-01
+export SPE_HANDOFF_DIR=$PRIVATE/output/denbi-agui-01
+npm ci   # a fresh worktree has no promptfoo
 npm run eval:controls -- --filter-pattern airlock
 jq -r '.results.results[] | [.vars.probe, .response.metadata.state, .success] | @tsv' reports/controls.json
 ```
@@ -600,19 +604,22 @@ jq -r '.results.results[] | [.vars.probe, .response.metadata.state, .success] | 
   In the plan's `README.md`, *PR slices*: row 9's status becomes `merged #N`, N this PR's number
   (`gh pr view --json number -q .number`).
 
-- [ ] **Step 5: Write the final handoff** `handoffs/$(date -u +%Y-%m-%dT%H%MZ)-slice-9-done.md`, headed
-  `# <date>: slice 9 done, the ladder plan ends; L4/L5 go to the L4 spec`, with: what merged (the airlock module,
+- [ ] **Step 5: Write the handoff** `handoffs/$(date -u +%Y-%m-%dT%H%MZ)-slice-9-done.md`, headed
+  `# <date>: slice 9 done, the ladder's controls are built; L4/L5 go to the L4 spec`, with: what merged (the airlock module,
   the switch, decision 12's tests); the live check (date, VM, commit, the two `jq` lines of steps 2 and 3); the
   rulings of this slice (the env lines only when on, for decision 3; buffering whole messages, and its UX cost;
   the filtered check, why, and the cost if wrong: a probe passing in isolation while a full L5 run disagrees,
-  which the L4 plan's unfiltered L5 controls run settles); and what is open, pointing to the two `BACKLOG.md` lines.
+  which the L4 plan's unfiltered L5 controls run settles); what is open, pointing to the two `BACKLOG.md` lines;
+  and **Next: slice 10/10** (`impl/canary-eval-ladder-10-agent-runs`), the agent runs at L0–L3 once a working
+  de.NBI key is in reach (its key gate).
 
-- [ ] **Step 6: Point the track at the L4 spec.** In `AGENTS.md`, *Current work*, the track's line becomes:
+- [ ] **Step 6: Point the track at slice 10.** In `AGENTS.md`, *Current work*, the track's line becomes:
 
 ```markdown
-- **Canary evaluation ladder** (biohackathon 0013): plan done (slices 1–9 merged: L0–L3 and the L5 airlock).
-  **Next: the L4 spec** (typed GA4GH tool server), whose plan takes `L4.example.yml`, `L5.example.yml` and the
-  L4/L5 runs (`BACKLOG.md`). Handoff: `docs/superpowers/plans/2026-10-22-canary-eval-ladder/handoffs/<the file of step 5>`.
+- **Canary evaluation ladder** (biohackathon 0013, 0014, 0015): slices 1–9 merged (L0–L3 built and checked by
+  their controls, the L5 airlock). **Next: slice 10/10** `impl/canary-eval-ladder-10-agent-runs`, the agent runs
+  at L0–L3; waits for a working de.NBI key (its key gate). L4/L5 go to the L4 spec (`BACKLOG.md`). Handoff:
+  `docs/superpowers/plans/2026-10-22-canary-eval-ladder/handoffs/<the file of step 5>`.
 ```
 
 - [ ] **Step 7: Commit.**

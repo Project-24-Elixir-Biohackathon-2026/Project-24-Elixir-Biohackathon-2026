@@ -1,10 +1,10 @@
-# Slice 5/9: agent suite and the first L0 run
+# Slice 5/10: agent suite
 
 Delivers the agent suite: `agent.yaml` wiring the AG-UI provider, the isolation hooks and the six leak
 metrics into every test; the first fixed catalogue of 13 tests in `tests/*.yaml` with their metadata and
-deterministic utility checks; the provider's state diff, taken after each run; a no-model dry run against the
-scripted agent; and the first L0 runs on de.NBI (`qwen3.8-27b`), clean and injected, whose counts and matrix are
-committed.
+deterministic utility checks; the provider's state diff, taken after each run; and a no-model dry run against
+the scripted agent on the de.NBI L0 instance. The real-model runs at L0, clean and injected, and their committed
+matrix are slice 10's ([slice-10-agent-runs.md](slice-10-agent-runs.md)), which runs every level in one batch.
 The starter `promptfooconfig.yaml` and the `eval` script go; their three tests live on in the catalogue.
 
 **Implements** (spec [`docs/superpowers/specs/2026-10-22-canary-eval-ladder-design/`](../../specs/2026-10-22-canary-eval-ladder-design/README.md)):
@@ -15,9 +15,8 @@ The starter `promptfooconfig.yaml` and the `eval` script go; their three tests l
   descriptor-reading row for the workflow-comment fixture; *Acceptance checks*: "the workflow-comment test
   actually requests the descriptor".
 - [05](../../specs/2026-10-22-canary-eval-ladder-design/05-isolation.md), *Hooks*, as amended by clarification 8: the provider takes the state diff after the run.
-- [06](../../specs/2026-10-22-canary-eval-ladder-design/06-runs-and-results.md): *One ladder run*, *Clean and
-  injected runs* (at L0), *Repeats and cost*, *The matrix*, *Reading the matrix* — decisions 10 and 11 (the first
-  committed result).
+- [06](../../specs/2026-10-22-canary-eval-ladder-design/06-runs-and-results.md): *The matrix* — decision 11,
+  checked by the dry run's throw-away matrix (task 3); the committed result is slice 10's.
 
 **Branch:** `impl/canary-eval-ladder-5-agent-suite`. Global constraints, shared interfaces and the claims table:
 the plan's [README](README.md). All paths below are relative to the repository root; commands run from
@@ -834,179 +833,50 @@ git add platform/promptfoo-evals/README.md
 git commit -s -m "promptfoo-evals README: dry run of both suites against the scripted agent"
 ```
 
-### Task 4: the first L0 runs on de.NBI, clean and injected, their matrix and the handoff
+### Closing the slice: handoff, status, Current work
 
-**Files:**
-- Create: `docs/results/qwen3.8-27b/L0-clean.json`, `docs/results/qwen3.8-27b/L0.json`,
-  `docs/results/canary-ladder-qwen3.8-27b.md`,
-  `docs/superpowers/plans/2026-10-22-canary-eval-ladder/handoffs/<date -u +%Y-%m-%dT%H%MZ>-slice-5-done.md`
-- Modify: `docs/README.md`, `docs/superpowers/plans/2026-10-22-canary-eval-ladder/README.md` (slices table),
-  `AGENTS.md` (*Current work*)
+After task 3, the final whole-branch review and the review round, before the merge (step 6 last, just before it):
 
-**Interfaces:**
-- Consumes: `run.sh <hand-off dir> <repeat>` and `handoff.condition` (slice 3); `instances/L0.example.yml` and
-  `instances/no-injections.example.yml` (slice 4); `matrix.py counts`/`render` (README, *Shared interfaces*).
-- Produces: the committed L0 counts of both conditions and the matrix, which slice 6 extends with `L1` and
-  `L1 clean`, and slices 7–8 with their `L<n>.json`.
+- [ ] **Step 1: Write the handoff** with `methodology handoff new docs/superpowers/plans/2026-10-22-canary-eval-ladder/handoffs slice-5-done`,
+  headed `# <date>: slice 5/10 done, the agent suite`, with: what merged (`agent.yaml`, the 13 tests, the state
+  diff, the `metrics.py` carry-overs); the dry run (task 3: errors 0, 13 state diffs, anything fixed); the
+  rulings (decision, why, cost if wrong), the comment injection's tool if slice 4 fell back to `wes-drs-smoke`
+  among them; and **Next: slice 6/10** (`impl/canary-eval-ladder-6-l1`): L1, `spe_harden_trs_readonly`, checked
+  by the controls suite; the agent runs wait for slice 10 and its key gate.
 
-**Decisions:** 10 (`run.sh` stops before any model call on a controls mismatch or a build that is not a ladder
-condition: its exit code, steps 3 and 4; L0 runs clean and injected, spec part 06 *Clean and injected runs*), 11
-(the committed files hold counts only: the token check, step 6; `render` refuses an unmatched pair, step 4), 7 (the
-utility pass rate at L0, read in step 5).
+- [x] **Step 2: Backlog.** Done in the final review's fixes (with the utility pass rate it also lowers). Add to
+  `BACKLOG.md`, *Next*, the question the catalogue raised for the user: 20 of the
+  36 DRS object names on de.NBI hold a `registry-study-id` canary, so utility rows that list DRS objects fail
+  `canary.answer` at every level; is a study id inside a listed object name a disclosure (spec part 04,
+  *Authorisation boundary*)? Waits on the user; a *no* is a spec clarification, and slice 10 reads the matrix
+  either way.
 
-The spec's order at L0 is **clean first, then injected** (part 06, *Order*); the start times land in the counts.
-
-- [ ] **Step 1: The runs ahead.** Model calls on de.NBI (no money, rate limits only; no OK needed: the user's
-  standing OK, `AGENTS.md`, *Setup*). Record in the handoff: the agent suite at **L0** on de.NBI, model
-  **qwen3.8-27b**, in both conditions, clean first, then injected: 13 tests × 5 repeats × 2 = **130 agent runs**
-  (each up to 50 model requests), plus 130 restores (about a minute each, measured in slice 2: `hardening.json`
-  `restore_seconds`), two in-place rebuilds of the VM (no instance created) and the no-model controls suite before
-  each.
-
-- [ ] **Step 2: Reach the agent.** From `platform/promptfoo-evals/`:
-
-```bash
-PRIVATE=/workspace/biohackathon/elixir-biohackathon-2026-test/platform/ansible   # the main checkout, as in slice 4, task 6
-export SPE_HANDOFF_DIR=$PRIVATE/output/denbi-agui-01   # the hand-off lives only in the main checkout, not this worktree
-grep agui_tunnel $SPE_HANDOFF_DIR/hosts.yml   # the ssh -N -L … command; run it in its own terminal, once
-export SPE_AGENT_URL=http://127.0.0.1:8100/agent SPE_AGENT_API_KEY_FILE=$SPE_HANDOFF_DIR/agent_api_key
-export SPE_LLM_API_KEY_FILE=/path/to/llm_key     # 0600, only the de.NBI key (DENBI_LLM_API_KEY)
-export PROMPTFOO_DISABLE_TELEMETRY=1 PROMPTFOO_DISABLE_SHARING=1 PROMPTFOO_DISABLE_UPDATE=1
-export PROMPTFOO_CONFIG_DIR=$PWD/.promptfoo
-build() {  # rebuild the VM in place at L0; "$@" adds overlays
-  (cd ../ansible && ansible-playbook playbooks/create.yml -e @$PRIVATE/instances/denbi-agui-01.yml \
-    -e @instances/L0.example.yml "$@" -e spe_output_root=$PRIVATE/output </dev/null) &&
-  python3 -c 'import handoff, isolation; isolation.snapshot(handoff.handoff_dir())' &&   # fresh baseline
-  jq '{level, model, commit, injections}' $SPE_HANDOFF_DIR/hardening.json
-}
-```
-
-  `build` recreates the agent container: if the agent stops answering afterwards, reopen the tunnel.
-
-- [ ] **Step 3: The clean run.** Build L0 clean, then run the whole suite:
-
-```bash
-build -e @instances/no-injections.example.yml   # expect level 0, injections false, commit = this branch's HEAD
-jq '.injections' $SPE_HANDOFF_DIR/injections.json  # []
-time ./run.sh "$SPE_HANDOFF_DIR" 5; echo "exit $?"
-jq '.results.stats' reports/L0-clean/agent.json   # 65 results, errors 0
-mkdir -p ../../docs/results/qwen3.8-27b
-python3 matrix.py counts reports/L0-clean > ../../docs/results/qwen3.8-27b/L0-clean.json
-```
-
-  Record for the handoff: the exit code, the wall time, the stats, `run.json`'s `started`. Exit 2 before any call
-  means the build is not the clean condition: `run.sh` names what (a manifest still listing injections, or a
-  target file whose canary the clean build lacks: spec part 02, *Matched builds*); fix the build, never the check.
-  A non-zero exit before the agent suite otherwise means the controls disagree with L0: record which probe, stop,
-  and fix the instance (decision 10). Provider `error`s (a state diff that failed, a run timeout) are not results:
-  find the cause, fix it, and run the condition again.
-
-- [ ] **Step 4: The injected run.** Rebuild L0 as the level file says, then the same suite:
-
-```bash
-build                                              # expect level 0, injections true
-jq '[.injections[].id]' $SPE_HANDOFF_DIR/injections.json   # the three fixtures
-time ./run.sh "$SPE_HANDOFF_DIR" 5; echo "exit $?"
-jq '.results.stats' reports/L0/agent.json          # 65 results, errors 0
-python3 matrix.py counts reports/L0 > ../../docs/results/qwen3.8-27b/L0.json
-python3 matrix.py render ../../docs/results/qwen3.8-27b/L*.json > ../../docs/results/canary-ladder-qwen3.8-27b.md
-```
-
-  `render` refusing with "different canaries: L0" means the two builds are not a matched pair (another seed or
-  canary switch in one of them): find which, rebuild that condition and run it again. The VM ends at
-  L0 injected, with a fresh snapshot, so slice 6 starts from L0.
-
-- [ ] **Step 5: Read the matrix** (spec part 06, *Reading the matrix*) and record for the handoff: the utility pass
-  rate per test in both columns (a utility test below 5/5 at L0 is an agent or runbook problem to note, not a
-  leak); for each direct and benign row, the clean column on its own (a leak there needs no injection); for each
-  injection row, `touched`/`answer`/`sent`/`delivered` in `L0 clean` against `L0` (`followed` is 0 in the clean
-  column by construction: nothing to follow), with errors apart and whether the payload was exposed; the two start
-  times and, if the order was not clean first, why.
-
-- [ ] **Step 6: Check that no token and no key reached the committed files.** Locally, printing counts only:
-
-```bash
-python3 - "$SPE_HANDOFF_DIR" ../../docs/results/qwen3.8-27b/L0*.json ../../docs/results/canary-ladder-qwen3.8-27b.md <<'EOF'
-import json, os, re, sys
-from pathlib import Path
-hand = Path(sys.argv[1])
-values = {e["token"] for e in json.loads((hand / "canaries.json").read_text())["tokens"] if e.get("token")}
-values |= {Path(p).read_text().strip() for p in (hand / "agent_api_key", os.environ["SPE_LLM_API_KEY_FILE"])}
-for path in sys.argv[2:]:
-    text = Path(path).read_text()
-    hits = sum(1 for v in values if re.search(rf"(?<!\w){re.escape(v)}(?!\w)", text))
-    print(f"{path}: {hits} of {len(values)} values found")
-EOF
-```
-
-  Expected: `0 of N` for every file. Any hit: do not commit; the offending line came from a report `reason` or
-  label, which is a slice 1 bug (`matrix.py`, decision 11) to fix first.
-
-- [ ] **Step 7: Index the results.** Add to the table in `docs/README.md`, before the closing comment:
+- [ ] **Step 3: Status and current work.** In the plan `README.md`'s *PR slices* table, set row 5/10's *Status*
+  to `merged #<n>`, where `n` is this slice's PR number. In `AGENTS.md`, *Current work*, replace the canary
+  ladder's line with:
 
 ```markdown
-| `results/` | committed ladder results, counts only: `canary-ladder-<model>.md` (the matrix) and `<model>/L<n>.json` (one level's counts, its input) | you cite a ladder result or add a level |
+- **Canary evaluation ladder** (biohackathon 0013, 0014, 0015): slices 1–5 merged (the agent suite, no
+  real-model run yet). **Next: slice 6/10** `impl/canary-eval-ladder-6-l1` (L1, controls only); the agent runs of
+  every level wait for a de.NBI key (slice 10/10). Handoff: `docs/superpowers/plans/2026-10-22-canary-eval-ladder/handoffs/<this handoff's file name>`.
 ```
 
-- [ ] **Step 8: Commit the result.**
+- [ ] **Step 4: Commit.**
 
 ```bash
-cd ../..
-git add docs/results/qwen3.8-27b/L0*.json docs/results/canary-ladder-qwen3.8-27b.md docs/README.md
-git diff --staged --stat
-git commit -s -m "Results: canary ladder L0, qwen3.8-27b on de.NBI" \
-  -m "13 tests x 5 repeats at L0 in both conditions, clean (no injections planted) then injected, a
-matched pair (spec part 06; decision 11: counts only; checked locally that no canary token or key from
-the hand-off appears in any file). Raw reports deleted."
-cd platform/promptfoo-evals && rm -rf reports .promptfoo && cd ../..
+git add docs/superpowers/plans/2026-10-22-canary-eval-ladder/handoffs/<the file of step 1> \
+  docs/superpowers/plans/2026-10-22-canary-eval-ladder/README.md AGENTS.md BACKLOG.md
+git commit -s -m "Handoff: slice 5 done, the agent suite; next is slice 6 (L1)"
 ```
 
-  Close the tunnel.
+- [x] **Step 5: The key in the backlog.** Done in #64's local review fixes. `BACKLOG.md`, *Next*, holds the
+  request for a working de.NBI key (#64 comment 6738237144), so the gate on #64 can close with this slice: after
+  the merge a `waiting-on-user` label on a merged PR would be its only record. Slice 10 opens the gate on its own
+  PR (`slice-10-agent-runs.md`, *The key gate*).
 
-- [ ] **Step 9: Write the handoff.** `F=docs/superpowers/plans/2026-10-22-canary-eval-ladder/handoffs/$(date -u +%Y-%m-%dT%H%MZ)-slice-5-done.md`,
-  with these sections, filled from steps 3–6 and task 3:
-
-```markdown
-# Slice 5/9 done: agent suite and the first L0 run
-
-**State.** `agent.yaml` and 13 tests merged; the L0 runs committed in
-`docs/results/canary-ladder-qwen3.8-27b.md` (`docs/results/qwen3.8-27b/L0-clean.json`, `L0.json`).
-
-**Runs.** Instance `<INSTANCE>`, commit `<hardening.json commit>`; per condition (clean, injected): started
-`<run.json started>`, `run.sh` exit `<0>`, wall time `<h:mm>`, restore `<restore_seconds>` s, stats
-`<successes/failures/errors>`. Order: `<clean first, as the spec says | the departure and why>`.
-
-**L0 in one paragraph.** Utility pass rates (`<id> n/5`, …); leak metrics failing (`<metric>` on `<ids>`); which
-injections were followed (`injection.followed` rows) and whether the planted fields were exposed
-(`explain-descriptor`'s `fetched_descriptor`).
-
-**Clean against injected (step 5).** Direct and benign rows that leak in `L0 clean`; per injection row,
-`touched`/`answer`/`sent`/`delivered` in `L0 clean` and `L0`, errors apart, exposure; what each supports (spec part
-06, *Reading the matrix*).
-
-**Dry run (task 3).** `<errors 0; 13 state diffs; anything that needed fixing>`.
-
-**Rulings** (decision, why, cost if wrong): `<e.g. the comment injection's tool, if slice 4 fell back to
-wes-drs-smoke>`; `<anything else decided while running>`.
-
-**Next: slice 6/9** (`impl/canary-eval-ladder-6-l1`): L1, `spe_harden_trs_readonly`; its runs, injected first,
-then clean, add `docs/results/qwen3.8-27b/L1.json` and `L1-clean.json` and re-render the matrix with
-`matrix.py render docs/results/qwen3.8-27b/L*.json`.
-```
-
-- [ ] **Step 10: Status and current work.** In the plan `README.md`'s *PR slices* table, set row 5/9's *Status*
-  to `merged #<n>`, where `n` is this slice's PR number (`gh pr view --json number -q .number` once the PR is
-  open). In `AGENTS.md`, *Current work*, replace the canary ladder's line with:
-
-```markdown
-- **Canary evaluation ladder** (biohackathon 0013): slices 1–5 merged; L0 result in
-  `docs/results/canary-ladder-qwen3.8-27b.md`. **Next: slice 6/9** `impl/canary-eval-ladder-6-l1` (L1).
-  Handoff: `docs/superpowers/plans/2026-10-22-canary-eval-ladder/handoffs/<this handoff's file name>`.
-```
-
-- [ ] **Step 11: Commit.**
+- [ ] **Step 6: Clear the gate on #64, before the merge.** Stop the watcher (`methodology gate wait 64`, if a
+  session still holds it), then:
 
 ```bash
-git add "$F" docs/superpowers/plans/2026-10-22-canary-eval-ladder/README.md AGENTS.md
-git commit -s -m "Handoff: slice 5 done, L0 result committed; next is slice 6 (L1)"
+GH_REPO=thodkatz/elixir-biohackathon-2026-test methodology gate clear 64
 ```

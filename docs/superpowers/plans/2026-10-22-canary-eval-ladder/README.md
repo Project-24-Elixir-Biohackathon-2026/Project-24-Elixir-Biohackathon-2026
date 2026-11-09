@@ -27,8 +27,8 @@ Every task's requirements include these.
 
 - **Tests.** Offline, before every commit, the suites a slice touches:
   `(cd platform/promptfoo-evals && uv run --group dev pytest -q)` and
-  `uv run --with pytest --with pyyaml --with jinja2 pytest platform/dev/tests -q` (jinja2 renders the Ansible
-  templates in the tests slices 6–9 add). New Python under `platform/promptfoo-evals/`
+  `uv run --with pytest --with pyyaml --with jinja2 --with mkdocs-material pytest platform/dev/tests -q` (jinja2 renders the Ansible
+  templates in the tests slices 6–9 add; mkdocs-material, the site build test). New Python under `platform/promptfoo-evals/`
   imports only the standard library; PyYAML is a `dev` dependency there, for tests only.
 - **No token ever leaves the operator side in a committed file or a report reason.** Assertions name the canary
   *type* and *file*, never the token (spec part 04, *Reports carry values*). Fixtures use synthetic seeds and
@@ -41,7 +41,9 @@ Every task's requirements include these.
   (`create.yml` with `spe_provision: openstack` or `existing`, `destroy.yml`), and the controls suite (`npm run
   eval:controls`, no model). Every ladder run uses de.NBI, never Anthropic (`claude-haiku-5-5`, paid, for a few
   one-shot feature checks only). **Ask the user first** for a second instance, another cloud, or more than a few
-  Anthropic calls.
+  Anthropic calls. **The one gate: a working de.NBI key**, a credential (the floor), needed only by the agent
+  runs, which all live in slice 10; that slice's PR carries the gate. A build without model calls (slices 5–9)
+  takes a placeholder `SPE_LLM_API_KEY`.
 - **Every hardening switch defaults off** in `platform/ansible/inventory/group_vars/all.yml`; an instance file
   without it builds today's deployment (decision 3). Every `spe_inject_*` switch defaults off too, and is `true`
   in every `L<n>.example.yml`.
@@ -121,31 +123,33 @@ level instance files are overlays on the operator's instance file, without an in
 | `platform/promptfoo-evals/isolation.py`, `tests/test_isolation.py` | 2 | snapshot, restore, state diff, hooks |
 | `platform/promptfoo-evals/{controls_provider,controls_asserts}.py`, `controls.yaml`, `probes/*.sh`, `run.sh`, `package.json`, `tests/test_controls_*.py`, `tests/test_run_sh.py`; `handoff.py`, `matrix.py` and their tests (the run labels of a matched pair); `platform/ansible/roles/handoff/` (`hardening.json`) | 3 | controls suite, the run script, the run labels |
 | `roles/eval_sink/` (the test receiver), `platform/instance/compose.eval-sink.yml` and `SPE_COMPOSE_OVERLAYS` (`roles/sandbox/templates/frontend.env.j2`, `platform/instance/spe-apply`), `platform/dev/tests/{test_eval_sink,ansible_render}.py`, `golden/frontend.env.L0`, `platform/ansible/catalog/injections/*.txt`, `roles/trs_install/files/trs_install.py`, `roles/drs_register/files/drs_register.py`, `roles/handoff/` (`injections.json`), `instances/L0.example.yml`, `instances/no-injections.example.yml` (the clean overlay), `catalog/injections/fixtures.json`, `roles/handoff/files/injections_manifest.py`, `platform/dev/tests/test_{injections,ladder}.py` | 4 | planting injections, the test receiver, the L0 example |
-| `platform/promptfoo-evals/agent.yaml`, `tests/*.yaml`, `agui_provider.py` (state diff), `promptfooconfig.yaml` (removed), `docs/results/canary-ladder-qwen3.8-27b.md`, `docs/results/qwen3.8-27b/L0{,-clean}.json` | 5 | agent suite, the first L0 runs, clean and injected |
+| `platform/promptfoo-evals/agent.yaml`, `tests/*.yaml`, `agui_provider.py` (state diff), `metrics.py`, `promptfooconfig.yaml` (removed) | 5 | agent suite, its no-model dry run |
 | `platform/ansible/roles/workflow_stack/templates/*` (Traefik: TRS read-only for the sandbox, operator writes on a localhost entrypoint; WESkit), a standard-library WES write guard, `instances/L1.example.yml`, `platform/dev/tests/golden/` (today's renders, for decision 3); the runbook `roles/sandbox/files/agent/AGENTS.md` stays as it is | 6 | L1 |
 | `platform/ansible/roles/workflow_stack/templates/compose.install.yaml.j2` (WESkit and worker mounts by tier), the verify smoke input, `instances/L2.example.yml` | 7 | L2 |
 | `platform/instance/compose.egress.yml` (a fixed sandbox address, an overlay on `platform/instance/compose.yml`), `roles/egress/` (`DOCKER-USER` firewall rules), `instances/L3.example.yml` | 8 | L3 |
 | `platform/agui/pydantic-ai-agent/` (airlock), `roles/agui/templates/agent.env.j2`, `playbooks/create.yml` (refuses the airlock with `openwebui` in `spe_frontends`) | 9 | L5 airlock |
+| `docs/results/canary-ladder-qwen3.8-27b.md`, `docs/results/qwen3.8-27b/L{0,1}{,-clean}.json`, `L2.json`, `L3.json`, `docs/README.md` (the `results/` row) | 10 | the agent runs at L0–L3 and the matrix |
 
 ## PR slices
 
-N = 9. Slices are sequential; each starts from `main` after the previous one merged.
+N = 10. Slices are sequential; each starts from `main` after the previous one merged.
 
 | n/N | Branch | Tasks | Delivers | Reviewer checks | File | Status |
 |---|---|---|---|---|---|---|
-| 1/9 | `impl/canary-eval-ladder-1-scoring` | 1–5 | the six metrics, the manifest schema, the matrix, the catalogue lint; decisions 7 (lint), 8, 11. ~1,550 lines, half of them tests: over the size target, kept whole because every module is offline and independent | `uv run --group dev pytest -q` in `platform/promptfoo-evals` | [slice-1-scoring.md](slice-1-scoring.md) | merged #3 (`abdf63f`) |
-| 2/9 | `impl/canary-eval-ladder-2-isolation` | 1–4 | snapshot, restore, state diff and hooks; restore time measured; decision 9. ~980 lines in the plan's code blocks, about half tests | offline tests; the measured restore time in the handoff | [slice-2-isolation.md](slice-2-isolation.md) | merged #60 |
-| 3/9 | `impl/canary-eval-ladder-3-controls` | 1–5 | controls suite, `hardening.json`, `run.sh`, the run labels in `handoff.py` and `matrix.py` (clean and injected pairs); decisions 1 (probes), 5, 6, 10. ~1,600 lines, about half tests: over the target, kept whole because the probes, `run.sh` and the run labels share one contract (`hardening.json` and the hand-off) that one controls run on de.NBI checks; split task 5's `handoff.py`/`matrix.py` half off if the code alone passes 3,000 | offline provider, run script and matrix tests; `npm run eval:controls` on the de.NBI VM: all `open` | [slice-3-controls.md](slice-3-controls.md) | merged #61 |
-| 4/9 | `impl/canary-eval-ladder-4-injections` | 1–6 | three payloads planted, `injections.json`, the test receiver, `L0.example.yml` and the clean overlay; decisions 2 (test), 3, 4, 8 (receiver). ~1,180 lines, about half tests and golden renders: over the target, kept whole because the payloads, their manifest, the receiver and the clean overlay are one L0 build, checked together by one rebuild of the de.NBI VM | `pytest platform/dev/tests -k "injection or ladder or eval_sink"` | [slice-4-injections.md](slice-4-injections.md) | merged #63 (`d333070`) |
-| 5/9 | `impl/canary-eval-ladder-5-agent-suite` | 1–4 | `agent.yaml` and the first catalogue; the first L0 runs, clean and injected, and their matrix; decision 7. ~620 lines | the lint; the committed matrix at L0 (`L0 clean`, `L0`) | [slice-5-agent-suite.md](slice-5-agent-suite.md) | planned |
-| 6/9 | `impl/canary-eval-ladder-6-l1` | 1–5 | `spe_harden_trs_readonly`; L1 runs, injected and clean. ~560 lines | controls suite at L1; `L1` and `L1 clean` columns | [slice-6-l1.md](slice-6-l1.md) | planned |
-| 7/9 | `impl/canary-eval-ladder-7-l2` | 1–3 | `spe_harden_data_tiers`; L2 run. ~170 lines | controls suite at L2; L2 column | [slice-7-l2.md](slice-7-l2.md) | planned |
-| 8/9 | `impl/canary-eval-ladder-8-l3` | 1–3 | `spe_harden_egress`; L3 run. ~270 lines | controls suite at L3; L3 column | [slice-8-l3.md](slice-8-l3.md) | planned |
-| 9/9 | `impl/canary-eval-ladder-9-airlock` | 1–3 | the L5 airlock module and switch; decision 12. ~410 lines | airlock unit tests; `airlock` probe `closed` with the switch on | [slice-9-airlock.md](slice-9-airlock.md) | planned |
+| 1/10 | `impl/canary-eval-ladder-1-scoring` | 1–5 | the six metrics, the manifest schema, the matrix, the catalogue lint; decisions 7 (lint), 8, 11. ~1,550 lines, half of them tests: over the size target, kept whole because every module is offline and independent | `uv run --group dev pytest -q` in `platform/promptfoo-evals` | [slice-1-scoring.md](slice-1-scoring.md) | merged #3 (`abdf63f`) |
+| 2/10 | `impl/canary-eval-ladder-2-isolation` | 1–4 | snapshot, restore, state diff and hooks; restore time measured; decision 9. ~980 lines in the plan's code blocks, about half tests | offline tests; the measured restore time in the handoff | [slice-2-isolation.md](slice-2-isolation.md) | merged #60 |
+| 3/10 | `impl/canary-eval-ladder-3-controls` | 1–5 | controls suite, `hardening.json`, `run.sh`, the run labels in `handoff.py` and `matrix.py` (clean and injected pairs); decisions 1 (probes), 5, 6, 10. ~1,600 lines, about half tests: over the target, kept whole because the probes, `run.sh` and the run labels share one contract (`hardening.json` and the hand-off) that one controls run on de.NBI checks; split task 5's `handoff.py`/`matrix.py` half off if the code alone passes 3,000 | offline provider, run script and matrix tests; `npm run eval:controls` on the de.NBI VM: all `open` | [slice-3-controls.md](slice-3-controls.md) | merged #61 |
+| 4/10 | `impl/canary-eval-ladder-4-injections` | 1–6 | three payloads planted, `injections.json`, the test receiver, `L0.example.yml` and the clean overlay; decisions 2 (test), 3, 4, 8 (receiver). ~1,180 lines, about half tests and golden renders: over the target, kept whole because the payloads, their manifest, the receiver and the clean overlay are one L0 build, checked together by one rebuild of the de.NBI VM | `pytest platform/dev/tests -k "injection or ladder or eval_sink"` | [slice-4-injections.md](slice-4-injections.md) | merged #63 (`d333070`) |
+| 5/10 | `impl/canary-eval-ladder-5-agent-suite` | 1–3 | the provider's state diff, the `metrics.py` carry-overs, `agent.yaml` and the 13-test catalogue, the dry run against the scripted agent; decision 7. ~620 lines | the lint; the offline suites; the dry run's wiring checks in the handoff (errors 0, 13 state diffs) | [slice-5-agent-suite.md](slice-5-agent-suite.md) | planned |
+| 6/10 | `impl/canary-eval-ladder-6-l1` | 1–5 | `spe_harden_trs_readonly` and `L1.example.yml`, built on de.NBI. ~480 lines | the controls suite at L1 on de.NBI (`trs-write`, `wes-inline`, `e2e-exploit` `closed`) | [slice-6-l1.md](slice-6-l1.md) | planned |
+| 7/10 | `impl/canary-eval-ladder-7-l2` | 1–3 | `spe_harden_data_tiers` and `L2.example.yml`, built on de.NBI. ~150 lines | the controls suite at L2 on de.NBI (`tier-reach` `closed`) | [slice-7-l2.md](slice-7-l2.md) | planned |
+| 8/10 | `impl/canary-eval-ladder-8-l3` | 1–3 | `spe_harden_egress` and `L3.example.yml`, built on de.NBI. ~250 lines | the controls suite at L3 on de.NBI (`egress` `closed`) | [slice-8-l3.md](slice-8-l3.md) | planned |
+| 9/10 | `impl/canary-eval-ladder-9-airlock` | 1–3 | the L5 airlock module and switch; decision 12. ~410 lines | airlock unit tests; `airlock` probe `closed` with the switch on | [slice-9-airlock.md](slice-9-airlock.md) | planned |
+| 10/10 | `impl/canary-eval-ladder-10-agent-runs` | 1–5 | the agent runs on `qwen3.8-27b`, one batch after the key gate: L0 clean and injected, L1 injected and clean, L2, L3; their counts and the matrix in `docs/results/`; decisions 10, 11. ~100 lines of results, no code | the committed matrix (`L0 clean` to `L3`), the token check, each level's controls line | [slice-10-agent-runs.md](slice-10-agent-runs.md) | planned |
 
 L4 (the typed tool server) has its own spec ([out-of-scope](../../specs/2026-10-22-canary-eval-ladder-design/out-of-scope.md)).
 `L4.example.yml`, `L5.example.yml` and the L4/L5 runs belong to that spec's plan, which slice 9 hands them to:
-slice 9's PR moves them into `BACKLOG.md`'s L4 line.
+slice 9's PR moves them into `BACKLOG.md`'s L4 line. Slice 10 runs L0–L3 only.
 
 ## Review Focus
 
@@ -192,12 +196,14 @@ Plan-wide decisions taken after the plan merged; a slice's own rulings go in its
   the sandbox unhardened at L3 (slice 8's `egress` probe shows it); if overlays prove awkward, the fallback is
   to render `spe_frontend_dir/docker-compose.yml` from a template again, which reverses part of #35.
 - **2026-11-09, runs on de.NBI need no OK** — the user's standing OK of 2026-11-09 (`AGENTS.md`, *Setup*).
+  Superseded in part by *agent runs move to slice 10* below: the agent-suite steps it names are now slice 10's.
   *Decision:* the agent-suite steps of slices 5–8 that stopped to ask now just run, once the controls suite
   agrees; a run that fails is fixed and run again without asking. *Why:* de.NBI runs cost no money, only rate
   limits, and every ladder run is on de.NBI; a stop before each run would hold the unattended loop for an answer
   the user has given once for all. *Cost if wrong:* an unattended session spends de.NBI quota.
 - **2026-11-09, `biohackathon` knowledge 0015 folded: matched clean and injected runs at L0 and L1** (spec
-  clarification 7). *Decision:* at L0 and L1 the whole suite runs in two conditions, `injected` (the level file)
+  clarification 7). The run steps it names moved to slice 10 (*agent runs move to slice 10* below); the
+  conditions and their order hold. *Decision:* at L0 and L1 the whole suite runs in two conditions, `injected` (the level file)
   and `clean` (plus `instances/no-injections.example.yml`, created and tested in slice 4, task 6); L2–L5 run
   injected only. Tasks rewritten: slice 3, task 5 (`handoff.condition`, `handoff.canaries_digest`, the run labels
   in `matrix.py`, `run.sh`); slice 4, tasks 4 and 6 (the catalogue path check, the clean overlay and its test);
@@ -253,6 +259,23 @@ Plan-wide decisions taken after the plan merged; a slice's own rulings go in its
   `conftest.hosts()`. *Cost if wrong:* a later hand-off key that is a mapping or a nested list is still refused
   (a configuration error, never a pass); `read_hosts` then needs a real YAML parser, which the standard library
   lacks.
+
+- **2026-11-09, agent runs move to slice 10** — the user's ruling on #64
+  ([issuecomment-6738237144](https://github.com/thodkatz/elixir-biohackathon-2026-test/pull/64#issuecomment-6738237144)).
+  *Decision:* N becomes 10. Slice 5 merges with tasks 1–3 (the provider's state diff, the `metrics.py`
+  carry-overs, `agent.yaml` and the 13-test catalogue, the dry run); slices 6–8 build their level and are checked
+  by the controls suite on de.NBI, with no model call; a new slice 10 runs every level's agent runs in one batch
+  once a working de.NBI key is in reach (L0 clean and injected, L1 injected and clean, L2, L3, on
+  `qwen3.8-27b`) and commits the full matrix. The key gate moves from #64 to slice 10's PR when it is claimed.
+  Tasks rewritten: slice 5, task 4 (moved to slice 10, tasks 1–2) and a closing section for its handoff; slice 6,
+  task 5; slices 7 and 8, task 3 (their run, counts and matrix steps moved to slice 10, tasks 3–5); slice 9, its
+  handoff and *Current work* step (it now points to slice 10); the slices table and file structure. Folded while
+  moving the run steps: slice 5's pre-flight corrections to the build command (`instances/denbi.yml`, the
+  `spe_agent_allowed_models` override as JSON, the branch pushed first, the key only in the environment, no
+  unguarded snapshot), applied to slices 6–10. *Why:* the key is the only blocker, and only for the agent runs;
+  one batch keeps the levels comparable (the same key, model version and window). *Cost if wrong:* no real-model
+  numbers until the last slice, so a level whose controls pass but whose agent runs expose a design fault is
+  found late; and this plan rewrite.
 
 ## Handoffs
 

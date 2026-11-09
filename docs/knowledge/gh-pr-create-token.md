@@ -65,3 +65,16 @@ B=$(mktemp)
 printf 'The user approved this spec in this session, at %s:\n\n> <their words>\n' "$(date -u +%Y-%m-%dT%H:%MZ)" > "$B"
 gh api $R/issues/<n>/comments -F body=@"$B" && gh api $R/issues/<n>/labels -f "labels[]=approved"
 ```
+
+**`GH_REPO` gets every `gh` command past it** (2026-11-09, #64). `methodology gate open 64 <file>` failed with
+`methodology gate: could not post the gate comment on #64; nothing else is done.` (its `gh pr comment`, then the
+same "organization forbids access" GraphQL error), and `gh api 'repos/{owner}/{repo}'` resolves the placeholders to
+upstream (403). `gh repo set-default` fails too (it reads `repo_001.parent`). Setting the repository in the
+environment avoids the parent lookup for `gh pr view`, `gh pr comment` and the `{owner}/{repo}` placeholders alike:
+
+```bash
+GH_REPO=thodkatz/elixir-biohackathon-2026-test methodology gate open <n> <file>
+GH_REPO=thodkatz/elixir-biohackathon-2026-test methodology gate wait <n>     # its forge_events use {owner}/{repo}
+```
+
+The same prefix should serve `gate approve`, `gate clear` and `next --end --blocked` (untried).

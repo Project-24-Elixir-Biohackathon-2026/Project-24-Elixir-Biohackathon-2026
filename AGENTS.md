@@ -203,8 +203,9 @@ Each unit's PR updates its track's line; the last slice removes it. An open upst
 is open (`docs/guides/contributing-upstream.md`, step 6).
 
 - **Canary evaluation ladder** (biohackathon 0013, 0014, 0015): spec (#1), plan (#2), slices 1–4 (#3, #60, #61,
-  #63) merged; L0 built with its injections on de.NBI. **Next: slice 5/9** `impl/canary-eval-ladder-5-agent-suite`
-  (needs a working de.NBI key). Handoff: `methodology handoff newest docs/superpowers/plans/2026-10-22-canary-eval-ladder/handoffs`.
+  #63) merged; slice 5/10 (tasks 1–3, the agent suite) in review on #64. **Next: slice 6/10**
+  `impl/canary-eval-ladder-6-l1` (L1, checked by the controls suite). The agent runs of every level wait for a
+  working de.NBI key (slice 10/10; the key gate on #64). Handoff: `methodology handoff newest docs/superpowers/plans/2026-10-22-canary-eval-ladder/handoffs`.
 - **Upstream PR kraatz #28** (`contrib/agui-archive-markdown`): archive Markdown wording, autolinks, refusal
   reason, bad timestamps; waits on upstream's review.
 - **Upstream PR kraatz #29** (`contrib/agui-chat-ui-polish`): reopened sessions land on their end, menu focus;
@@ -235,7 +236,7 @@ new template), how the person tests it, and how a tested change becomes a templa
 | `platform/site/` | The landing page and the threat catalog page served next to the portal, built from `threats/` (`platform/site/README.md`) |
 | `platform/agui/` | The AG-UI frontend: `pydantic-ai-agent/` (Pydantic AI agent served over AG-UI) and `copilotkit-chat/` (Next.js + CopilotKit chat) |
 | `platform/instance/` | What runs on an instance from the repository clone there: the frontend's compose file, `spe-apply`, the workspace instructions for Coder Agents (`platform/instance/README.md`) |
-| `platform/promptfoo-evals/` | promptfoo provider, assertions and starter suite against an instance's agent |
+| `platform/promptfoo-evals/` | promptfoo provider, assertions, the controls suite and the agent suite (`agent.yaml`, `tests/*.yaml`) against an instance's agent |
 | `platform/report/` | The run report service on the portal VM, behind each workspace's Report button (`platform/report/README.md`) |
 | `platform/dev/` | Development helpers: dummy dataset generator, scripted agent, tests for host-side scripts |
 | `docs/getting-started.md` | Deploying and using an instance by hand, and its private configuration |

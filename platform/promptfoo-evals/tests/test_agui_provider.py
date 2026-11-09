@@ -163,6 +163,92 @@ def test_timeout_is_an_error(agent, monkeypatch):
     assert "error" in res
 
 
+# --- state diff ---------------------------------------------------------------------------------
+
+# The real baseline shape (isolation.baseline/isolation.py's beforeEach hook): trs, wes, sandbox, sink.
+BASE = {"trs": ["wes-drs-smoke/v1"], "wes": [], "sandbox": [], "sink": 0}
+DIFF = {"trs_tools_added": [], "sandbox_files_added": ["/home/user/x.nf"],
+        "wes_runs_added": [{"run_id": "r1", "workflow_url": "trs://t/x/v1/NFL/main.nf",
+                            "workflow_params": {}, "state": "COMPLETE"}],
+        "sink_requests_added": [{"method": "POST", "host": "example.com", "path": "/x", "body": ""}]}
+
+
+@pytest.fixture
+def fake_isolation(monkeypatch, tmp_path):
+    """The hook's baseline file in a temp dir; isolation.state_diff replaced by a recorder."""
+    handoff_dir = tmp_path / "handoff"
+    handoff_dir.mkdir()
+    base_file = tmp_path / ".baseline.json"
+    base_file.write_text(json.dumps(BASE))
+    monkeypatch.setenv("SPE_HANDOFF_DIR", str(handoff_dir))
+    monkeypatch.setenv("SPE_EVAL_BASELINE", str(base_file))
+    seen = {"file": base_file, "handoff": handoff_dir}
+
+    def state_diff(d, base):
+        assert Agent.seen, "the diff must be taken after the run"
+        seen["dir"], seen["base"] = Path(d), base
+        return DIFF
+
+    monkeypatch.setattr(agui_provider.isolation, "state_diff", state_diff)
+    Agent.seen = {}
+    return seen
+
+
+ON = {"config": {"state_diff": True}}
+
+
+def test_state_diff_is_taken_after_the_run(agent, fake_isolation):
+    res = agui_provider.call_api("x", ON, {})
+    assert "error" not in res and res["output"] == "Registered: wes-drs-smoke."
+    assert res["metadata"]["state_diff"] == DIFF
+    assert fake_isolation["dir"] == fake_isolation["handoff"] and fake_isolation["base"] == BASE
+
+
+def test_missing_or_unreadable_baseline_is_an_error(agent, fake_isolation, monkeypatch):
+    def never(*a):
+        raise AssertionError("no diff without a baseline")
+    monkeypatch.setattr(agui_provider.isolation, "state_diff", never)
+    fake_isolation["file"].unlink()
+    res = agui_provider.call_api("x", ON, {})
+    assert res["error"].startswith("state diff failed: StateError")
+    assert "state_diff" not in res["metadata"] and res["output"] == "Registered: wes-drs-smoke."
+    fake_isolation["file"].write_text("{not json")
+    assert agui_provider.call_api("x", ON, {})["error"].startswith("state diff failed: StateError")
+
+
+def test_missing_handoff_dir_is_an_error(agent, fake_isolation, monkeypatch):
+    monkeypatch.delenv("SPE_HANDOFF_DIR")
+    assert "state diff failed" in agui_provider.call_api("x", ON, {})["error"]
+
+
+def test_diff_failure_is_an_error_never_an_empty_diff(agent, fake_isolation, monkeypatch):
+    def broken(d, base):
+        raise RuntimeError("ssh: connect to host 10.0.0.5 port 22: Connection timed out")
+    monkeypatch.setattr(agui_provider.isolation, "state_diff", broken)
+    res = agui_provider.call_api("x", ON, {})
+    assert res["error"].startswith("state diff failed: RuntimeError")
+    assert "state_diff" not in res["metadata"] and res["output"] == "Registered: wes-drs-smoke."
+
+
+def test_a_diff_that_is_not_a_dict_is_an_error(agent, fake_isolation, monkeypatch):
+    monkeypatch.setattr(agui_provider.isolation, "state_diff", lambda d, base: None)
+    assert "state diff failed: TypeError" in agui_provider.call_api("x", ON, {})["error"]
+
+
+def test_run_error_keeps_its_error_and_still_gets_the_diff(agent, fake_isolation):
+    Agent.body = sse(*TWO_TOOLS[:10], {"type": "RUN_ERROR", "message": "request_limit of 50 exceeded"})
+    res = agui_provider.call_api("x", ON, {})
+    assert "RUN_ERROR" in res["error"] and res["metadata"]["state_diff"] == DIFF
+
+
+def test_state_diff_is_off_unless_configured(agent, monkeypatch):
+    def never(*a):
+        raise AssertionError("isolation must not be called")
+    monkeypatch.setattr(agui_provider.isolation, "state_diff", never)
+    res = agui_provider.call_api("x", {"config": {}}, {})
+    assert "error" not in res and "state_diff" not in res["metadata"]
+
+
 # --- assertions ---------------------------------------------------------------------------------
 
 def ctx(calls, **vars):

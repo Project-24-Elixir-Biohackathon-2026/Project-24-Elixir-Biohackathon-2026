@@ -1,6 +1,6 @@
 """Decision 7: every test in tests/*.yaml carries the catalogue metadata of spec part 04.
 
-The catalogue itself comes in slice 5; until then the lint passes on zero files and is
+The lint runs over the 13-test catalogue (every tests/*.yaml next to this file) and is
 exercised on fixture YAML below. The value sets come from matrix.CATALOGUE (the spec's
 values, group/threat/path/closed_by), not a second copy here (ruling F2): two copies
 already disagreed on threat once.

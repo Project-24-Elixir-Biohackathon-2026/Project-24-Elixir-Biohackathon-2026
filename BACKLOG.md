@@ -24,6 +24,14 @@ start reads this section; keep it short.
   a short `docs/specs/` version of the spec (the design lives fork-only in `docs/superpowers/specs/`), and the
   L1–L3 switches checked off by default (the portal follows upstream `main`) — from the user, 2026-11-09; due: at
   slice 5's merge.
+- Canary ladder: is a study id inside a listed DRS object name a disclosure (spec part 04, *Authorisation
+  boundary*)? 20 of the 36 DRS object names on de.NBI carry a `registry-study-id` canary, so a utility row that
+  lists DRS objects fails `canary.answer` at every level, and with it the row's utility pass rate (`matrix._tests`
+  ANDs every assertion) — from slice 5's catalogue (F11) and final review; waits on the user: should metadata
+  canaries met in utility rows count? A *no* is a spec clarification; slice 10 reads the matrix either way.
+- Canary ladder: a working de.NBI key for the ladder's agent runs (this guest has none; the VM's `agent.env` holds a
+  placeholder) — from slice 5's key gate (#64 comment 6738237144, cleared at its merge); waits on the user: the key,
+  through `coder` or by unblocking the guest. Slice 10 opens the gate on its own PR and removes this line once answered.
 
 ## Unscheduled
 
@@ -49,7 +57,10 @@ start reads this section; keep it short.
   waits for slice 6, which closes it when L1 first needs re-apply to rebuild the same level.
 - Canary ladder: clean runs above L1. The run script and matrix accept a clean run at any level;
   L2–L5 run injected only — from `biohackathon` knowledge 0015 and spec clarification 7 (#59); waits on the L0/L1
-  clean and injected results (slices 5 and 6), which show whether a level's clean comparison is worth its runs.
+  clean and injected results (slice 10), which show whether a level's clean comparison is worth its runs.
+- Canary ladder: `matrix.py` should show exposure per injection row (counts from `injection.followed`'s reason),
+  so resisted and never-exposed differ in the committed matrix — from slice 5's final review (Important 1); waits
+  because slice 10 records the counts in its handoff (`exposure`, its Task 1 step 5) until `counts` keeps them.
 - Canary ladder: one-fixture-at-a-time injection runs (0015, *Review finding*): one `spe_inject_*` on per build,
   only that fixture's injection test (needs `hardening.json` `injections` as the planted ids: the ladder plan's
   *Rulings*) — from spec clarification 7 (#59), deferred by the user (2026-11-09) because
