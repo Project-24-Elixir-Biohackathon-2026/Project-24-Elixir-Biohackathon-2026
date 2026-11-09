@@ -19,6 +19,11 @@ start reads this section; keep it short.
   start routine's prune removes only worktrees whose remote branch is gone, so a merging session that skips
   cleanup leaves its worktree for good (#58's, 2026-11-09; agent-methodology #153) — waits on the user: an OK to
   change the repo setting.
+- Canary ladder upstream: once slice 5 merges, port slices 1–5 to kraatz as one `contrib/` branch (scoring,
+  isolation, controls, injections, agent suite), then one port per hardening level as slices 6–9 merge. Before it:
+  a short `docs/specs/` version of the spec (the design lives fork-only in `docs/superpowers/specs/`), and the
+  L1–L3 switches checked off by default (the portal follows upstream `main`) — from the user, 2026-11-09; due: at
+  slice 5's merge.
 
 ## Unscheduled
 
