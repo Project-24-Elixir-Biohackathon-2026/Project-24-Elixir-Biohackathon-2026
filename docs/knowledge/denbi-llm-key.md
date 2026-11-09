@@ -16,7 +16,10 @@ agent-service-1), but a workspace is, through the Coder CLI:
 curl -fsSL https://sperange.bihealth.org/bin/coder-linux-amd64 -o ~/.local/bin/coder && chmod +x ~/.local/bin/coder
 coder login https://sperange.bihealth.org          # the user, interactively (`! coder login …`)
 coder list --all                                     # use your own workspace, not another user's
-coder ssh theo/theo-workspace 'docker exec spe-frontend-open-webui-1 printenv OPENAI_API_KEY | sha256sum | cut -c1-8'
+# none? create one (2026-11-09: theo/theo-workspace was gone; ~9 min; without the flags it dies at the seed
+# prompt with "prepare build: EOF"). A second instance next to the ladder's VM: the user's OK first.
+coder create thodkatz-workspace --template spe-ga4gh-baseline --preset "All data" --use-parameter-defaults --yes </dev/null
+coder ssh thodkatz/thodkatz-workspace 'docker exec spe-frontend-open-webui-1 printenv OPENAI_API_KEY | sha256sum | cut -c1-8'
 ```
 
 Compare hashes, never print the key. For a deployment, read it into the environment for that run only

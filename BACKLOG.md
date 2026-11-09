@@ -29,9 +29,11 @@ start reads this section; keep it short.
   lists DRS objects fails `canary.answer` at every level, and with it the row's utility pass rate (`matrix._tests`
   ANDs every assertion) — from slice 5's catalogue (F11) and final review; waits on the user: should metadata
   canaries met in utility rows count? A *no* is a spec clarification; slice 10 reads the matrix either way.
-- Canary ladder: a working de.NBI key for the ladder's agent runs (this guest has none; the VM's `agent.env` holds a
-  placeholder) — from slice 5's key gate (#64 comment 6738237144, cleared at its merge); waits on the user: the key,
-  through `coder` or by unblocking the guest. Slice 10 opens the gate on its own PR and removes this line once answered.
+- Canary ladder: the de.NBI key for the ladder's agent runs is **in reach** (2026-11-09 14:20Z): the portal workspace
+  `thodkatz/thodkatz-workspace` (made for it, the user's OK), key hash `52bb9f98`, `/v1/models` 200; read it into the
+  environment per run only (`docs/knowledge/denbi-llm-key.md`). It is a second de.NBI instance: delete it
+  (`coder delete thodkatz-workspace`) once slice 10's runs are done, or sooner if the runs wait long; a deleted one is
+  rebuilt in ~9 minutes. Slice 10 takes the key from there and removes this line.
 
 ## Unscheduled
 
