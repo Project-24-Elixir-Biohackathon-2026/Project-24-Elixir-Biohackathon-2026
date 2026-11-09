@@ -51,13 +51,6 @@ start reads this section; keep it short.
   local note at the next `methodology update` — from #57's methodology review (finding 7); waits because it is a
   change to another repository, its own unit.
 
-- agent-methodology: `methodology worktree` takes the main checkout from `git worktree list`'s first line, which in a
-  submodule is the parent's `.git/modules/<name>`, so here it misplaces the worktree and claims nothing
-  (`docs/knowledge/methodology-worktree-submodule.md`). `next-session.sh` (`--unit`'s worktree, the `repo=` hint)
-  and `supervise.sh` read the same line, and `status.sh` uses `dirname` of the common dir, so a chained unit runs
-  under `.git/modules/` with no `methodology status` row (seen 2026-11-08, slice 1 of leave-running-chat). Carry a fix to agent-methodology (resolve the checkout with
-  `git rev-parse --show-toplevel` from the main worktree, or `core.worktree`) — from #50's review; waits because it
-  is another repository's change.
 - agent-methodology: `forge.sh` calls `gh pr view <n>` (and `gh api repos/{owner}/{repo}/…`) without `--repo`; on
   this fork, whose parent is now in an organization, that fails (`methodology gate approve`: "could not read #N's
   labels") even with `gh repo set-default` (`docs/knowledge/gh-pr-create-token.md`). Carry a fix (pass the origin's

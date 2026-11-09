@@ -1,5 +1,8 @@
 # `methodology worktree <branch>` in this submodule: worktree under `.git/modules/`, no claim
 
+**Fixed** by agent-methodology #143 (`main_checkout` resolves a submodule's checkout), in the installed
+version `c7a04c4`. Kept for older installs; the workaround below is no longer needed.
+
 Seen 2026-11-08, claiming `change/agui-tool-group-steps` from the main checkout
 (`/workspace/biohackathon/elixir-biohackathon-2026-test`, a submodule of `biohackathon`).
 
