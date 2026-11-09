@@ -1,0 +1,73 @@
+---
+# spe_harden_egress (L3): host rules for the sandbox's fixed address; removed again when off.
+- name: Egress filter state on the host
+  ansible.builtin.stat:
+    path: /etc/systemd/system/spe-egress.service
+  register: egress_unit
+
+- name: Egress filter installed (spe_harden_egress)
+  when: spe_harden_egress | bool
+  become: true
+  block:
+    - name: Directory for the filter's parameters
+      ansible.builtin.file:
+        path: /etc/spe
+        state: directory
+        mode: "0755"
+
+    - name: Egress filter script, unit and parameters
+      ansible.builtin.copy:
+        src: "{{ item.src | default(omit) }}"
+        content: "{{ item.content | default(omit) }}"
+        dest: "{{ item.dest }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - { src: spe_egress.sh, dest: /opt/spe/bin/spe_egress.sh, mode: "0755" }
+        - { src: spe-egress.service, dest: /etc/systemd/system/spe-egress.service, mode: "0644" }
+        - { content: "SANDBOX_IP={{ spe_sandbox_ip }}\nAPI_IP={{ spe_api_host }}\nAPI_PORT=443\n",
+            dest: /etc/spe/egress.env, mode: "0644" }
+      loop_control:
+        label: "{{ item.dest }}"
+      register: egress_files
+
+    - name: Egress filter applied now and at every boot
+      ansible.builtin.systemd:
+        name: spe-egress
+        enabled: true
+        daemon_reload: true
+        state: "{{ 'restarted' if egress_files.changed else 'started' }}"
+
+    # The oneshot unit stays active, so a rule or jump lost since (iptables-restore, by hand)
+    # is only re-applied by running apply again; it is idempotent.
+    - name: Egress rules found
+      ansible.builtin.command: /opt/spe/bin/spe_egress.sh status
+      register: egress_status
+      changed_when: false
+      failed_when: false
+
+    - name: Egress rules re-applied (some were missing)
+      ansible.builtin.command: /opt/spe/bin/spe_egress.sh apply
+      when: egress_status.rc != 0
+      changed_when: true
+
+    - name: Egress rules in place
+      ansible.builtin.command: /opt/spe/bin/spe_egress.sh status
+      changed_when: false
+
+- name: Egress filter removed (switch off, unit present)
+  when: not (spe_harden_egress | bool) and egress_unit.stat.exists
+  become: true
+  block:
+    - name: Stop and disable (ExecStop removes the rules)
+      ansible.builtin.systemd:
+        name: spe-egress
+        state: stopped
+        enabled: false
+    - name: Files removed
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: [/etc/systemd/system/spe-egress.service, /opt/spe/bin/spe_egress.sh, /etc/spe/egress.env]
+    - name: Reload units
+      ansible.builtin.systemd:
+        daemon_reload: true

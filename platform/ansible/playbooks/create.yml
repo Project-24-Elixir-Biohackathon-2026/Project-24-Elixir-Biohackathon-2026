@@ -196,6 +196,12 @@
       tags: [frontend]
       when: spe_frontends | length > 0
 
+    - name: Sandbox egress filter (spe_harden_egress)
+      ansible.builtin.import_role:
+        name: egress
+      tags: [frontend]
+      when: spe_frontends | length > 0
+
     # The canary ladder's test receiver (spe_eval_sink); its tasks take it down when off.
     - name: Test receiver
       ansible.builtin.import_role:

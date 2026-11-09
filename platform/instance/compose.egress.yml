@@ -1,0 +1,15 @@
+# Overlay for spe_harden_egress (ladder level L3): the sandbox gets a fixed address on its
+# own tools subnet, which the host's SPE-EGRESS rules match, and an unroutable resolver.
+# spe-apply adds it when .env's SPE_COMPOSE_OVERLAYS names egress.
+services:
+  sandbox:
+    networks:
+      tools:
+        ipv4_address: ${SPE_SANDBOX_IP}
+    dns: ["${SPE_SANDBOX_DNS}"]
+networks:
+  tools:
+    ipam:
+      config:
+        - subnet: ${SPE_SANDBOX_SUBNET}
+          ip_range: ${SPE_SANDBOX_IP_RANGE}   # dynamic addresses, outside SPE_SANDBOX_IP

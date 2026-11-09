@@ -202,9 +202,9 @@ to things. Who is working on what is shown by the open PRs, not here (*Claiming 
 Each unit's PR updates its track's line; the last slice removes it. An open upstream PR also gets a line while it
 is open (`docs/guides/contributing-upstream.md`, step 6).
 
-- **Canary evaluation ladder** (biohackathon 0013, 0014, 0015): spec (#1), plan (#2), slices 1–6 (#3, #60, #61,
-  #63, #64, #65) merged; slice 7/10 (L2, built on de.NBI and checked by its controls) on #66. **Next: slice 8/10**
-  `impl/canary-eval-ladder-8-l3` (L3, checked by the controls suite). The agent runs of every level wait for a
+- **Canary evaluation ladder** (biohackathon 0013, 0014, 0015): spec (#1), plan (#2), slices 1–7 (#3, #60, #61,
+  #63, #64, #65, #66) merged; slice 8/10 (L3, built on de.NBI and checked by its controls) on #68. **Next: slice
+  9/10** `impl/canary-eval-ladder-9-airlock` (the L5 airlock, checked by its unit tests and probe). The agent runs of every level wait for a
   working de.NBI key (slice 10/10; `BACKLOG.md` *Next*). Handoff: `methodology handoff newest docs/superpowers/plans/2026-10-22-canary-eval-ladder/handoffs`.
 - **Upstream PR kraatz #28** (`contrib/agui-archive-markdown`): archive Markdown wording, autolinks, refusal
   reason, bad timestamps; waits on upstream's review.

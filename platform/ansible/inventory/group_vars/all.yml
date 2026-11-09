@@ -140,7 +140,8 @@ spe_eval_sink_image: python:3.12-alpine
 # Compose overlays (platform/instance/compose.<name>.yml) the ladder's switches add to the
 # frontend's project; empty by default, so the .env and the containers are today's.
 spe_compose_overlays: >-
-  {{ (['eval-sink'] if spe_eval_sink | bool else []) }}
+  {{ (['eval-sink'] if spe_eval_sink | bool else [])
+     + (['egress'] if spe_harden_egress | bool else []) }}
 
 # --- workflows --------------------------------------------------------------
 spe_workflows: [wes-drs-smoke, gatk-hc-chr20]
@@ -319,6 +320,12 @@ spe_harden_data_tiers: []        # L2: tiers workflow containers mount, e.g. [re
 spe_harden_egress: false         # L3: the sandbox reaches only the API host on 443
 # L4 is spe_agent_tool_surface (above) set to anything but 'shell'
 spe_harden_airlock: false        # L5: pattern filter on the agent's final answer
+# L3 (spe_harden_egress): the sandbox gets a fixed address; host rules let it reach only
+# spe_api_host:443. spe_sandbox_dns is TEST-NET-1: names outside the project do not resolve.
+spe_sandbox_subnet: 172.30.250.0/24
+spe_sandbox_ip: 172.30.250.10
+spe_sandbox_ip_range: 172.30.250.128/25   # Docker's dynamic addresses: never spe_sandbox_ip
+spe_sandbox_dns: 192.0.2.53
 # L1 (spe_harden_trs_readonly): operator TRS writes use a Traefik entrypoint published
 # on the VM's 127.0.0.1 only; the sandbox's TRS route is read-only.
 spe_trs_admin_port: 8443

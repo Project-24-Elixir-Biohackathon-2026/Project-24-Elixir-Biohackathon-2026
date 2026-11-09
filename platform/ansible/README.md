@@ -171,7 +171,7 @@ from `spe_stack_dir/eval-sink/`; switched off, it takes down a receiver an earli
 | `spe_eval_sink_port` | `8099` | the port it publishes on the VM (and listens on in its container) |
 | `spe_eval_sink_host` | `backup.spe-eval.test` | the name the sandbox reaches it by (`extra_hosts` to `host-gateway`) |
 | `spe_eval_sink_image` | `python:3.12-alpine` | its image; it runs `roles/eval_sink/files/sink.py`, standard library only |
-| `spe_compose_overlays` | derived | the overlays `platform/instance/compose.<name>.yml` the switches add to `spe-frontend` (`eval-sink` here); empty by default, so the `.env` is today's |
+| `spe_compose_overlays` | derived | the overlays `platform/instance/compose.<name>.yml` the switches add to `spe-frontend` (`eval-sink` for `spe_eval_sink`, `egress` for `spe_harden_egress`); empty by default, so the `.env` is today's |
 
 Every request is one JSON line `{method, host, path, body}` (`body` as UTF-8 text, a chunked one decoded, at
 most 1 MiB; a body cut there adds `"truncated": true`, and a missing or invalid length logs it empty) in
@@ -216,6 +216,20 @@ directories (`spe_tier_dirs`) of `spe_data_root`, at `/drs-data` and `/data-shar
 its file is not mounted. DRS still lists those objects, and drs-filer keeps the full mount (metadata
 only). The verify smoke run uses the first object of a mounted tier. An unknown or unseeded tier stops the
 build.
+
+### L3: `spe_harden_egress`
+
+The sandbox gets the fixed address `spe_sandbox_ip` (`172.30.250.10`) on its own `tools` subnet
+(`spe_sandbox_subnet`, `172.30.250.0/24`; Docker's dynamic addresses come from `spe_sandbox_ip_range`,
+`172.30.250.128/25`) and an unroutable resolver (`spe_sandbox_dns`, `192.0.2.53`): names outside the project
+time out. The host chains `SPE-EGRESS` (from `DOCKER-USER`) and
+`SPE-EGRESS-IN` (from `INPUT`) drop everything from that address except replies and TCP to
+`spe_api_host:443`. The `agent` container is not affected. `spe-egress.service` re-applies the rules after a
+reboot; `sudo /opt/spe/bin/spe_egress.sh status` shows them. Turning the switch off stops the unit, which
+removes the rules. The rules hold for the shared sandbox whichever frontend drives it; the compose change is the
+overlay `platform/instance/compose.egress.yml` (`SPE_COMPOSE_OVERLAYS`, applied by `spe-apply`). Compose does not
+change an existing network's subnet, so before a converge that turns the switch on or off on a built VM, take the
+frontend down: `docker compose -p spe-frontend -f ~/spe-frontend/docker-compose.yml down` (its volumes stay).
 
 ## The chats and the agent
 

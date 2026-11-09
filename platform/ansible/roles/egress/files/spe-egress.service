@@ -1,0 +1,13 @@
+[Unit]
+Description=SPE sandbox egress filter (spe_harden_egress)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/spe/bin/spe_egress.sh apply
+ExecStop=/opt/spe/bin/spe_egress.sh remove
+
+[Install]
+WantedBy=multi-user.target docker.service
