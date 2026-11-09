@@ -12,7 +12,7 @@ the run script refuses). The restore hook adds the measured restore time. Every 
 
 `platform/promptfoo-evals/run.sh <hand-off dir> <repeat>`, per level, condition and model:
 
-1. `npm run eval:controls`: the controls suite. Writes `reports/controls.json`.
+1. `npm run eval:controls`: the controls suite, uncached (the script passes `--no-cache`, clarification 10). Writes `reports/controls.json`.
 2. If any probe disagrees with the level, stop with a non-zero exit, before any model call.
 3. `npm run eval:agent -- --repeat N --no-cache`: the whole agent suite, in either condition. Writes
    `reports/agent.json`.

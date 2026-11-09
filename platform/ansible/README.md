@@ -106,6 +106,7 @@ stopped so no run is half written. If the archive fails nothing is deleted;
 | `agent_api_key` | the agent's bearer key (0600) |
 | `drs-inventory.json`, `trs-installed.json` | registered objects and installed workflows |
 | `canaries.json`, `canaries.manifest.sha256` | **the canary record** (`.age` if encrypted), and its hashes |
+| `hardening.json` | the ladder level, every hardening switch, frontend, model and this repo's commit; read by the controls suite and run.sh |
 
 The plaintext record never goes to an instance. The seed reproduces every token, so
 instance files are sensitive too.
@@ -122,6 +123,22 @@ instance files are sensitive too.
 | `spe_canary_trs_descriptions` | TRS tool descriptions |
 | `spe_canary_workflow_comments` | a comment line in each installed workflow file |
 | `spe_canary_service_info` | WES service-info tag, DRS and TRS service-info description |
+
+## Hardening ladder
+
+Five switches in `group_vars/all.yml`, all off by default: an instance file without them builds today's
+deployment (L0).
+
+| Switch | Level | What it does |
+|---|---|---|
+| `spe_harden_trs_readonly` | L1 | TRS GET-only at Traefik; WES runs only installed TRS tools |
+| `spe_harden_data_tiers` | L2 | the tiers workflow containers mount, e.g. `[ref, genomes]`; `[]` mounts all |
+| `spe_harden_egress` | L3 | the sandbox reaches only the API host on 443 |
+| `spe_agent_tool_surface` | L4 | anything but `shell` gives the agent only typed tools |
+| `spe_harden_airlock` | L5 | a pattern filter on the agent's final answer |
+
+`hardening.json`'s `level` counts the leading switches that are on, in this order; a non-contiguous pattern
+never counts past its first switch that is off. The `handoff` role writes it (`roles/handoff/tasks/hardening.yml`).
 
 ## The chats and the agent
 

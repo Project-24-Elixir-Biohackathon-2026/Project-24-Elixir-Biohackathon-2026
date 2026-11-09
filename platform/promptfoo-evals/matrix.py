@@ -4,19 +4,21 @@
     python3 matrix.py render ../../docs/results/<model>/L*.json > ../../docs/results/canary-ladder-<model>.md
 
 Run from platform/promptfoo-evals, where run.sh leaves reports/L<n>/ and docs/results/ is two levels up.
-`counts` reads one level's reports directory (hardening.json, controls.json, agent.json, as run.sh
-copies them) and keeps only labels, probe ids, test metadata and per-metric failure counts: never an
-answer, a reason, a variable or a token, so its output can be committed and the raw reports deleted.
-`render` turns the counts of one model's levels into Markdown; it refuses mixed models and duplicate
-levels. A run without injections (hardening.json `injections: false`, spec clarification 6) is a column
-of its own, "L<n> clean", beside the injected run of the same level.
+`counts` reads one run's reports directory (hardening.json, controls.json, agent.json, run.json and,
+for an injected run, injections.json, as run.sh copies them) and keeps only labels, probe ids, test
+metadata, per-metric failure counts, the start time, the canary digest and the planted payloads'
+SHA-256: never an answer, a reason, a variable or a token, so its output can be committed and the raw
+reports deleted. `render` turns the counts of one model's runs into Markdown; it refuses mixed models,
+two runs of one level and condition, a level whose clean and injected runs were built with different
+canaries, and one fixture id with two payloads. A clean run (hardening.json `injections: false`, spec
+part 06, *Clean and injected runs*) is a column of its own, "L<n> clean", just before "L<n>".
 
-promptfoo 0.124.1 `-o x.json` shape read here: {results: {results: [{testCase: {vars, metadata},
+promptfoo 0.125.1 `-o x.json` shape read here: {results: {results: [{testCase: {vars, metadata},
 gradingResult: {pass, componentResults: [{pass, assertion: {metric}}]}, response: {error},
 failureReason}]}}; a bare {results: [...]} is accepted too. A row without a gradingResult, with
 response.error or with failureReason 2 (ERROR) counts as an error, not as a pass or a failure. So
 does a row with a component whose reason starts with "configuration error:" (metrics.py's
-hand-off/provider errors) or "Error running Python script:" (how promptfoo 0.124.1 reports an
+hand-off/provider errors) or "Error running Python script:" (how promptfoo 0.125.1 reports an
 assertion that raised, as an ordinary failed component): neither is evidence of a leak. Only
 the six decision-8 assertions (METRICS) may carry a `metric:`; any other metric name is refused.
 
@@ -37,6 +39,8 @@ if HERE not in sys.path:
 import handoff  # noqa: E402
 
 ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+SHA256 = re.compile(r"[0-9a-f]{64}")
+STARTED = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")  # run.sh: date -u +%Y-%m-%dT%H:%M:%SZ
 GROUPS = ("utility", "direct", "troubleshooting", "injection", "egress")
 # The agent catalogue's value sets (spec part 04, *Tests*): the one place these are enumerated.
 # None is a member of threat/path/closed_by because a utility test carries closed_by: null, and a
@@ -52,7 +56,7 @@ METRICS = frozenset({"canary.answer", "canary.touched", "canary.sent", "canary.d
                      "key.leak"})
 ERROR = 2  # promptfoo ResultFailureReason.ERROR
 # Component reason prefixes that mean "the assertion could not judge", not "the assertion failed":
-# metrics.CONFIG_ERROR, and promptfoo 0.124.1's wording for a Python assertion that raised.
+# metrics.CONFIG_ERROR, and promptfoo 0.125.1's wording for a Python assertion that raised.
 ERROR_REASONS = ("configuration error:", "Error running Python script:")
 
 
@@ -139,6 +143,35 @@ def _tests(rows: list[dict]) -> dict:
     return tests
 
 
+def _run(directory: Path) -> dict:
+    run = _load(directory / "run.json")
+    if not isinstance(run, dict) or not isinstance(run.get("started"), str) or not STARTED.fullmatch(run["started"]) \
+            or not isinstance(run.get("canaries_sha256"), str) or not SHA256.fullmatch(run["canaries_sha256"]):
+        raise MatrixError("run.json: needs started (YYYY-MM-DDTHH:MM:SSZ) and canaries_sha256, as run.sh writes them")
+    return run
+
+
+def _payloads(directory: Path, injected: bool) -> dict[str, str]:
+    """Fixture id -> payload SHA-256 from injections.json; only those two fields are read."""
+    entries: object = []
+    if (directory / "injections.json").exists():
+        manifest = _load(directory / "injections.json")
+        entries = manifest.get("injections") if isinstance(manifest, dict) else None
+        if not isinstance(entries, list):
+            raise MatrixError("injections.json: no injections[]")
+    if bool(entries) != injected:
+        raise MatrixError(f"injections.json does not match hardening.json's injections: {str(injected).lower()}")
+    payloads: dict[str, str] = {}
+    for e in entries:
+        iid = e.get("id") if isinstance(e, dict) else None
+        digest = e.get("payload_sha256") if isinstance(e, dict) else None
+        if not isinstance(iid, str) or not ID.fullmatch(iid) or iid in payloads \
+                or not isinstance(digest, str) or not SHA256.fullmatch(digest):
+            raise MatrixError("injections.json: an entry without a unique kebab-case id and a payload_sha256")
+        payloads[iid] = digest
+    return payloads
+
+
 def counts(level_dir: Path) -> dict:
     directory = Path(level_dir)
     try:
@@ -146,8 +179,10 @@ def counts(level_dir: Path) -> dict:
     except handoff.ConfigError as e:
         # The contract promises MatrixError; a caller catching only that must not see a bare ConfigError.
         raise MatrixError(str(e)) from e
+    run = _run(directory)
     return {"schema_version": 1, "instance": record["instance"], "level": record["level"],
-            "injections": record["injections"],
+            "injections": record["injections"], "started": run["started"],
+            "canaries_sha256": run["canaries_sha256"], "payloads": _payloads(directory, record["injections"]),
             "model": f"{record['model_provider']}:{record['model']}", "commit": record["commit"],
             "restore_seconds": record.get("restore_seconds"),
             "controls": _controls(_rows(_load(directory / "controls.json"), "controls.json")),
@@ -155,8 +190,8 @@ def counts(level_dir: Path) -> dict:
 
 
 def _check(c: object, i: int) -> dict:
-    keys = ("schema_version", "instance", "level", "injections", "model", "commit", "restore_seconds", "controls",
-            "tests")
+    keys = ("schema_version", "instance", "level", "injections", "started", "canaries_sha256", "payloads", "model",
+            "commit", "restore_seconds", "controls", "tests")
     if not isinstance(c, dict) or c.get("schema_version") != 1 or any(k not in c for k in keys):
         raise MatrixError(f"counts file {i + 1}: not counts version 1 (python3 matrix.py counts ...)")
     return c
@@ -178,7 +213,7 @@ def _column(c: dict) -> str:
 
 
 def render(counts_list: list[dict]) -> str:
-    # A clean control run sits just before the injected run of its level.
+    # A clean run sits just before the injected run of its level.
     levels = sorted((_check(c, i) for i, c in enumerate(counts_list)), key=lambda c: (c["level"], c["injections"]))
     if not levels:
         raise MatrixError("no counts given")
@@ -189,6 +224,18 @@ def render(counts_list: list[dict]) -> str:
     duplicates = sorted({n for n in columns if columns.count(n) > 1})
     if duplicates:
         raise MatrixError(f"duplicate levels: {', '.join(duplicates)}")
+    # Matched builds (spec part 02): the two conditions of a level share one canary record.
+    unmatched = sorted({c["level"] for c in levels
+                        if len({o["canaries_sha256"] for o in levels if o["level"] == c["level"]}) > 1})
+    if unmatched:
+        raise MatrixError("clean and injected runs built with different canaries: "
+                          + ", ".join(f"L{n}" for n in unmatched))
+    planted: dict[str, set[str]] = {}
+    for c in levels:
+        for iid, digest in c["payloads"].items():
+            planted.setdefault(iid, set()).add(digest)
+    if two := sorted(iid for iid, digests in planted.items() if len(digests) > 1):
+        raise MatrixError(f"two payloads for one fixture: {', '.join(two)}")
 
     def row(name: str, cells: list[str]) -> str:
         return f"| {name} | " + " | ".join(cells) + " |"
@@ -201,6 +248,9 @@ def render(counts_list: list[dict]) -> str:
              row("Level", columns), row("---", ["---"] * len(levels)),
              row("Instance", [c["instance"] for c in levels]),
              row("Commit", [f"`{c['commit'][:12]}`" for c in levels]),
+             row("Started (UTC)", [c["started"][:16].replace("T", " ") for c in levels]),
+             row("Payloads", [", ".join(f"{i} {d[:8]}" for i, d in sorted(c["payloads"].items())) or "–"
+                              for c in levels]),
              row("Restore (s)", restore), row("Controls", controls), "",
              "| Test | Group | Threat | Path | Closed by | " + " | ".join(columns) + " |",
              "|---" * (5 + len(levels)) + "|"]

@@ -44,7 +44,7 @@ def _guarded(metric):
             return metric(output, context)
         except handoff.ConfigError as e:
             # Not a leak and not a pass: matrix.counts counts a run with a CONFIG_ERROR reason as an
-            # error. Returned rather than raised: promptfoo 0.124.1 records a raising Python
+            # error. Returned rather than raised: promptfoo 0.125.1 records a raising Python
             # assertion as an ordinary failed one (failureReason 1) with a stack trace as reason.
             return _result(False, f"{CONFIG_ERROR} {e}")
     return wrapper

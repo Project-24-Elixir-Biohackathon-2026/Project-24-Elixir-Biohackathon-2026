@@ -55,3 +55,29 @@ assertion runs after the `repo` role, so the VM's clone has already moved to the
 `instances/local.yml` is rewritten) while the stack keeps running the old build. Export a working key for that
 run only, as above (`instances/denbi.yml` uses Anthropic: `ANTHROPIC_API_KEY`; de.NBI's model:
 `DENBI_LLM_API_KEY`), never into a file; a run that needs no rebuild (slice 2's live check) needs no key.
+
+**Writing `hardening.json` alone, without a key.** The handoff role's hardening tasks can run by themselves,
+skipping `create.yml` (and its `agui : LLM key present` assertion) entirely, because they only write a record on
+the controller — `hardening.json` under `spe_output_dir` — and touch nothing on the VM. Seen 2026-11-09, slice
+3's live L0 controls run, with no LLM key reachable:
+
+```yaml
+- hosts: localhost
+  gather_facts: false
+  tasks:
+    - ansible.builtin.include_role:
+        name: <worktree>/platform/ansible/roles/handoff
+        tasks_from: hardening
+```
+
+run from `platform/ansible/`:
+
+```bash
+ansible-playbook -i inventory/hosts.yml <play> \
+  -e @<main checkout>/platform/ansible/instances/denbi.yml \
+  -e spe_output_dir=<main checkout>/platform/ansible/output/denbi-agui-01 </dev/null
+```
+
+**Caveat:** the record's `commit` is read from the controller checkout (the worktree's branch tip), not from the
+VM's own clone, so it can disagree with what the VM is actually running. A later rebuild with a key available
+rewrites `hardening.json` from `create.yml`'s own run of the same tasks, which corrects it.

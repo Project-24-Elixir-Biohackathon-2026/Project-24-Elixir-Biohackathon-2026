@@ -33,7 +33,7 @@ Cumulative: level *n* has every control of levels 1…*n*. One committed example
 | **L1** | `spe_harden_trs_readonly: true` | the agent cannot add code to run: TRS rejects writes from the sandbox (Traefik routes TRS only for `GET`), and WES rejects workflows that are not TRS URIs of installed tools (no `workflow_attachment`, no other URL schemes) | P2 | `trs-write`, `wes-inline`, `e2e-exploit` |
 | **L2** | `spe_harden_data_tiers: [ref, genomes]` | workflow containers mount only the listed tiers of `/data-share` and `/drs-data` | P3 | `tier-reach` |
 | **L3** | `spe_harden_egress: true` | the sandbox reaches only the API host on 443 | P4 | `egress`, `api-reach` |
-| **L4** | `spe_agent_tool_surface: ga4gh_typed` | typed GA4GH tools replace the shell: read and status operations, returning only the fields a task needs, without free-text descriptions | most of P1 and the injections' reach | `tool-surface` |
+| **L4** | `spe_agent_tool_surface: typed` | typed GA4GH tools replace the shell: read and status operations, returning only the fields a task needs, without free-text descriptions | most of P1 and the injections' reach | `tool-surface` |
 | **L5** | `spe_harden_airlock: true` | the agent's final answer passes a pattern filter that redacts classes of sensitive data | what still reaches the answer | `airlock` |
 
 **Order.** The cheapest, most structural controls come first: L1–L3 are Traefik, WESkit and Docker

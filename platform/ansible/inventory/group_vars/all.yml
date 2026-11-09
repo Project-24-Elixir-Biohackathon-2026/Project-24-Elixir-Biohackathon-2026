@@ -269,6 +269,14 @@ spe_agent_llm_key: >-
      or (spe_denbi_api_key if spe_agent_model_provider == 'openai_compatible'
          else lookup('ansible.builtin.env', 'ANTHROPIC_API_KEY')) }}
 spe_agent_tool_surface: shell
+# --- hardening ladder (spec 2026-10-22-canary-eval-ladder, part 01) ----------
+# One switch per control; all off builds the deployment as it is today (L0).
+# hardening.json's level counts the leading switches that are on, in this order:
+spe_harden_trs_readonly: false   # L1: TRS GET-only at Traefik; WES runs only installed TRS tools
+spe_harden_data_tiers: []        # L2: tiers workflow containers mount, e.g. [ref, genomes]; [] = all
+spe_harden_egress: false         # L3: the sandbox reaches only the API host on 443
+# L4 is spe_agent_tool_surface (above) set to anything but 'shell'
+spe_harden_airlock: false        # L5: pattern filter on the agent's final answer
 spe_agent_sandbox_operations: all    # or a list of open-terminal operationIds
 spe_agent_include_sandbox_prompt: true
 spe_agent_max_output_bytes: 16384

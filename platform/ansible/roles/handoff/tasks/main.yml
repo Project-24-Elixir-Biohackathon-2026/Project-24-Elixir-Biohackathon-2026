@@ -135,6 +135,9 @@
   no_log: true
   when: "'agui' in spe_frontends"
 
+- name: Hardening record (hardening.json)
+  ansible.builtin.include_tasks: hardening.yml
+
 - name: Summary
   ansible.builtin.template:
     src: summary.md.j2

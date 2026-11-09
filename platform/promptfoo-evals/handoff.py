@@ -10,6 +10,7 @@ followed by `- scalar` lines at column 0, or `[]`) and rejects anything nested r
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shlex
@@ -26,6 +27,7 @@ METADATA_TYPES = frozenset({"drs-object-metadata", "trs-tool-description", "work
 SWITCHES = ("spe_harden_trs_readonly", "spe_harden_data_tiers", "spe_harden_egress", "spe_agent_tool_surface",
             "spe_harden_airlock")
 LOCAL_TARGETS = frozenset({"localhost", "127.0.0.1"})
+FIXTURES = Path("platform/ansible/catalog/injections/fixtures.json")  # under the repo root
 
 
 class ConfigError(Exception):
@@ -177,8 +179,9 @@ def vm_argv(dir: Path | str) -> list[str]:
 def check_hardening(record: object) -> dict:
     """The shape of hardening.json version 1 (plan README, Shared interfaces).
 
-    `injections` says whether the injection fixtures were planted: true at every ladder level, false
-    only in the clean control run (spec clarification 6), which the matrix shows as "L<n> clean".
+    `injections` says whether the injection fixtures were planted: true (all three spe_inject_* on) is
+    the injected condition, false (all off) the clean one (spec part 06, *Clean and injected runs*),
+    which the matrix shows as "L<n> clean"; the role writes "mixed" for anything else, refused here.
 
     Also checks that `level` equals the number of leading ladder controls switched on, in ladder
     order L1 spe_harden_trs_readonly, L2 spe_harden_data_tiers (on when a non-empty list), L3
@@ -242,3 +245,44 @@ def load_injections(dir: Path | str, repo_root: Path | None = None) -> list[dict
             raise ManifestError(f"injections.json: {e['id']} targets {e['canary_file']}, "
                                 "which has no file canary in canaries.json")
     return manifest["injections"]
+
+
+def canaries_digest(dir: Path | str) -> str:
+    """SHA-256 over the canary record's tokens (type, file, token) and study ids, in a fixed order.
+
+    Equal for the clean and the injected build of one level (spec part 02, *Matched builds*); it
+    ignores generated_at. A digest, never a token, so the counts can carry it.
+    """
+    directory = Path(dir)
+    tokens = sorted([t["type"], t["file"], t["token"]] for t in load_canaries(directory))
+    body = json.dumps({"study_ids": sorted(load_study_ids(directory)), "tokens": tokens}, sort_keys=True)
+    return hashlib.sha256(body.encode()).hexdigest()
+
+
+def condition(dir: Path | str, repo_root: Path | None = None) -> str:
+    """The run's condition, "injected" or "clean", once the hand-off is consistent with it.
+
+    injected: injections.json is valid (load_injections) and lists at least one placement. clean:
+    injections.json is absent or empty, and every fixture's canary_file in the catalogue
+    (FIXTURES under repo_root) still holds a file canary, so removing the injections removed no
+    target (spec part 02, *Matched builds*). "mixed" is refused by load_hardening.
+    """
+    directory = Path(dir)
+    root = repo_root or REPO_ROOT
+    if load_hardening(directory)["injections"]:
+        if not load_injections(directory, root):
+            raise ManifestError("injections.json lists no injection, but hardening.json says injections: true")
+        return "injected"
+    if (directory / "injections.json").exists():
+        manifest = _json(directory / "injections.json", ManifestError)
+        if not isinstance(manifest, dict) or manifest.get("injections") != []:
+            raise ManifestError("injections.json lists injections, but hardening.json says injections: false")
+    catalogue = _json(root / FIXTURES)
+    fixtures = catalogue.get("fixtures") if isinstance(catalogue, dict) else None
+    if not isinstance(fixtures, list) or not fixtures:
+        raise ConfigError(f"{FIXTURES}: no fixtures")
+    files = {t["file"] for t in load_canaries(directory) if is_file_canary(t)}
+    missing = sorted({str(f.get("canary_file")) for f in fixtures if f.get("canary_file") not in files})
+    if missing:
+        raise ConfigError("clean build lacks the file canary of an injection target: " + ", ".join(missing))
+    return "clean"

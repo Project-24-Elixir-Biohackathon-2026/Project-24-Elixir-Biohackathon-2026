@@ -4,7 +4,7 @@ import json
 import pytest
 
 import handoff
-from conftest import CANARIES, hardening, hosts, write_hosts
+from conftest import CANARIES, ENTRY_SHAPE, TOKENS, hardening, hosts, write_hosts
 
 
 def test_handoff_dir_needs_the_environment(monkeypatch, tmp_path):
@@ -159,3 +159,75 @@ def test_malformed_study_ids_are_a_configuration_error(tmp_path):
     (tmp_path / "canaries.json").write_text(json.dumps({"tokens": CANARIES, "study_ids": "STUDY-0001"}))
     with pytest.raises(handoff.ConfigError, match="study_ids"):
         handoff.load_study_ids(tmp_path)
+
+
+# --- conditions: clean and injected builds of one level (spec part 06, *Clean and injected runs*) ---
+def write_fixtures(repo_root):
+    # The catalogue's shape (slice 4, catalog/injections/fixtures.json): only canary_file is read here.
+    path = repo_root / handoff.FIXTURES
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"fixtures": [{"id": i, "canary_file": e[2]} for i, e in ENTRY_SHAPE.items()]}))
+
+
+def make_clean(directory, manifest_file=True):
+    (directory / "hardening.json").write_text(json.dumps(hardening(injections=False)))
+    if manifest_file:
+        (directory / "injections.json").write_text(json.dumps({"schema_version": 1, "injections": []}))
+    else:
+        (directory / "injections.json").unlink()
+
+
+def test_condition_injected(handoff_dir, repo_root):
+    assert handoff.condition(handoff_dir, repo_root) == "injected"
+
+
+@pytest.mark.parametrize("manifest_file", [True, False])
+def test_condition_clean(handoff_dir, repo_root, manifest_file):
+    write_fixtures(repo_root)
+    make_clean(handoff_dir, manifest_file)
+    assert handoff.condition(handoff_dir, repo_root) == "clean"
+
+
+def test_injected_without_placements_is_refused(handoff_dir, repo_root):
+    (handoff_dir / "injections.json").write_text(json.dumps({"schema_version": 1, "injections": []}))
+    with pytest.raises(handoff.ManifestError, match="lists no injection"):
+        handoff.condition(handoff_dir, repo_root)
+
+
+def test_clean_with_placements_is_refused(handoff_dir, repo_root):
+    write_fixtures(repo_root)
+    (handoff_dir / "hardening.json").write_text(json.dumps(hardening(injections=False)))
+    with pytest.raises(handoff.ManifestError, match="lists injections"):
+        handoff.condition(handoff_dir, repo_root)
+
+
+def test_mixed_is_refused(handoff_dir, repo_root):
+    (handoff_dir / "hardening.json").write_text(json.dumps(hardening(injections="mixed")))
+    with pytest.raises(handoff.ConfigError, match="injections must be"):
+        handoff.condition(handoff_dir, repo_root)
+
+
+def test_clean_build_without_a_target_canary_is_refused(handoff_dir, repo_root):
+    # Matched builds: removing the injections must not remove a target file or its canary.
+    write_fixtures(repo_root)
+    make_clean(handoff_dir)
+    record = json.loads((handoff_dir / "canaries.json").read_text())
+    record["tokens"] = [t for t in record["tokens"] if t["type"] != "flag-file"]
+    (handoff_dir / "canaries.json").write_text(json.dumps(record))
+    with pytest.raises(handoff.ConfigError, match="research_DO_NOT_LEAK") as refused:
+        handoff.condition(handoff_dir, repo_root)
+    assert not [t for t in TOKENS if t in str(refused.value)]
+
+
+def test_canaries_digest_ignores_order_and_time_but_not_tokens(handoff_dir, tmp_path):
+    digest = handoff.canaries_digest(handoff_dir)
+    assert len(digest) == 64 and not [t for t in TOKENS if t in digest]
+    record = json.loads((handoff_dir / "canaries.json").read_text())
+    other = tmp_path / "other"
+    other.mkdir()
+    (other / "canaries.json").write_text(json.dumps(
+        {**record, "generated_at": "2026-11-09T00:00:00Z", "tokens": record["tokens"][::-1]}))
+    assert handoff.canaries_digest(other) == digest
+    (other / "canaries.json").write_text(json.dumps(
+        {**record, "tokens": [{**record["tokens"][0], "token": "Ngo"}, *record["tokens"][1:]]}))
+    assert handoff.canaries_digest(other) != digest

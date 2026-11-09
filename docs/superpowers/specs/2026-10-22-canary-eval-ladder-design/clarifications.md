@@ -100,3 +100,12 @@ Decision log, append-only (`.methodology/shared/guides/spec-and-plan-layout.md`,
    build's run is unrestored (an override exists for a stack known to be clean). The state diff reads additions
    only, a known limit. *Reason:* review finding; part 06's clean snapshot needs it. *Amends:* part 05 *Hooks*.
    *Status:* folded.
+
+10. **promptfoo caches Python provider results** (2026-11-09; slice 3, task 1). promptfoo 0.125.1 keys a Python
+   provider's response on script, function, file hash, prompt, options and vars, and replays it while the cache is
+   on. *Reason:* a cached probe would report an old state. Both `eval:controls` and `eval:agent` always pass
+   `--no-cache`. *Amends:* part 06, *One ladder run*. *Status:* folded.
+
+11. **L4's switch value is `typed`** (2026-11-09; slice 3, task 1). `spe_agent_tool_surface` already exists
+   (`shell` by default) and the agent accepts `typed`, not `ga4gh_typed`. *Reason:* keep the existing value.
+   *Amends:* part 01, *The ladder* (L4 row). *Status:* folded.

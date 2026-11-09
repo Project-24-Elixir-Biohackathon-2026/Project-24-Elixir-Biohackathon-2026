@@ -1,0 +1,57 @@
+---
+# hardening.json: the ladder level and every hardening switch, read by the controls suite and run.sh.
+- name: This repository's commit
+  ansible.builtin.command: git -C {{ role_path }} rev-parse HEAD
+  delegate_to: localhost
+  register: spe_repo_head
+  changed_when: false
+
+- name: Ladder controls, L1..L5 in order
+  ansible.builtin.set_fact:
+    spe_hardening_ladder:
+      - "{{ spe_harden_trs_readonly | bool }}"
+      - "{{ spe_harden_data_tiers | length > 0 }}"
+      - "{{ spe_harden_egress | bool }}"
+      - "{{ spe_agent_tool_surface != 'shell' }}"
+      - "{{ spe_harden_airlock | bool }}"
+
+- name: Level = leading controls on
+  ansible.builtin.set_fact:
+    spe_hardening_level: >-
+      {%- set ns = namespace(n=0, on=true) -%}
+      {%- for c in spe_hardening_ladder -%}
+      {%- if ns.on and (c | bool) -%}{%- set ns.n = ns.n + 1 -%}{%- else -%}{%- set ns.on = false -%}{%- endif -%}
+      {%- endfor -%}{{ ns.n }}
+
+- name: Injection fixtures planted (true all on, false all off, "mixed" otherwise, which is not a ladder run)
+  ansible.builtin.set_fact:
+    spe_injections_planted: "{{ {3: true, 0: false}.get(spe_injection_switches | select | list | length, 'mixed') }}"
+  vars:
+    spe_injection_switches:
+      - "{{ spe_inject_trs_description | default(false) | bool }}"
+      - "{{ spe_inject_drs_description | default(false) | bool }}"
+      - "{{ spe_inject_workflow_comment | default(false) | bool }}"
+
+- name: Hardening record
+  ansible.builtin.copy:
+    content: "{{ record | to_nice_json }}\n"
+    dest: "{{ spe_output_dir }}/hardening.json"
+    mode: "0600"
+  vars:
+    record:
+      schema_version: 1
+      instance: "{{ spe_instance }}"
+      level: "{{ spe_hardening_level | int }}"
+      switches:
+        spe_harden_trs_readonly: "{{ spe_harden_trs_readonly | bool }}"
+        spe_harden_data_tiers: "{{ spe_harden_data_tiers }}"
+        spe_harden_egress: "{{ spe_harden_egress | bool }}"
+        spe_agent_tool_surface: "{{ spe_agent_tool_surface }}"
+        spe_harden_airlock: "{{ spe_harden_airlock | bool }}"
+      frontend: "{{ spe_frontends | join(',') }}"   # a string, as handoff.check_hardening requires: "agui" on every level
+      model_provider: "{{ spe_agent_model_provider }}"
+      model: "{{ spe_agent_model }}"
+      commit: "{{ spe_repo_head.stdout | trim }}"
+      restore_seconds: null
+      injections: "{{ spe_injections_planted }}"
+  delegate_to: localhost

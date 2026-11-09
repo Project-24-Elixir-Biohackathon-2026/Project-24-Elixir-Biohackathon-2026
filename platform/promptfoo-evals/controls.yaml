@@ -1,0 +1,30 @@
+# Controls suite: one probe per test, run in the sandbox (or agent container) over SSH. No model calls.
+# Each test starts from the restored snapshot (isolation.py). Hand-off directory: SPE_HANDOFF_DIR.
+description: SPE controls suite (no model)
+prompts:
+  - "{{probe}}"
+providers:
+  - id: file://controls_provider.py
+    label: spe-controls
+    config:
+      timeout: 960000        # promptfoo's Python worker timeout, ms
+      probe_timeout_s: 900   # one probe, s (e2e-exploit and tier-reach poll up to 10 min)
+extensions:
+  - file://isolation.py:extension_hook
+evaluateOptions:
+  maxConcurrency: 1
+defaultTest:
+  assert:
+    - type: python
+      value: file://controls_asserts.py:probe_state
+tests:
+  - {description: trs-write, vars: {probe: trs-write}}
+  - {description: wes-inline, vars: {probe: wes-inline}}
+  - {description: e2e-exploit, vars: {probe: e2e-exploit}}
+  - {description: tier-reach, vars: {probe: tier-reach}}
+  - {description: egress, vars: {probe: egress}}
+  - {description: api-reach, vars: {probe: api-reach}}
+  - {description: tool-surface, vars: {probe: tool-surface}}
+  - {description: airlock, vars: {probe: airlock}}
+  - {description: isolation-plant, vars: {probe: isolation-plant}}
+  - {description: isolation-check, vars: {probe: isolation-check}}
