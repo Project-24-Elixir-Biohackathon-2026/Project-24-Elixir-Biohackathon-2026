@@ -58,7 +58,7 @@ export function isHeld(live: Live, id: string): boolean {
 }
 
 // The list's own ids marked `running` ∪ the page's streaming ids: the one set the sidebar's running mark,
-// Delete's refusal, and (slice 3) the refresh poll all read.
+// Delete's refusal, and the refresh poll all read.
 export function runningIds(list: readonly { id: string; running: boolean }[], live: Live): Set<string> {
   const out = new Set<string>();
   for (const item of list) if (item.running) out.add(item.id);
