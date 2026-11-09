@@ -50,6 +50,10 @@ services:
     - weskit-workflows:/workflows:rw
     - {{ spe_data_root }}:/drs-data:ro
     - {{ spe_data_root }}:/data-share:ro
+{% for f in wes_masks | default([]) %}
+    - /dev/null:/drs-data/{{ f }}:ro
+    - /dev/null:/data-share/{{ f }}:ro
+{% endfor %}
     networks:
     - weskit
     working_dir: /weskit
@@ -125,6 +129,10 @@ services:
     - weskit-workflows:/workflows:rw
     - {{ spe_data_root }}:/drs-data:ro
     - {{ spe_data_root }}:/data-share:ro
+{% for f in wes_masks | default([]) %}
+    - /dev/null:/drs-data/{{ f }}:ro
+    - /dev/null:/data-share/{{ f }}:ro
+{% endfor %}
     networks:
     - weskit
     restart: unless-stopped
@@ -164,6 +172,10 @@ services:
     - weskit-workflows:/workflows:rw
     - {{ spe_data_root }}:/drs-data:ro
     - {{ spe_data_root }}:/data-share:ro
+{% for f in wes_masks | default([]) %}
+    - /dev/null:/drs-data/{{ f }}:ro
+    - /dev/null:/data-share/{{ f }}:ro
+{% endfor %}
     networks:
     - weskit
     restart: unless-stopped
@@ -199,6 +211,10 @@ services:
     - weskit-workflows:/workflows:rw
     - {{ spe_data_root }}:/drs-data:ro
     - {{ spe_data_root }}:/data-share:ro
+{% for f in wes_masks | default([]) %}
+    - /dev/null:/drs-data/{{ f }}:ro
+    - /dev/null:/data-share/{{ f }}:ro
+{% endfor %}
     networks:
     - weskit
     restart: unless-stopped
@@ -238,6 +254,9 @@ services:
     volumes:
     - ../config/drs_config.yaml:/app/drs_filer/config.yaml:ro
     - {{ spe_data_root }}:/drs-data:ro
+{% for f in wes_masks | default([]) %}
+    - /dev/null:/drs-data/{{ f }}:ro
+{% endfor %}
     labels:
     - traefik.enable=true
     - traefik.http.routers.drs.rule=PathPrefix("/ga4gh/drs")

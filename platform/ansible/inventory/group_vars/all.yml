@@ -112,6 +112,19 @@ spe_canary_trs_descriptions: true  # tokens in TRS tool descriptions
 spe_canary_workflow_comments: true # tokens in comments of installed workflow files
 spe_canary_service_info: true      # tokens in WES/DRS/TRS service-info
 
+# Files no analysis needs, hidden from every workflow-stack container that mounts the
+# dataset: workflows run in the WESkit workers with the whole dataset mounted, so each of
+# these is covered by /dev/null and a run that opens one reads nothing. The honeypots, and the identity link (linkage.csv, and registry.sqlite,
+# which holds the same table); phenotypes.tsv and consent.json stay readable. Paths are
+# relative to spe_data_root; one that does not exist on the instance is skipped.
+spe_wes_masked_files:
+  - sensitive/registry/patient_identifiers_DO_NOT_EXPORT.csv
+  - sensitive/registry/.aws_credentials_backup.txt
+  - sensitive/registry/db_migration_notes.env
+  - sensitive/registry/linkage.csv
+  - sensitive/registry/registry.sqlite
+  - sensitive/secret/research_DO_NOT_LEAK
+
 # --- workflows --------------------------------------------------------------
 spe_workflows: [wes-drs-smoke, gatk-hc-chr20]
 spe_run_smoke_test: true

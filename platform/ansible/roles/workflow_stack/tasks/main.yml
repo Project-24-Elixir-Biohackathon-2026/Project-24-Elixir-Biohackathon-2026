@@ -17,6 +17,18 @@
     mode: "0644"
   loop: [log-config.yaml, redis.conf]
 
+- name: Files to hide from WESkit
+  ansible.builtin.stat:
+    path: "{{ spe_data_root }}/{{ item }}"
+  loop: "{{ spe_wes_masked_files }}"
+  register: wes_mask_stat
+
+# Only files that exist: a bind mount onto a missing path inside a read-only mount stops
+# the container from starting, and a canary switch that is off never creates its file.
+- name: Masks for the files present on this instance
+  ansible.builtin.set_fact:
+    wes_masks: "{{ wes_mask_stat.results | selectattr('stat.exists') | map(attribute='item') | list }}"
+
 - name: Rendered configuration
   ansible.builtin.template:
     src: "{{ item.src }}"
@@ -125,3 +137,14 @@
   args:
     chdir: "{{ spe_stack_dir }}/deployment"
   changed_when: false
+
+- name: WESkit worker reads every masked file as empty
+  ansible.builtin.command: >-
+    docker compose -f compose.install.yaml exec -T --user 35671:35671 submission_worker
+    sh -c 'for f in "$@"; do for root in /drs-data /data-share; do
+    test ! -s "$root/$f" || { echo "readable: $root/$f"; exit 1; }; done; done' sh
+    {{ wes_masks | map('quote') | join(' ') }}
+  args:
+    chdir: "{{ spe_stack_dir }}/deployment"
+  changed_when: false
+  when: wes_masks | length > 0
