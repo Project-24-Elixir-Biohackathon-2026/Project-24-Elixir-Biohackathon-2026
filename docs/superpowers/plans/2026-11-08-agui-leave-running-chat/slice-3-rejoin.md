@@ -35,6 +35,9 @@ Acceptance (decision 44, Playwright, task 3): a run started from a second tab sh
 - [ ] **Step 2: Run** `npm test` — FAIL. **Step 3: Implement**; in `page.tsx`, `refresh()` on
   `visibilitychange` (visible) and `focus`, and an interval of `POLL_MS` while `needsPoll` holds (cleared when
   not). A holder that rejoined (task 2) reconciles its run's end with `waitNotRunning`, not `reconcile`.
+  While here (#58's review, finding 5): a runtime connection that drops from `Connected` re-disables the
+  buttons and re-arms the first-load timer (`page.tsx`, the `connected` effects); the refresh must not start
+  from, or be stopped by, that drop: keep the first load once only, and leave the buttons enabled.
 - [ ] **Step 4: Run** `npm test && npm run build` — PASS. **Step 5: Commit** `Chat: fetch the list on focus and poll
   while another tab runs (decision 44)`.
 

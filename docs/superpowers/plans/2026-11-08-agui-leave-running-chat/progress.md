@@ -89,3 +89,36 @@ CopilotKit 1.84.1, `@ag-ui/client` 1.0.2, the fake agent; script and output in
   `sessionOf`/`isRunning`": `isRunning` went, but the test's `handleOf` still needs a run key's session id to find a
   handle to cancel, and `sessions.ts` exports no parser for it. *Cost if wrong:* a one-line helper drifts from
   `runKey`'s format; the `running` tests then fail at once.
+- **Slice 2 was claimed on its own branch, after a chain started it on slice 1's** (slice 2, 2026-11-09). The
+  session was started on `impl/agui-leave-running-chat-1-rejoin-check`, merged as #57; the handoff named slice 2,
+  so it claimed `impl/agui-leave-running-chat-2-agents` (#58) and deleted the stray re-claim. *Cost if wrong:* none.
+- **Every list fetch is applied in the order it started** (`lib/list-order.ts`; slice 2, task 2's review). *Why:*
+  `gone` is sticky (ruling 4), and a list fetch started before a New chat's first run that answers after a newer
+  list put the session in `gone`: the open chat was swapped for a new one at its run's end and could not be
+  reopened until a reload. So `SessionAgent` and `useRunReconcile` take a `fetchList`, and the page drops a list
+  older than the last one it applied. *Cost if wrong:* a list dropped as stale is only a refresh skipped; the next
+  one applies.
+- **`SessionAgent` also takes `onRecorded` and `useRunReconcile` an `onEnded`** (slice 2, task 2). *Why:* the title
+  trigger's "once the run is recorded" path needs the first, and the page must hear a run's end after its list on
+  every path, a failed list fetch included, or a holder stays mounted. *Cost if wrong:* none: two callbacks.
+- **A run's errors reach the bar through its holder only** (slice 2, task 2): `CopilotChat`'s `onError` skips the run
+  error codes, so the open session's errors do not show twice. *Cost if wrong:* an error code the filter misses
+  shows twice; the Playwright error checks show it.
+- **The row's running spinner keeps turning under `prefers-reduced-motion: reduce`** (slice 2, task 3), reading task
+  3's "a CSS rotation, still under `prefers-reduced-motion: reduce`" as "still rotating under it" (the task review
+  read the opposite). *Why:* it is the only motion saying a run in another session goes on. *Cost if wrong:* one
+  CSS line moved into the `reduce` block.
+- **The chat header has no running mark, only the Delete rule** (slice 2, task 3). *Why:* the header's `⋯` is always
+  shown and takes the mark's place (§6 *Layout*). *Cost if wrong:* a header mark added later.
+- **The mid-run freeze of a reopened chat is fixed in this slice** (slice 2, task 4; `715305f`, `de727a4`). *Why:*
+  decision 41 is slice 2's: `@ag-ui/client` copies its subscribers at a run's start, so a chat reopened mid-run
+  froze; the holder now forwards message changes, and the page redraws the open chat only while it was mounted
+  mid-run. *Cost if wrong:* a missed case freezes again; `leave-running` step 3 catches it.
+- **The early-output comment asks a second question, no gate: should the open row show its running spinner?**
+  (slice 2, task 4 step 5 names only the first). *Why:* the open row, and every row on a touch screen, shows `⋯`
+  in the mark's place (§6 *Layout*), so the user never sees the mark there (#58's review, finding 2). *Cost if
+  wrong:* none; a *no* keeps §6 as it is.
+- **Only a session's latest run ends it** (`lib/run-watch.ts`, #58's review, finding 1): the watch moves out of
+  `use-run-reconcile.ts` into a tested module. *Why:* a run started while the previous run's list was pending was
+  dropped from `streaming` when that list came back, and a switch then unmounted its holder mid-run. *Cost if
+  wrong:* none found: an older run's end only skips `onEnded`, which the newer one calls.

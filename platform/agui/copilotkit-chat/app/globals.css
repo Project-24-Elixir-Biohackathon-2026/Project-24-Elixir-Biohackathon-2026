@@ -346,7 +346,24 @@ body {
 @media (hover: none) {
   .spe-row-menu { opacity: 1; }
   .spe-row-open { padding-right: 32px; }
+  .spe-row-running { opacity: 0; } /* ⋯ is always shown here, so it always takes the mark's place */
 }
+
+/* A session with a run in progress: a small spinner in the ⋯'s slot (decision 44), replaced by ⋯ itself
+   wherever that is shown (hover, focus, the open row, the row whose menu is open — same states as above).
+   `data-running` on the row reserves the title's room for it up front, since the mark, unlike ⋯, is not
+   only a hover reveal. */
+.spe-row[data-running] .spe-row-open { padding-right: 32px; }
+.spe-row-running { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); display: grid;
+  place-items: center; width: 24px; height: 24px; color: var(--text-muted); pointer-events: none; }
+.spe-row-running .spe-icon { width: 14px; height: 14px; }
+.spe-row:hover .spe-row-running, .spe-row:focus-within .spe-row-running, .spe-row-active .spe-row-running,
+.spe-row-menu-open .spe-row-running { opacity: 0; }
+/* Rotates for as long as the run does; unlike the tool spinner, this motion is the only signal that a
+   background run is still going (no title shimmer here), so it keeps turning under
+   prefers-reduced-motion: reduce rather than joining that override below. */
+.spe-row-running .spe-icon { animation: spe-spin 0.8s linear infinite; }
+
 .spe-rename { flex: 1; min-width: 0; height: 32px; box-sizing: border-box; margin: 0; padding: 6px 8px; border: 0;
   border-radius: var(--radius-row); background: none; color: var(--text); font: inherit; line-height: 20px;
   outline: none; box-shadow: inset 0 0 0 1px var(--line-strong); }

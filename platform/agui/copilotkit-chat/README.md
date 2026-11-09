@@ -58,6 +58,13 @@ hidden, deleted. Nothing rewrites a journal.
   outside, only when the click left focus nowhere: `lib/menu.ts`, `refocusIfLost`).
   `?session=<id>` in the URL reopens a session, which starts at its newest content
   (`app/page.tsx`, `SCROLL_VIEW`).
+- **Leaving a running chat**: each session the page shows or streams has a
+  CopilotKit agent of its own (`spe-<id>` on thread `<id>`, routed to the runtime's
+  `spe`), held by `app/session-agent.tsx` while it is needed (`lib/live-sessions.ts`).
+  Switching session and New chat stay enabled during a run, and the run goes on in
+  its session's agent; reopening that session shows it still streaming, with no
+  fetch. Once the run ends the agent is dropped unless its session is open. Runs in
+  several sessions may stream at once.
 - **Shutdown**: on SIGTERM new runs are refused, runs in progress are cancelled and
   journaled, the queue drains within 25 s, the process exits. The image sets
   `NEXT_MANUAL_SIG_HANDLE=true` so Next.js does not exit first. The final archive

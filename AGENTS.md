@@ -206,7 +206,8 @@ is open (`docs/guides/contributing-upstream.md`, step 6).
   restore measured on de.NBI (median 45.6 s). **Next: slice 3/9** `impl/canary-eval-ladder-3-controls`.
   Handoff: `methodology handoff newest docs/superpowers/plans/2026-10-22-canary-eval-ladder/handoffs`.
 - **AG-UI: leave a running chat** (living AG-UI spec, clarification 27): spec (#55) and plan (#56)
-  merged; slice 1 (#57) merged, rejoin verdict *live*. **Next:** slice 2/3 `impl/agui-leave-running-chat-2-agents`.
+  merged; slices 1 (#57, rejoin verdict *live*) and 2 (#58) merged. **Next:** slice 3/3
+  `impl/agui-leave-running-chat-3-rejoin`.
   Handoff: `methodology handoff newest docs/superpowers/plans/2026-11-08-agui-leave-running-chat/handoffs`.
 - **Upstream PR kraatz #28** (`contrib/agui-archive-markdown`): archive Markdown wording, autolinks, refusal
   reason, bad timestamps; waits on upstream's review.

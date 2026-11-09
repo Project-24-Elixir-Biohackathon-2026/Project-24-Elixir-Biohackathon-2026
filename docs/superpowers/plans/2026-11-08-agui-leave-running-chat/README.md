@@ -88,7 +88,7 @@ Every task's requirements include these.
 | `CHAT/app/rejoin-check/page.tsx` (removed before merge), `evidence/slice-1/` | 1 | the rejoin check (42), its script and output |
 | `progress.md`; spec `clarifications.md`, `06-chat-ui.md`, README decision 42 | 1 | the verdict; clarification 28 if it changes the spec |
 | `CHAT/lib/live-sessions.ts`, `lib/live-sessions.test.ts` | 2 | the owner of the page's live sessions (40) |
-| `CHAT/app/session-agent.tsx`, `app/page.tsx`, `app/use-run-reconcile.ts` | 2 | one holder and agent per live session; switching enabled (26, 40, 41) |
+| `CHAT/app/session-agent.tsx`, `app/page.tsx`, `app/use-run-reconcile.ts`, `lib/run-watch.ts` | 2 | one holder and agent per live session; switching enabled (26, 40, 41) |
 | `CHAT/app/sidebar.tsx`, `app/chat-header.tsx`, `app/row-menu.tsx`, `app/icons.tsx`, `app/globals.css`, `lib/sidebar-view.ts` | 2 | the running mark, Delete disabled per running session (44) |
 | `platform/dev/e2e/sessions.py`, `evidence/slice-2/` | 2, 3 | Playwright for 26, 40–44; the early-output screenshot |
 | `CHAT/lib/reconcile.ts`, `lib/refresh.ts`, `lib/rejoin.ts` and their tests | 3 | refresh and polling (44), rejoin (42) |
@@ -105,7 +105,7 @@ to the next slice; slice 3 closes the track (its task 4).
 | n/N | Branch | Tasks | Delivers | Est. LOC | Reviewer checks | File | Status |
 |---|---|---|---|---|---|---|---|
 | 1/3 | `impl/agui-leave-running-chat-1-rejoin-check` | 3 | `running` in the API (43); the **rejoin check** (42, early output, first part) and its verdict; the stop point | ~250 kept (+~200 throwaway) | `npm test`; the check's output in `evidence/slice-1/`; the verdict in `progress.md` | [slice-1-rejoin-check.md](slice-1-rejoin-check.md) | merged #57 |
-| 2/3 | `impl/agui-leave-running-chat-2-agents` | 4 | an agent per session; switching and New chat enabled (26, 40, 41); the running mark and the Delete rule (44, part); the **screenshot** (early output, second part) | ~750 | `npm test`; `npm run build`; e2e `--scenario leave-running`, `stop`, `all`; the screenshot | [slice-2-agents.md](slice-2-agents.md) | planned |
+| 2/3 | `impl/agui-leave-running-chat-2-agents` | 4 | an agent per session; switching and New chat enabled (26, 40, 41); the running mark and the Delete rule (44, part); the **screenshot** (early output, second part) | ~750 | `npm test`; `npm run build`; e2e `--scenario leave-running`, `stop`, `all`; the screenshot | [slice-2-agents.md](slice-2-agents.md) | merged #58 |
 | 3/3 | `impl/agui-leave-running-chat-3-rejoin` | 4 | rejoin through `connect`, or the fallback, as slice 1 ruled (42); refresh on focus and polling (44); run errors with their title (44); docs; spec built | ~650 | `npm test`; `npm run build`; e2e `--scenario rejoin`, `running-marks`, `all` | [slice-3-rejoin.md](slice-3-rejoin.md) | planned |
 
 **What the user sees, and when.** Slice 1 posts the rejoin check's verdict on its PR (the message ids the chat

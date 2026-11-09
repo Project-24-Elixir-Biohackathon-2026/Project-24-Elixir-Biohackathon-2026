@@ -1,20 +1,29 @@
 "use client";
-// Chat with agent `spe`, and a sidebar of sessions. Each tool call is a collapsible card: a status icon and
-// title, the arguments as rows (run_command's as a `$ <command>` line) and the first lines of the result;
-// calls made in a row, across model steps, are grouped (./tool-calls.tsx). Everything is rendered as text, never HTML.
+// Chat with the runtime's agent `spe`, and a sidebar of sessions. Each session the page shows or streams has
+// an agent of its own, held by ./session-agent.tsx, so a run goes on while another session is open. Each tool
+// call is a collapsible card: a status icon and title, the arguments as rows (run_command's as a `$ <command>`
+// line) and the first lines of the result; calls made in a row, across model steps, are grouped
+// (./tool-calls.tsx). Everything is rendered as text, never HTML.
 // Sessions are recorded on the server (lib/recorder.ts); this page only reads them and changes
 // their metadata. The open session is in the URL (`?session=<id>`), so a reload reopens it.
 import type { Message } from "@ag-ui/client";
 import {
   CopilotChat,
   CopilotChatConfigurationProvider,
+  CopilotKitCoreErrorCode,
+  CopilotKitCoreRuntimeConnectionStatus,
   CopilotKitProvider,
-  useAgent,
+  useCopilotKit,
   useDefaultRenderTool,
 } from "@copilotkit/react-core/v2";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { HTMLAttributes } from "react";
 import { askTitle, fetchSession, fetchSessions, removeSession, updateSession } from "../lib/client.ts";
+import {
+  EMPTY, held, isHeld, listed, openSession, runEnded, runningIds as runningIdsOf, runStarted,
+} from "../lib/live-sessions.ts";
+import type { Live } from "../lib/live-sessions.ts";
+import { ListOrder } from "../lib/list-order.ts";
 import { TitleTrigger, fetchSessionList, waitListed } from "../lib/reconcile.ts";
 import { searchWith, sessionFromSearch } from "../lib/session-url.ts";
 import type { MetaPatch, SessionMeta } from "../lib/sessions.ts";
@@ -23,10 +32,10 @@ import { ChatHeader } from "./chat-header";
 import { CommandInput } from "./command-input";
 import { AssistantOrCompaction } from "./compaction-divider";
 import { ToolCard } from "./tool-calls";
+import { SessionAgent, agentIdOf } from "./session-agent";
 import { Sidebar } from "./sidebar";
 import { ThemeControl } from "./theme-control";
 import { useHydrated } from "./use-hydrated";
-import { useRunReconcile } from "./use-run-reconcile";
 
 // A stable object: CopilotChat re-renders its message view when the slot value changes identity.
 const MESSAGE_VIEW = { assistantMessage: AssistantOrCompaction };
@@ -55,51 +64,89 @@ function showInUrl(id: string | null): void {
   window.history.replaceState(null, "", `${pathname}${searchWith(search, id)}${hash}`);
 }
 
+// The errors CopilotKit raises for a run, which the run's holder also hears on its agent (./session-agent.tsx).
+const RUN_ERROR_CODES: ReadonlySet<string> = new Set([
+  CopilotKitCoreErrorCode.AGENT_RUN_FAILED,
+  CopilotKitCoreErrorCode.AGENT_RUN_FAILED_EVENT,
+  CopilotKitCoreErrorCode.AGENT_RUN_ERROR_EVENT,
+  CopilotKitCoreErrorCode.AGENT_THREAD_LOCKED,
+]);
+
 const UNREACHABLE = "The agent runtime is unreachable; reload the page.";
 const UNREACHABLE_AFTER_MS = 15_000;
 
 function Chat() {
   const [error, setError] = useState<string | null>(null);
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
-  const [active, setActive] = useState<string | null>(null);
-  const activeRef = useRef<string | null>(null);
+  const sessionsRef = useRef<SessionMeta[]>([]);
+  // The sessions this page shows or streams (lib/live-sessions.ts); `live.open` is the open one. The ref is
+  // the current value for callbacks, the state the one rendered: setLive writes both.
+  const [live, setLiveState] = useState<Live>(EMPTY);
+  const liveRef = useRef<Live>(EMPTY);
+  // The holders whose agent is registered: CopilotChat looks its agent up by id and throws if it is not
+  // there yet, so the chat waits for this. An id leaves it with its holder (setLive).
+  const [agentsReady, setAgentsReady] = useState<ReadonlySet<string>>(new Set());
+  // What each holder puts on its agent once ready: the GET's messages, or [] for a New chat.
+  const initial = useRef(new Map<string, Message[]>());
   // Bumped by every open()/startNew() call, so a response from a call that is no longer the
   // latest (a second click while the first's fetch is still in flight) is ignored on arrival.
   const requestRef = useRef(0);
-  const { agent, isReady } = useAgent({ agentId: "spe" });
+  const { copilotkit } = useCopilotKit();
+  const connected = copilotkit.runtimeConnectionStatus === CopilotKitCoreRuntimeConnectionStatus.Connected;
   // `group`: CopilotKit groups the calls this draws, across the model's steps (./tool-calls.tsx).
   useDefaultRenderTool({ render: (props) => <ToolCard {...props} />, group: true });
+  const active = live.open;
   // One owner of "safe to click": passed down to every button that starts an action from the
   // sidebar and header, so a click before hydration is disabled rather than dropped. Hydration
-  // alone is not enough: the first-load effect below (startNew()/open(), gated on `isReady`) must
-  // also have run, or an early New chat/row-open call sets `active` itself and mounts the chat
-  // before the agent is ready to run anything, the same way a click that lands between hydration
-  // and `isReady` would, just without a dropped click to show for it. `isReady` alone still leaves
-  // a sub-frame window open between the render where it flips (committing enabled buttons) and the
-  // first-load effect that runs after that commit, so `ready` also waits for the effect itself:
-  // `active !== null` is only ever false before that effect has set it (every one of its paths —
-  // `open()`'s success, its not-found/error fallback to `startNew()`, and the no-parameter
-  // `startNew()` — ends by calling `select()`, which sets `active`), so this cannot leave `ready`
-  // false once the agent is actually ready, including with an empty session list.
-  const ready = useHydrated() && isReady && active !== null;
+  // alone is not enough: the first-load effect below (startNew()/open(), gated on the runtime having
+  // answered) must also have run, or an early New chat/row-open call opens a session itself before the
+  // page has read the URL. `connected` alone still leaves a sub-frame window open between the render where
+  // it flips (committing enabled buttons) and the first-load effect that runs after that commit, so
+  // `ready` also waits for the effect itself: `active !== null` is only ever false before that effect
+  // has opened a session (every one of its paths — `open()`'s success, its not-found/error fallback to
+  // `startNew()`, and the no-parameter `startNew()` — ends with one open), so this cannot leave `ready`
+  // false once the runtime is there, including with an empty session list.
+  const ready = useHydrated() && connected && active !== null;
 
-  // After each run (finished, failed or stopped) the list, fetched until it shows that run; once the
-  // open session is in it (its first run recorded), the URL names it.
-  const onList = useCallback((list: SessionMeta[]) => {
-    setSessions(list);
-    const id = activeRef.current;
-    if (id && list.some((s) => s.id === id)) showInUrl(id);
+  // Every list fetch is stamped as it starts, and only a list newer than the last applied is applied: a
+  // late, older list would otherwise mark a session the newer one showed as gone, for good.
+  const listOrder = useRef(new ListOrder()).current;
+  const fetchList = useRef(listOrder.wrap(fetchSessionList)).current;
+
+  const startNewRef = useRef<() => void>(() => {});
+  const setLive = useCallback((next: Live) => {
+    liveRef.current = next;
+    setLiveState(next);
+    const keep = new Set(held(next));
+    for (const id of initial.current.keys()) if (!keep.has(id)) initial.current.delete(id);
+    setAgentsReady((r) => ([...r].every((id) => keep.has(id)) ? r : new Set([...r].filter((id) => keep.has(id)))));
   }, []);
+
+  // Every list the page fetches comes through here: the sidebar shows it, the live sessions learn which
+  // ids left it (an open session that left it while idle is replaced by a new one), and once the open
+  // session is in it (its first run recorded), the URL names it.
+  const applyList = useCallback((list: SessionMeta[]) => {
+    if (!listOrder.accept(list)) return; // older than one already applied
+    sessionsRef.current = list;
+    setSessions(list);
+    const { live: next, startNew } = listed(liveRef.current, new Set(list.map((s) => s.id)));
+    setLive(next);
+    if (startNew) startNewRef.current();
+    else {
+      const id = liveRef.current.open;
+      if (id && list.some((s) => s.id === id)) showInUrl(id);
+    }
+  }, [listOrder, setLive]);
   const refresh = useCallback(async (): Promise<SessionMeta[] | null> => {
     try {
-      const list = await fetchSessions();
-      setSessions(list);
+      const list = await listOrder.track(() => fetchSessions(), (l) => l);
+      applyList(list);
       return list;
     } catch (e) {
       setError(messageOf(e));
       return null;
     }
-  }, []);
+  }, [applyList, listOrder]);
 
   // A New chat's first run, as it starts: the list is fetched until it has the session (the server lists it
   // once the run's question is on disk, before the agent answers), so the sidebar and header show the first
@@ -114,41 +161,68 @@ function Chat() {
       .then(() => refresh())
       .catch((e: unknown) => console.warn(`session ${id}: no model title: ${messageOf(e)}`));
   }, [refresh]);
-  const onStarted = useCallback((id: string) => {
+  const onRunStarted = useCallback((id: string) => {
+    setLive(runStarted(liveRef.current, id));
     if (!titles.current.take(id)) return;
-    waitListed(fetchSessionList, id)
-      .then(({ list, listed }) => {
-        setSessions(list);
-        if (listed) askFor(id);
+    waitListed(fetchList, id)
+      .then(({ list, listed: isListed }) => {
+        applyList(list);
+        if (isListed) askFor(id);
         else titles.current.started(id);
       })
       .catch(() => titles.current.started(id));
-  }, [askFor]);
+  }, [applyList, askFor, fetchList, setLive]);
   const onRecorded = useCallback((id: string) => {
     if (titles.current.take(id)) askFor(id);
   }, [askFor]);
-  const { busy, noteRunError } = useRunReconcile({ openId: active ?? "", onList, onError: setError, onStarted, onRecorded });
+  // A run ended, in any session, open or not, and its list has been applied: the session's agent is dropped
+  // unless it is open; an open session that left the list meanwhile is replaced by a new one.
+  const onRunEnded = useCallback((id: string) => {
+    if (midRun.current === id) midRun.current = null;
+    const { live: next, startNew } = runEnded(liveRef.current, id);
+    setLive(next);
+    if (startNew) startNewRef.current();
+  }, [setLive]);
+  const onAgentReady = useCallback((id: string) => {
+    setAgentsReady((r) => (r.has(id) ? r : new Set(r).add(id)));
+  }, []);
+  // A run's errors, in any session, open or not: CopilotChat's onError hears only the open session's agent,
+  // so each holder reports its own (and the chat's onError, below, leaves run errors to it).
+  const onAgentError = useCallback((_id: string, message: string) => {
+    setError(message);
+  }, []);
 
-  // The history goes onto the agent first, then CopilotChat remounts on the new thread
-  // (key={id}): a freshly mounted chat on a non-explicit thread keeps the agent's messages,
-  // and makes no connect request that would clear them (README, Sessions).
-  const select = useCallback((id: string, messages: Message[]) => {
-    agent.setMessages(messages);
-    activeRef.current = id;
-    setActive(id);
-  }, [agent]);
+  // The open session, when its chat was drawn while its run was already streaming (opened again mid-run, or
+  // remounted by a switch back): that chat is not among the run's subscribers, so it is re-rendered on each of
+  // the agent's message changes until the run ends. A chat drawn before its run starts hears the run itself.
+  const midRun = useRef<string | null>(null);
+  const [, redrawChat] = useReducer((x: number) => x + 1, 0);
+  const onAgentMessages = useCallback((id: string) => {
+    if (id === midRun.current && id === liveRef.current.open) redrawChat();
+  }, []);
 
-  // New chat: a fresh thread id and an empty history; it joins the list once its first run starts.
+  // New chat: a fresh thread id and an empty history, on a new agent; it joins the list once its first run starts.
   const startNew = useCallback(() => {
     requestRef.current += 1;
+    midRun.current = null;
     const id = crypto.randomUUID();
     titles.current.started(id);
-    select(id, []);
+    initial.current.set(id, []);
+    setLive(openSession(liveRef.current, id));
     showInUrl(null);
-  }, [select]);
+  }, [setLive]);
+  startNewRef.current = startNew;
 
   const open = useCallback(async (id: string) => {
     const requestId = (requestRef.current += 1);
+    // A session with an agent in this page is shown as it is, its run still streaming if it is: its messages
+    // are newer than the journal's, so no fetch.
+    if (isHeld(liveRef.current, id)) {
+      midRun.current = liveRef.current.streaming.has(id) ? id : null;
+      setLive(openSession(liveRef.current, id));
+      showInUrl(sessionsRef.current.some((s) => s.id === id) ? id : null);
+      return;
+    }
     try {
       const session = await fetchSession(id);
       if (requestId !== requestRef.current) return; // superseded by a later open()/startNew()
@@ -158,7 +232,10 @@ function Chat() {
         void refresh();
         return;
       }
-      select(id, session.messages);
+      initial.current.set(id, session.messages);
+      // Only where the open session changes: the one still open while this fetch ran kept streaming.
+      midRun.current = null;
+      setLive(openSession(liveRef.current, id));
       showInUrl(id);
     } catch (e) {
       if (requestId !== requestRef.current) return; // superseded by a later open()/startNew()
@@ -166,47 +243,50 @@ function Chat() {
       // On first load (no session opened yet) this was a failed attempt to open the
       // id named in the URL: fall back to a new session, and make sure the URL no
       // longer names a session the page did not open.
-      if (activeRef.current === null) {
+      if (liveRef.current.open === null) {
         startNew();
         showInUrl(null);
       }
     }
-  }, [refresh, select, startNew]);
+  }, [refresh, setLive, startNew]);
 
-  // First load, once the runtime's agent is there (messages set on the provisional one are lost).
+  // First load, once the runtime has answered: a holder's agent registers while the runtime is still
+  // pending, so the runtime's status, not an agent's `isReady`, says the page can run anything.
+  const firstLoad = useRef(false);
   useEffect(() => {
-    if (!isReady || activeRef.current !== null) return;
+    if (!connected || firstLoad.current) return;
+    firstLoad.current = true;
     void refresh();
     const id = sessionFromSearch(window.location.search);
     if (id) void open(id);
     else startNew(); // no parameter, or a malformed one: dropped
-  }, [isReady, open, refresh, startNew]);
+  }, [connected, open, refresh, startNew]);
 
   // A runtime that never answers would leave "Loading…" up for good: say so after a while, and take
   // the message back once it does answer.
   useEffect(() => {
-    if (isReady) {
+    if (connected) {
       setError((e) => (e === UNREACHABLE ? null : e));
       return;
     }
     const timer = setTimeout(() => setError(UNREACHABLE), UNREACHABLE_AFTER_MS);
     return () => clearTimeout(timer);
-  }, [isReady]);
+  }, [connected]);
 
   const onDeleted = useCallback((id: string) => {
-    if (id === activeRef.current) startNew();
+    if (id === liveRef.current.open) startNew();
     void refresh();
   }, [refresh, startNew]);
 
   // The header's menu: the same PATCH and DELETE as the row's, on the open session.
   const patchOpen = useCallback(async (patch: MetaPatch) => {
-    const id = activeRef.current;
+    const id = liveRef.current.open;
     if (id === null) return;
     await updateSession(id, patch);
     await refresh();
   }, [refresh]);
   const deleteOpen = useCallback(async () => {
-    const id = activeRef.current;
+    const id = liveRef.current.open;
     if (id === null) return;
     try {
       await removeSession(id);
@@ -216,24 +296,38 @@ function Chat() {
     }
   }, [onDeleted]);
   const knownTags = [...new Set(sessions.flatMap((s) => s.tags))].sort();
+  // The sidebar's running mark and Delete's refusal (decision 44): the list's own `running` ids ∪ this
+  // page's streaming ones (lib/live-sessions.ts).
+  const runningIds = useMemo(() => runningIdsOf(sessions, live), [sessions, live]);
 
   return (
     <div className="spe-layout">
+      {held(live).map((id) => (
+        <SessionAgent
+          key={id}
+          id={id}
+          fetchList={fetchList}
+          initialMessages={initial.current.get(id) ?? []}
+          onReady={onAgentReady}
+          onRunStarted={onRunStarted}
+          onRunEnded={onRunEnded}
+          onRecorded={onRecorded}
+          onList={applyList}
+          onError={onAgentError}
+          onMessages={onAgentMessages}
+        />
+      ))}
       <Sidebar
         sessions={sessions}
         knownTags={knownTags}
         activeId={active}
-        // Switching sessions mid-run would put the new session's history on the agent that is
-        // still streaming the old one's run. `running={busy}` below disables the buttons
-        // themselves; these guards are the backstop for a click that lands before that
-        // re-render reaches the DOM (busy comes from the same agent.isRunning, just a render
-        // behind), so both stay ignored until the run truly ends either way.
-        onNew={() => { if (!agent.isRunning) startNew(); }}
-        onOpen={(id) => { if (!agent.isRunning) void open(id); }}
+        // Switching and New chat stay enabled during a run: the run goes on in its session's agent.
+        onNew={startNew}
+        onOpen={(id) => void open(id)}
         onChanged={refresh}
         onDeleted={onDeleted}
         onError={setError}
-        running={busy}
+        runningIds={runningIds}
         ready={ready}
       />
       <div className="spe-page">
@@ -241,7 +335,7 @@ function Chat() {
           key={active ?? "none"}
           session={active === null ? undefined : (sessions.find((s) => s.id === active) ?? null)}
           knownTags={knownTags}
-          running={busy}
+          runningIds={runningIds}
           ready={ready}
           onPatch={patchOpen}
           onDelete={() => void deleteOpen()}
@@ -254,23 +348,28 @@ function Chat() {
             <button type="button" onClick={() => setError(null)}>Dismiss</button>
           </div>
         )}
-        {active === null ? (
+        {active === null || !agentsReady.has(active) ? (
           <div className="spe-loading">Loading…</div>
         ) : (
-          <CopilotChatConfigurationProvider agentId="spe" threadId={active} hasExplicitThreadId={false} labels={LABELS}>
+          <CopilotChatConfigurationProvider
+            agentId={agentIdOf(active)}
+            threadId={active}
+            hasExplicitThreadId={false}
+            labels={LABELS}
+          >
             <CopilotChat
               key={active}
-              agentId="spe"
+              agentId={agentIdOf(active)}
               className="spe-chat"
               messageView={MESSAGE_VIEW}
               scrollView={SCROLL_VIEW}
               input={CommandInput}
               onError={(event) => {
-                // The prop's type also admits a DOM error event; only CopilotKit's carries `error`.
-                if ("error" in event && event.error instanceof Error) {
-                  noteRunError(event.error.message);
-                  setError(event.error.message || "The agent run failed.");
-                }
+                // The prop's type also admits a DOM error event; only CopilotKit's carries `error`. A run's
+                // own errors are the holder's to report (onAgentError), so they are not shown twice.
+                if (!("error" in event) || !(event.error instanceof Error)) return;
+                if (RUN_ERROR_CODES.has(event.code)) return;
+                setError(event.error.message || "The agent run failed.");
               }}
             />
           </CopilotChatConfigurationProvider>

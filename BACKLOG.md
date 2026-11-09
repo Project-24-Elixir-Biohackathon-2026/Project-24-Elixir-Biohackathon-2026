@@ -16,6 +16,14 @@ start reads this section; keep it short.
 
 <!-- - <item> — from <PR #n / review thread / spec Inputs for>, waits because <reason>. -->
 
+- AG-UI chat, minor polish from #58's review (finding 5): opening a session no holder keeps shows *Loading…* for
+  one render; no unit test drives `SessionAgent` with the page (only e2e `leave-running` does); while a chat
+  reopened mid-run streams, the whole chat re-renders per message change (`page.tsx`, `midRun`); a ms race between
+  AG-UI's subscriber copy and the page's streaming state could still freeze one such chat — waits because none
+  was seen to fail, and `leave-running` step 3 catches a freeze.
+- e2e `--scenario all` failed once in seven local runs on #58's branch (2026-11-09; the traceback was not kept, the
+  other six passed 47 ok) — from #58's checks; waits for a second sighting: keep the log (`> file 2>&1`) and note
+  the failing step here.
 - Canary ladder: clean runs above L1. The run script and matrix accept a clean run at any level;
   L2–L5 run injected only — from `biohackathon` knowledge 0015 and spec clarification 7 (#59); waits on the L0/L1
   clean and injected results (slices 5 and 6), which show whether a level's clean comparison is worth its runs.
@@ -24,6 +32,7 @@ start reads this section; keep it short.
   *Rulings*) — from spec clarification 7 (#59), deferred by the user (2026-11-09) because
   slice 1's `injection.followed` already attributes by the exposed payload's fingerprint and target; schedule if
   L0/L1 results show runs where two payloads were exposed and asked for the same action.
+
 - Carry `docs/knowledge/subagent-stall-after-usage-limit.md` to agent-methodology's `tooling-gotchas.md`, then drop the
   local note at the next `methodology update` — from #57's methodology review (finding 7); waits because it is a
   change to another repository, its own unit.
