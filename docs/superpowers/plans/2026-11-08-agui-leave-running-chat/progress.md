@@ -122,3 +122,27 @@ CopilotKit 1.84.1, `@ag-ui/client` 1.0.2, the fake agent; script and output in
   `use-run-reconcile.ts` into a tested module. *Why:* a run started while the previous run's list was pending was
   dropped from `streaming` when that list came back, and a switch then unmounted its holder mid-run. *Cost if
   wrong:* none found: an older run's end only skips `onEnded`, which the newer one calls.
+- **A rejoin's run ends through `watchRuns`, marked by `rejoining()`/`rejoined()`, and the merge loop is
+  `rejoinAgent` in `lib/rejoin.ts`** (slice 3, task 2; the task named only `rejoin.ts`, `session-agent.tsx` and
+  `page.tsx`). *Why:* `connectAgent` fires `onRunInitialized` and `onRunFinalized` like a run (`@ag-ui/client`
+  `agent.ts`, `connectAgent` → `onInitialize`/`onFinalize`), so the holder's watch already sees it: marked, it ends
+  with `waitNotRunning` (task 1's ruling) instead of `reconcile` against the connect's own start, a list without the
+  session ends it with no error bar (the `listed`/`gone` path), and `runStarted`/`runEnded` come from the same
+  callbacks as any run's. A mark not taken by a run (the connect failed first) is cleared when the connect ends. The
+  last merge runs in a `finally`, so a connect that cleared the messages and then failed leaves the history, not an
+  empty chat. The page sets `midRun` on a rejoin, so the open chat, drawn on a run its subscribers missed, redraws.
+  *Cost if wrong:* a CopilotKit upgrade whose connect stops firing those callbacks leaves the session out of
+  `streaming` during the rejoin (a switch away drops its holder) and skips the end's list fetch; the poll still
+  clears the mark, and task 3's `check_rejoin` shows it.
+- **A left session's save failure is named too**: `“<title>”: this session could not be saved` (slice 3, task 3,
+  2026-11-09). *Why:* it is that session's run's failure, and an unnamed one shown while another chat is open would
+  mislead. *Cost if wrong:* one prefix.
+- **A rejoined run's end sets the chat to the journal's messages (`GET`) when they differ** (#62's review, finding
+  1; a departure from task 2's rule that the merge alone keeps the chat). *Why:* `rejoinedMessages` appends every
+  replayed message the history lacks, and the runtime's replay also holds past runs in memory on a branch the
+  journal's tip has left, so at the run's end the chat could differ from `GET` (decision 42's acceptance says equal).
+  `watchRuns`, once `waitNotRunning` says saved, fetches `GET /api/sessions/{id}` (`fetchMessages`) and sets it on the
+  agent, before `onRecorded`/`onEnded`; not once a newer run has started (it would cut that run's stream). A failed
+  or 404 `GET` keeps the chat as the replay left it, with no error bar: the run is saved and listed, and the next
+  opening reads the journal. *Cost if wrong:* one more `GET` per rejoined run; a silent `GET` failure leaves the
+  extra messages shown until the session is opened again.

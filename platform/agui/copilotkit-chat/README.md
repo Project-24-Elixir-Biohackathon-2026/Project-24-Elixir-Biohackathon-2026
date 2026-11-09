@@ -64,7 +64,22 @@ hidden, deleted. Nothing rewrites a journal.
   Switching session and New chat stay enabled during a run, and the run goes on in
   its session's agent; reopening that session shows it still streaming, with no
   fetch. Once the run ends the agent is dropped unless its session is open. Runs in
-  several sessions may stream at once.
+  several sessions may stream at once. A session with a run in progress (the list's
+  `running`, or a run this page streams) shows a spinner at its row's end ("Running"
+  for screen readers), and its Delete is disabled in the row and the header.
+- **Rejoining a run**: a session whose run no agent in this page streams (a reload,
+  another tab) is rejoined live when opened, or when the open idle session turns
+  `running` in a list: its holder calls `connectAgent`, and the runtime's replay is
+  matched by id against the journal's history so each message shows once
+  (`lib/rejoin.ts`). Its stop button ends the run; a session not running opens from
+  the journal with no `connect`. The rejoined run's end is reconciled until the list
+  shows the session no longer running (`lib/reconcile.ts`, `waitNotRunning`).
+- **Refresh**: the list is fetched on load, on `visibilitychange` (visible) and
+  `focus`, after each run and metadata change, and every 2 s while it shows a session
+  running that no agent in this page streams (`lib/refresh.ts`). A run error, or a
+  run that could not be saved, in a session that is not open shows in the error bar
+  as `“<title>”: <message>` ("New chat" for no title; `lib/run-error.ts`); a failed
+  refresh's error goes once a list loads again.
 - **Shutdown**: on SIGTERM new runs are refused, runs in progress are cancelled and
   journaled, the queue drains within 25 s, the process exits. The image sets
   `NEXT_MANUAL_SIG_HANDLE=true` so Next.js does not exit first. The final archive

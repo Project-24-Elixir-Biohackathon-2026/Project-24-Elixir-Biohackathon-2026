@@ -25,6 +25,8 @@ import {
 import type { Live } from "../lib/live-sessions.ts";
 import { ListOrder } from "../lib/list-order.ts";
 import { TitleTrigger, fetchSessionList, waitListed } from "../lib/reconcile.ts";
+import { POLL_MS, afterListApplied, needsPoll, stillFailed } from "../lib/refresh.ts";
+import { runErrorText } from "../lib/run-error.ts";
 import { searchWith, sessionFromSearch } from "../lib/session-url.ts";
 import type { MetaPatch, SessionMeta } from "../lib/sessions.ts";
 import { effectiveTheme, parseTheme } from "../lib/theme.ts";
@@ -42,7 +44,7 @@ const MESSAGE_VIEW = { assistantMessage: AssistantOrCompaction };
 // An opened or reloaded session lands on its newest content at once. CopilotChat's default (use-stick-to-bottom's
 // `initial: "smooth"`) animated through the whole history first, about a second, and left the end below the fold
 // meanwhile; a live send still scrolls smoothly (`resize`). The slot's props reach `<StickToBottom>` (CopilotKit
-// 1.79.0, `CopilotChatView.ScrollView`'s `...props`), but its type leaves `initial` out, hence the cast; an upgrade
+// 1.84.1, `CopilotChatView.ScrollView`'s `...props`), but its type leaves `initial` out, hence the cast; an upgrade
 // that stops passing it through brings the animation back, which a reload of a long session shows. Stable for the
 // same reason as MESSAGE_VIEW.
 const SCROLL_VIEW = ({ initial: "instant" } satisfies { initial: "instant" | "smooth" | boolean }) as
@@ -88,6 +90,18 @@ function Chat() {
   const [agentsReady, setAgentsReady] = useState<ReadonlySet<string>>(new Set());
   // What each holder puts on its agent once ready: the GET's messages, or [] for a New chat.
   const initial = useRef(new Map<string, Message[]>());
+  // The held sessions whose holder is to connect to a run going elsewhere (./session-agent.tsx, `rejoin`):
+  // set where the GET or a list shows the open session running and this page is not streaming it, cleared
+  // when the connect ends or the holder goes. The ref is the current value, the state the one rendered.
+  const [rejoining, setRejoiningState] = useState<ReadonlySet<string>>(new Set());
+  const rejoiningRef = useRef<ReadonlySet<string>>(new Set());
+  const setRejoining = useCallback((next: ReadonlySet<string>) => {
+    rejoiningRef.current = next;
+    setRejoiningState(next);
+  }, []);
+  // The held sessions whose connect ended before its run started (it failed, its error in the bar): not
+  // rejoined again until a list shows them not running (lib/refresh.ts, stillFailed), or each poll would.
+  const rejoinFailed = useRef<ReadonlySet<string>>(new Set());
   // Bumped by every open()/startNew() call, so a response from a call that is no longer the
   // latest (a second click while the first's fetch is still in flight) is ignored on arrival.
   const requestRef = useRef(0);
@@ -96,22 +110,29 @@ function Chat() {
   // `group`: CopilotKit groups the calls this draws, across the model's steps (./tool-calls.tsx).
   useDefaultRenderTool({ render: (props) => <ToolCard {...props} />, group: true });
   const active = live.open;
+  // The first load has run (the effect below): once only, so a runtime connection that later drops from
+  // Connected neither disables the buttons again nor re-arms the unreachable timer, and the refreshes go on.
+  const [loaded, setLoaded] = useState(false);
   // One owner of "safe to click": passed down to every button that starts an action from the
   // sidebar and header, so a click before hydration is disabled rather than dropped. Hydration
   // alone is not enough: the first-load effect below (startNew()/open(), gated on the runtime having
   // answered) must also have run, or an early New chat/row-open call opens a session itself before the
-  // page has read the URL. `connected` alone still leaves a sub-frame window open between the render where
-  // it flips (committing enabled buttons) and the first-load effect that runs after that commit, so
-  // `ready` also waits for the effect itself: `active !== null` is only ever false before that effect
-  // has opened a session (every one of its paths — `open()`'s success, its not-found/error fallback to
-  // `startNew()`, and the no-parameter `startNew()` — ends with one open), so this cannot leave `ready`
-  // false once the runtime is there, including with an empty session list.
-  const ready = useHydrated() && connected && active !== null;
+  // page has read the URL. `loaded` is set by that effect (`connected` itself would disable the buttons
+  // again on a later drop), and `ready` also waits for its open: `active !== null` is only ever false before
+  // that effect has opened a session (every one of its paths — `open()`'s success, its not-found/error
+  // fallback to `startNew()`, and the no-parameter `startNew()` — ends with one open), so this cannot leave
+  // `ready` false once the runtime is there, including with an empty session list.
+  const ready = useHydrated() && loaded && active !== null;
 
   // Every list fetch is stamped as it starts, and only a list newer than the last applied is applied: a
   // late, older list would otherwise mark a session the newer one showed as gone, for good.
   const listOrder = useRef(new ListOrder()).current;
   const fetchList = useRef(listOrder.wrap(fetchSessionList)).current;
+  // A session's stored messages, for a rejoined run's end (lib/run-watch.ts): the same GET as open()'s.
+  const fetchMessages = useCallback(async (id: string) => (await fetchSession(id))?.messages ?? null, []);
+
+  // The text a failed list refresh put in the error bar, until a list is applied again (applyList).
+  const listError = useRef<string | null>(null);
 
   const startNewRef = useRef<() => void>(() => {});
   const setLive = useCallback((next: Live) => {
@@ -120,30 +141,62 @@ function Chat() {
     const keep = new Set(held(next));
     for (const id of initial.current.keys()) if (!keep.has(id)) initial.current.delete(id);
     setAgentsReady((r) => ([...r].every((id) => keep.has(id)) ? r : new Set([...r].filter((id) => keep.has(id)))));
-  }, []);
+    const r = rejoiningRef.current;
+    if (![...r].every((id) => keep.has(id))) setRejoining(new Set([...r].filter((id) => keep.has(id))));
+    const f = rejoinFailed.current;
+    if (![...f].every((id) => keep.has(id))) rejoinFailed.current = new Set([...f].filter((id) => keep.has(id)));
+  }, [setRejoining]);
+
+  // The open session has a run going that this page does not stream: its holder connects to it. Its chat is
+  // then drawn on a run already going, so it is redrawn on the agent's changes (midRun, below) until it ends.
+  const rejoin = useCallback((id: string) => {
+    const now = liveRef.current;
+    if (now.open !== id || !isHeld(now, id) || now.streaming.has(id) || rejoiningRef.current.has(id)) return;
+    if (rejoinFailed.current.has(id)) return;
+    midRun.current = id;
+    setRejoining(new Set(rejoiningRef.current).add(id));
+  }, [setRejoining]);
+  const onRejoined = useCallback((id: string) => {
+    // No run started (a run that did is in `streaming` until its end's list): the connect failed first.
+    const now = liveRef.current;
+    if (isHeld(now, id) && !now.streaming.has(id)) rejoinFailed.current = new Set(rejoinFailed.current).add(id);
+    if (!rejoiningRef.current.has(id)) return;
+    const next = new Set(rejoiningRef.current);
+    next.delete(id);
+    setRejoining(next);
+  }, [setRejoining]);
 
   // Every list the page fetches comes through here: the sidebar shows it, the live sessions learn which
   // ids left it (an open session that left it while idle is replaced by a new one), and once the open
   // session is in it (its first run recorded), the URL names it.
   const applyList = useCallback((list: SessionMeta[]) => {
     if (!listOrder.accept(list)) return; // older than one already applied
+    // The list loads again: a failed list fetch's error (a refresh's, or a run end's) goes, any other stays.
+    const failed = listError.current;
+    listError.current = null;
+    setError((e) => afterListApplied(e, failed));
     sessionsRef.current = list;
     setSessions(list);
+    rejoinFailed.current = stillFailed(rejoinFailed.current, list);
     const { live: next, startNew } = listed(liveRef.current, new Set(list.map((s) => s.id)));
     setLive(next);
     if (startNew) startNewRef.current();
     else {
       const id = liveRef.current.open;
-      if (id && list.some((s) => s.id === id)) showInUrl(id);
+      const shown = id ? list.find((s) => s.id === id) : undefined;
+      if (id && shown) showInUrl(id);
+      // An open idle session that turned running (a run from another tab): join it.
+      if (id && shown?.running) rejoin(id);
     }
-  }, [listOrder, setLive]);
+  }, [listOrder, rejoin, setLive]);
   const refresh = useCallback(async (): Promise<SessionMeta[] | null> => {
     try {
       const list = await listOrder.track(() => fetchSessions(), (l) => l);
       applyList(list);
       return list;
     } catch (e) {
-      setError(messageOf(e));
+      listError.current = messageOf(e);
+      setError(listError.current);
       return null;
     }
   }, [applyList, listOrder]);
@@ -188,8 +241,10 @@ function Chat() {
   }, []);
   // A run's errors, in any session, open or not: CopilotChat's onError hears only the open session's agent,
   // so each holder reports its own (and the chat's onError, below, leaves run errors to it).
-  const onAgentError = useCallback((_id: string, message: string) => {
-    setError(message);
+  // One from a session that is not open names it, by the list's title (lib/run-error.ts).
+  const onAgentError = useCallback((id: string, message: string) => {
+    const title = sessionsRef.current.find((s) => s.id === id)?.title ?? null;
+    setError(runErrorText(title, message, id === liveRef.current.open));
   }, []);
 
   // The open session, when its chat was drawn while its run was already streaming (opened again mid-run, or
@@ -237,6 +292,8 @@ function Chat() {
       midRun.current = null;
       setLive(openSession(liveRef.current, id));
       showInUrl(id);
+      // Its run is going elsewhere (another tab, or before a reload): the holder rejoins it live.
+      if (session.running) rejoin(id);
     } catch (e) {
       if (requestId !== requestRef.current) return; // superseded by a later open()/startNew()
       setError(messageOf(e));
@@ -248,7 +305,7 @@ function Chat() {
         showInUrl(null);
       }
     }
-  }, [refresh, setLive, startNew]);
+  }, [refresh, rejoin, setLive, startNew]);
 
   // First load, once the runtime has answered: a holder's agent registers while the runtime is still
   // pending, so the runtime's status, not an agent's `isReady`, says the page can run anything.
@@ -256,6 +313,7 @@ function Chat() {
   useEffect(() => {
     if (!connected || firstLoad.current) return;
     firstLoad.current = true;
+    setLoaded(true);
     void refresh();
     const id = sessionFromSearch(window.location.search);
     if (id) void open(id);
@@ -263,15 +321,38 @@ function Chat() {
   }, [connected, open, refresh, startNew]);
 
   // A runtime that never answers would leave "Loading…" up for good: say so after a while, and take
-  // the message back once it does answer.
+  // the message back once it does answer. Only before the first load: a later drop does not re-arm it.
   useEffect(() => {
-    if (connected) {
+    if (connected || loaded) {
       setError((e) => (e === UNREACHABLE ? null : e));
       return;
     }
     const timer = setTimeout(() => setError(UNREACHABLE), UNREACHABLE_AFTER_MS);
     return () => clearTimeout(timer);
-  }, [connected]);
+  }, [connected, loaded]);
+
+  // Refresh (spec §6): the list is fetched again when the page becomes visible or its window regains focus,
+  // so a run started from another tab shows its mark; from the first load on, whatever the runtime's status.
+  useEffect(() => {
+    if (!loaded) return;
+    const onVisible = () => { if (document.visibilityState === "visible") void refresh(); };
+    const onFocus = () => void refresh();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [loaded, refresh]);
+
+  // And every POLL_MS while the list shows a session running that no holder in this page streams (another
+  // tab's run, or one from before a reload), until it shows none: each list applied re-decides it.
+  const polling = loaded && needsPoll(sessions, live);
+  useEffect(() => {
+    if (!polling) return;
+    const timer = setInterval(() => void refresh(), POLL_MS);
+    return () => clearInterval(timer);
+  }, [polling, refresh]);
 
   const onDeleted = useCallback((id: string) => {
     if (id === liveRef.current.open) startNew();
@@ -307,6 +388,7 @@ function Chat() {
           key={id}
           id={id}
           fetchList={fetchList}
+          fetchMessages={fetchMessages}
           initialMessages={initial.current.get(id) ?? []}
           onReady={onAgentReady}
           onRunStarted={onRunStarted}
@@ -315,6 +397,8 @@ function Chat() {
           onList={applyList}
           onError={onAgentError}
           onMessages={onAgentMessages}
+          rejoin={rejoining.has(id)}
+          onRejoined={onRejoined}
         />
       ))}
       <Sidebar

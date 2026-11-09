@@ -3,7 +3,7 @@
 
     python3 platform/dev/e2e/sessions.py [--shots DIR] [--sessions DIR] [--color-scheme light|dark]
     python3 platform/dev/e2e/sessions.py --scenario stop --save-delay-ms 1500
-    python3 platform/dev/e2e/sessions.py --scenario leave-running|devtools-edit|restore-tip
+    python3 platform/dev/e2e/sessions.py --scenario leave-running|rejoin|running-marks|devtools-edit|restore-tip
     python3 platform/dev/e2e/sessions.py --url http://127.0.0.1:3000 --compose-file F --scenario stop|slow-loop|two-turn
     python3 platform/dev/e2e/sessions.py --url http://127.0.0.1:3000 --compose-file F --scenario live-run
 
@@ -12,7 +12,9 @@ platform/dev/fake_agent.py (with uv, in platform/agui/pydantic-ai-agent) and the
 with its own sessions directory, walks the sidebar (list, open, New chat, ?session=, the row menu's
 close and focus rules, the row menu, the open session deleted elsewhere) and checks the journals after each step. It ends with three sessions: one tagged and pinned, one hidden, one
 deleted, and checks that a run whose tab is closed is still journaled whole, and that no run of any journal holds ignored content. It also edits a reply in the page's copy of a session and checks the server undoes
-it, groups two tool calls of one response under one header that shows a failure, and makes two branches from two tabs and checks a reopened session lands on the newer one. It leaves running chats (leave-running): two sessions streaming at once, each marked in its row, one reopened mid-run without a fetch. Needs Python Playwright with Chromium
+it, groups two tool calls of one response under one header that shows a failure, and makes two branches from two tabs and checks a reopened session lands on the newer one. It leaves running chats (leave-running): two sessions streaming at once, each marked in its row, one reopened mid-run without a fetch. It rejoins a run going elsewhere (rejoin: after a reload, from a second
+tab, stopped there) and shows another tab's runs (running-marks: marked on focus, polled until they end, a left
+session's run error named by its title). Needs Python Playwright with Chromium
 (`pip install playwright` and `playwright install chromium`). Exits nonzero on the first failed check.
 """
 from __future__ import annotations
@@ -974,6 +976,222 @@ def check_leave_running(r: Run, save_delay_ms: int = 1500) -> None:
     page.remove_listener("request", log)
 
 
+SLOW_STEP = re.compile(r"Slow step (\d+) of 10\.")
+
+
+def slow_steps(page: Page) -> list[int]:
+    """The slow steps the open chat's last assistant message shows, in order (each once when nothing repeats)."""
+    return [int(n) for n in SLOW_STEP.findall(page.get_by_test_id("copilot-assistant-message").last.inner_text())]
+
+
+def wait_steps(page: Page, n: int, seconds: float = 20) -> None:
+    """The open chat shows at least `n` slow steps in all (a session's earlier slow runs counted too)."""
+    until = time.time() + seconds
+    while len(SLOW_STEP.findall(page.locator(".spe-chat").inner_text())) < n:
+        assert time.time() < until, ("slow steps shown", n, page.locator(".spe-chat").inner_text()[-300:])
+        page.wait_for_timeout(100)
+
+
+def drawn_ids(page: Page) -> list[str]:
+    """Every `data-message-id` the open chat draws, repeats kept (CopilotKit draws one element per message)."""
+    return page.locator(".spe-chat [data-message-id]").evaluate_all(
+        "els => els.map(e => e.getAttribute('data-message-id'))")
+
+
+def stored_ids(sid: str) -> list[str]:
+    """The ids the chat draws for a session's GET: tool results are drawn inside their call's card."""
+    with urllib.request.urlopen(f"{BASE}/api/sessions/{sid}", timeout=5) as resp:
+        return [m["id"] for m in json.loads(resp.read())["messages"] if m["role"] != "tool"]
+
+
+def run_ends(r: Run, sid: str) -> list[str]:
+    return [x["status"] for x in r.raw(sid) if x["type"] == "run_end"]
+
+
+def connects(page: Page) -> list[str]:
+    """Collects the page's `connect` requests (CopilotKit's POST .../agent/spe/connect) from now on."""
+    seen: list[str] = []
+    page.on("request", lambda req: seen.append(req.url)
+            if req.method == "POST" and req.url.split("?")[0].endswith("/connect") else None)
+    return seen
+
+
+def follow_rejoined(r: Run, page: Page, sid: str, history: list[str], ended: int, what: str) -> None:
+    """A page rejoined `sid`'s slow run: every 0.5 s until the journal has `ended` run ends, each drawn id once
+    and none of `history` (the GET's ids before the run) missing; the slow steps rise during the run and end as 1..10, each once; the chat
+    then equals the session's GET (decision 42)."""
+    counts: list[int] = []
+    until = time.time() + 40
+    while len(run_ends(r, sid)) < ended:
+        assert time.time() < until, (what, "the run did not end", run_ends(r, sid))
+        ids = drawn_ids(page)
+        assert len(ids) == len(set(ids)), (what, "an id drawn twice", ids)
+        assert set(history) <= set(ids), (what, "a history id missing", set(history) - set(ids))
+        counts.append(len(slow_steps(page)))
+        page.wait_for_timeout(500)
+    assert max(counts) > min(counts), (what, "the streamed text did not grow", counts)
+    expect(r_running(page, sid)).to_have_count(0, timeout=10_000)
+    until = time.time() + 5
+    while slow_steps(page) != list(range(1, 11)) and time.time() < until:
+        page.wait_for_timeout(100)
+    assert slow_steps(page) == list(range(1, 11)), (what, slow_steps(page))
+    ids = drawn_ids(page)
+    assert len(ids) == len(set(ids)) and ids == stored_ids(sid), (what, ids, stored_ids(sid))
+    print(f"  {what}: slow-step counts per 0.5 s {counts}", flush=True)
+
+
+def r_running(page: Page, sid: str):
+    """Run.running() on another page than the Run's."""
+    return page.locator(f'.spe-sidebar .spe-row[data-session-id="{sid}"] .spe-row-running')
+
+
+def check_rejoin(r: Run) -> None:
+    """Rejoining a run going elsewhere (decision 42): a reload during a slow run keeps streaming it, every
+    message id drawn once, the text growing and ending with each slow step once, and the chat equal to GET's at
+    the run's end, with one `connect`; the same from a second tab; stop in a rejoined chat journals the run
+    `cancelled`; opening a session that is not running makes no `connect`."""
+    page = r.page
+    stamp = uuid.uuid4().hex[:8]
+    text = f"rejoin R {stamp}"
+    sid = start_new(r, text)
+    expect(page.get_by_text("Turn 1: the command ran.")).to_be_visible(timeout=20_000)
+    wait_run(r, sid, seconds=20)
+
+    # 1. Reload during a slow run.
+    box = page.get_by_test_id("copilot-chat-textarea")
+    history = stored_ids(sid)
+    box.fill(f"slow, then reload {stamp}")
+    box.press("Enter")
+    wait_steps(page, 2)
+    seen = connects(page)
+    page.reload()
+    page.wait_for_url(f"**session={sid}**")
+    wait_steps(page, 1, seconds=10)
+    follow_rejoined(r, page, sid, history, 2, "reload")
+    assert len(seen) == 1, seen
+    assert run_ends(r, sid) == ["completed", "completed"], run_ends(r, sid)
+    r.ok("rejoin: reload during a slow run keeps streaming it, each id once, steps 1..10 once, "
+         "equal to GET at the end, one connect")
+
+    # 2. The same from a second tab, which then stops the next run it rejoins.
+    other = page.context.browser.new_context().new_page()
+    try:
+        seen2 = connects(other)
+        history = stored_ids(sid)
+        box.fill(f"slow, seen from a second tab {stamp}")
+        box.press("Enter")
+        wait_steps(page, 10 + 2)  # the reload's run had 10
+        other.goto(f"{BASE}/?session={sid}")
+        wait_steps(other, 10 + 1, seconds=10)
+        follow_rejoined(r, other, sid, history, 3, "second tab")
+        assert len(seen2) == 1, seen2
+        r.ok("rejoin: a second tab opening the session mid-run keeps streaming it, each id once, steps 1..10 "
+             "once, equal to GET at the end, one connect")
+
+        # 3. Stop in the rejoined chat: the run is journaled cancelled.
+        expect(r_running(page, sid)).to_have_count(0, timeout=10_000)
+        box.fill(f"slow, stopped from the second tab {stamp}")
+        box.press("Enter")
+        wait_steps(page, 20 + 1)
+        other.reload()
+        expect(r_running(other, sid)).to_have_count(1, timeout=10_000)
+        expect(other.get_by_text(f"slow, stopped from the second tab {stamp}")).to_have_count(1, timeout=10_000)
+        other.get_by_test_id("copilot-send-button").click()  # the stop button of the rejoined run
+        until = time.time() + 15
+        while len(run_ends(r, sid)) < 4 and time.time() < until:
+            time.sleep(0.2)
+        assert run_ends(r, sid) == ["completed", "completed", "completed", "cancelled"], run_ends(r, sid)
+        r.ok("rejoin: stop in a rejoined chat (second tab, after a reload) journals the run cancelled")
+
+        # 4. Opening a session that is not running makes no connect: a reload, and a row opened.
+        expect(r_running(other, sid)).to_have_count(0, timeout=10_000)
+        expect(r_running(page, sid)).to_have_count(0, timeout=10_000)
+        seen2.clear()
+        other.reload()
+        expect(other.get_by_text(f"slow, stopped from the second tab {stamp}")).to_have_count(1, timeout=10_000)
+        other.get_by_role("button", name="New chat").click()
+        other.locator(f'.spe-sidebar .spe-row[data-session-id="{sid}"] .spe-row-open').click()
+        other.wait_for_url(f"**session={sid}**")
+        expect(other.get_by_text(f"slow, stopped from the second tab {stamp}")).to_have_count(1, timeout=10_000)
+        other.wait_for_timeout(1500)
+        assert seen2 == [], seen2
+        r.ok("rejoin: opening a session not running (reload, row) makes no connect request")
+    finally:
+        other.context.close()
+
+
+def check_running_marks(r: Run) -> None:
+    """The running marks from another tab (decision 44): a run started in a second browser context shows its
+    mark here within 3 s of this page regaining focus; once its mark is gone here, no list fetch for 5 s; a
+    failed list refresh's error goes when a later one succeeds; a run error in a session left mid-run shows in
+    the bar with that session's title first."""
+    page = r.page
+    stamp = uuid.uuid4().hex[:8]
+    lists: list[float] = []
+
+    def log(req) -> None:
+        if req.method == "GET" and req.url.split("?")[0].endswith("/api/sessions"):
+            lists.append(time.time())
+    page.on("request", log)
+    page.get_by_role("button", name="New chat").click()
+    expect(page.get_by_role("heading", name="New chat", exact=True)).to_have_count(1)
+
+    # 1. A slow run from a second context: its mark here within 3 s of focus.
+    other = page.context.browser.new_context().new_page()
+    try:
+        other.goto(BASE + "/")
+        x_text = f"slow X {stamp}"
+        other.get_by_role("button", name="New chat").click()
+        obox = other.get_by_test_id("copilot-chat-textarea")
+        obox.fill(x_text)
+        obox.press("Enter")
+        expect(other.locator(".spe-sidebar .spe-row").filter(has_text=x_text)).to_have_count(1, timeout=10_000)
+        x = other.locator(".spe-sidebar .spe-row").filter(has_text=x_text).get_attribute("data-session-id")
+        page.wait_for_timeout(500)
+        expect(r.row_of(x)).to_have_count(0)  # this page has not fetched the list since
+        page.bring_to_front()
+        page.evaluate("window.dispatchEvent(new Event('focus'))")
+        expect(r.running(x)).to_have_count(1, timeout=3_000)
+        r.ok("running marks: a run started in another browser context is marked here within 3 s of focus")
+
+        # 2. Its mark goes (this page polls meanwhile); from then on, no list fetch for 5 s.
+        expect(r.running(x)).to_have_count(0, timeout=30_000)
+        gone = time.time()
+        page.wait_for_timeout(5_000)
+        late = [t - gone for t in lists if t > gone]
+        assert not late, ("list fetched after X's mark went", late)
+        r.ok("running marks: once X's mark is gone, no GET /api/sessions for 5 s")
+    finally:
+        other.context.close()
+
+    # 3. A failed refresh's error goes once a later refresh succeeds; another error stays.
+    pattern = "**/api/sessions"
+    page.route(pattern, lambda route: route.fulfill(status=500, body='{"error":"list down"}')
+               if route.request.method == "GET" else route.continue_())
+    page.evaluate("window.dispatchEvent(new Event('focus'))")
+    expect(page.locator(".spe-error")).to_have_count(1, timeout=5_000)
+    page.unroute(pattern)
+    page.evaluate("window.dispatchEvent(new Event('focus'))")
+    expect(page.locator(".spe-error")).to_have_count(0, timeout=5_000)
+    r.ok("running marks: a failed list refresh's error goes when the next refresh succeeds")
+
+    # 4. A run error in a session left mid-run: the bar names it.
+    y_text = f"slow-fail Y {stamp}"
+    y = start_new(r, y_text)
+    expect(r.running(y)).to_have_count(1)
+    y_title = r.row_of(y).locator(".spe-row-title").inner_text()
+    page.get_by_role("button", name="New chat").click()
+    expect(page.get_by_role("heading", name="New chat", exact=True)).to_have_count(1)
+    expect(page.locator(".spe-error")).to_contain_text(f"“{y_title}”: ", timeout=30_000)
+    expect(page.locator(".spe-error")).to_contain_text("scripted model failure")
+    assert r.url_session() != y
+    assert run_ends(r, y) == ["failed"], run_ends(r, y)
+    r.shot("running-marks-left-error")
+    page.locator(".spe-error").get_by_role("button", name="Dismiss").click()
+    r.ok("running marks: a run error in a session left mid-run shows as “<its title>”: <message>")
+    page.remove_listener("request", log)
+
+
 DELETED = "this session was deleted"
 
 
@@ -1497,7 +1715,7 @@ def compaction_live(r: Run, turns: int = 8) -> None:
           f"after {turn} turns")
 
 
-LOCAL = ("all", "stop", "leave-running", "compaction", "devtools-edit", "restore-tip", "compact-command")
+LOCAL = ("all", "stop", "leave-running", "rejoin", "running-marks", "compaction", "devtools-edit", "restore-tip", "compact-command")
 INSTANCE = ("stop", "slow-loop", "two-turn", "compaction-live", "live-run")
 
 
@@ -1508,7 +1726,9 @@ def main() -> None:
     ap.add_argument("--sessions", type=Path, help="sessions directory to use and keep (default: a temporary one)")
     ap.add_argument("--scenario", default="all", choices=sorted(set(LOCAL + INSTANCE)),
                     help="all: every check (save-failed last); stop: a stopped run whose save is delayed "
-                         "(--save-delay-ms); leave-running: switching during runs; slow-loop, two-turn: --url only; "
+                         "(--save-delay-ms); leave-running: switching during runs; rejoin: a run going elsewhere "
+                         "rejoined; running-marks: another tab's runs marked, a left session's error named; "
+                         "slow-loop, two-turn: --url only; "
                          "devtools-edit, restore-tip: one check each; live-run: --url only")
     ap.add_argument("--save-delay-ms", type=int, default=0,
                     help="SPE_SESSIONS_TEST_SAVE_DELAY_MS for the local chat UI")
@@ -1591,6 +1811,8 @@ def main() -> None:
                 check_no_false_alarm(r)
                 check_stop(r)
                 check_leave_running(r)
+                check_rejoin(r)
+                check_running_marks(r)
                 check_devtools_edit(r)
                 check_restore_tip(r)
                 check_save_failed(r)
@@ -1601,6 +1823,12 @@ def main() -> None:
             elif args.scenario == "leave-running":
                 page.goto(BASE + "/")
                 check_leave_running(r)
+            elif args.scenario == "rejoin":
+                page.goto(BASE + "/")
+                check_rejoin(r)
+            elif args.scenario == "running-marks":
+                page.goto(BASE + "/")
+                check_running_marks(r)
             elif args.scenario == "devtools-edit":
                 page.goto(BASE + "/")
                 check_devtools_edit(r)

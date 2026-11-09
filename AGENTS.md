@@ -205,10 +205,6 @@ is open (`docs/guides/contributing-upstream.md`, step 6).
 - **Canary evaluation ladder** (biohackathon 0013, 0014, 0015): spec (#1), plan (#2), slices 1–2 (#3, #60) merged;
   restore measured on de.NBI (median 45.6 s). **Next: slice 3/9** `impl/canary-eval-ladder-3-controls`.
   Handoff: `methodology handoff newest docs/superpowers/plans/2026-10-22-canary-eval-ladder/handoffs`.
-- **AG-UI: leave a running chat** (living AG-UI spec, clarification 27): spec (#55) and plan (#56)
-  merged; slices 1 (#57, rejoin verdict *live*) and 2 (#58) merged. **Next:** slice 3/3
-  `impl/agui-leave-running-chat-3-rejoin`.
-  Handoff: `methodology handoff newest docs/superpowers/plans/2026-11-08-agui-leave-running-chat/handoffs`.
 - **Upstream PR kraatz #28** (`contrib/agui-archive-markdown`): archive Markdown wording, autolinks, refusal
   reason, bad timestamps; waits on upstream's review.
 - **Upstream PR kraatz #29** (`contrib/agui-chat-ui-polish`): reopened sessions land on their end, menu focus;

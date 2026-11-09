@@ -12,6 +12,10 @@ start reads this section; keep it short.
 
 <!-- - <item> — from <investigation / review / handoff>; <waits on the user: what> | <due: why soon>. -->
 
+- AG-UI chat: does a reply that finished while away need a mark of its own, and should the open row show its running
+  spinner? Two no-gate questions on #58's early output (issuecomment-6730913819), nothing built — waits on the user:
+  an answer; a *yes* is a change with a spec §6 clarification.
+
 ## Unscheduled
 
 <!-- - <item> — from <PR #n / review thread / spec Inputs for>, waits because <reason>. -->
@@ -21,6 +25,13 @@ start reads this section; keep it short.
   reopened mid-run streams, the whole chat re-renders per message change (`page.tsx`, `midRun`); a ms race between
   AG-UI's subscriber copy and the page's streaming state could still freeze one such chat — waits because none
   was seen to fail, and `leave-running` step 3 catches a freeze.
+- AG-UI chat: a switch away between a rejoin's start and its connect's `onRunInitialized` drops the holder while the
+  connect goes on, and its end reaches no page state (`platform/agui/copilotkit-chat/app/session-agent.tsx`, the rejoin effect) —
+  from #62's task 2 review (Minor 4); waits because the window is short and the poll still clears the mark.
+- AG-UI chat: between a list showing a session `running` and its connect's `onRunInitialized`, the open chat's
+  composer is offered, though §6 says never; a send there is refused by the runtime, and while `rejoining` is set its
+  run would end through `waitNotRunning` (`platform/agui/copilotkit-chat/lib/run-watch.ts`) — from #62's review
+  (finding 4); waits because the window is short and the send is refused, not lost.
 - e2e `--scenario all` failed once in seven local runs on #58's branch (2026-11-09; the traceback was not kept, the
   other six passed 47 ok) — from #58's checks; waits for a second sighting: keep the log (`> file 2>&1`) and note
   the failing step here.

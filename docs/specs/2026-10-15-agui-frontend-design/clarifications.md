@@ -368,3 +368,18 @@ in the parts it amends.
     *Opening a session*, *During a run*, now *A session's agent* and *Leaving a running chat*, *Refresh*,
     *Errors*), decision 26 (rewritten), README *Early output*; adds decisions 40–44, inputs for the plan, and
     three out-of-scope items. *Status:* folded.
+
+28. **Leaving a running chat is built, live rejoin included; four details made precise** (2026-11-09; the fork's
+    PRs #57, #58 and #62). Decisions 26 and 40–44 are built as §6 states them, and decision 42 rejoins live
+    (replayed messages matched by id; its fallback was not needed, §12). §6 now names CopilotKit 1.84.1's
+    thread-scoped `useAgent`, the version built on, instead of 1.79's (the API is the one §6 describes). And:
+    a connect that fails leaves the chat on the journal's history with its error in the bar (*Opening a
+    session*); a left session's "this session could not be saved" is named by its title like its other run
+    errors (*Refresh*, *Errors*); a failed list fetch's error goes once a later list fetch succeeds, since the
+    polling fetches again on its own (*Errors*); only the first load waits for the runtime, so a connection
+    that drops after it disables no control (*Errors*). *Reason:* found while building: an unnamed save failure
+    shown while another chat is open would read as the open chat's; with polling, a list error would stay up
+    after the list recovered; and a drop from `Connected` re-disabled every button mid-session. *Cost if
+    wrong:* each is one line of the page (a message prefix, the error bar's clearing, the readiness flag).
+    *Amends:* §6 *A session's agent*, *Opening a session*, *Refresh*, *Errors*; §12 gains *Leaving a running
+    chat*. *Status:* folded.

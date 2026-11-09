@@ -43,13 +43,15 @@ Acceptance (decision 44, Playwright, task 3): a run started from a second tab sh
 
 ## Task 2: opening a running session (decision 42)
 
-Build the branch the verdict names; delete the other paragraph from this file in the same commit.
-
 **Live (the spec's design; slice 1's verdict).** Acceptance (decision 42): reload during a slow run: the chat keeps
 streaming, every message id is shown once, and at the run's end the messages equal `GET`'s; the same from a second
 tab; stop in the rejoined chat journals `cancelled`; opening a session not running makes no `connect` request.
 
-- Create: `CHAT/lib/rejoin.ts`, `CHAT/lib/rejoin.test.ts`; modify `CHAT/app/session-agent.tsx`, `app/page.tsx`.
+- Create: `CHAT/lib/rejoin.ts`, `CHAT/lib/rejoin.test.ts`; modify `CHAT/app/session-agent.tsx`, `app/page.tsx`,
+  `CHAT/lib/run-watch.ts` (+ its test) and `app/use-run-reconcile.ts` (progress.md, *Rulings while building*: the
+  connect's run ends through `waitNotRunning`).
+- `export async function rejoinAgent(agent, connect)` (lib/rejoin.ts): the subscribe-merge-connect loop below, apart
+  from React, tested on a fake agent; its last merge runs however the connect ends.
 - `export function rejoinedMessages(history: Message[], current: Message[], inProgress: ReadonlySet<string>): Message[]`
   — `history` is the journal's branch; `current` the agent's messages; `inProgress` the ids of the run in
   progress. Keeps `history` in order, each message replaced in place by `current`'s copy of the same id when
@@ -76,18 +78,15 @@ tab; stop in the rejoined chat journals `cancelled`; opening a session not runni
   subscriber made before `connectAgent` is called, so it also catches `connectAgent`'s own `setMessages([])`; not
   only from the replay's first event, which slice 1 found fails) **and once after it resolves**, setting the
   messages only when the result differs; then it joins `live.streaming` (`runStarted`) until the run ends. Why,
-  and the ordering race this rests on: [`progress.md`](progress.md), *Verdicts*.
+  and the ordering race this rests on: [`progress.md`](progress.md), *Verdicts*. At the run's end, once the list
+  shows it saved, the holder sets the agent's messages to `GET /api/sessions/{id}`'s when they differ (the replay
+  can bring past runs of a branch the journal's tip has left), unless a newer run has started; a failed `GET`
+  keeps the chat, with no error bar (`lib/run-watch.ts`; progress.md, *Rulings while building*).
 - Task 3's `check_rejoin` checks the streamed text grows during the run (the slow-step count rises between ticks),
   not only its final count, which shows each step once (the race's symptom is repeated text).
 
-**Fallback (only if the verdict says so).** Acceptance: its own check (decision 42): a session opened during a run
-from a second tab shows its saved part with the running mark, the composer and stop disabled, and at the run's end
-its messages equal `GET`'s. `SessionAgent` with `frozen: true` disables the composer (`CopilotChat`'s input slot,
-`app/command-input.tsx`) and stop; when `waitNotRunning` (task 1) ends, the page fetches `GET` and remounts the
-holder with its messages.
-
 - [ ] **Steps**: failing tests; run (FAIL); implement; `npm test && npm run build` (PASS); commit `Chat: rejoin a
-  running session (decision 42)` (or `…: show a running session's saved part (decision 42's fallback)`).
+  running session (decision 42)`.
 
 ## Task 3: run errors with their title; Playwright (decisions 42, 44; Review Focus 5)
 

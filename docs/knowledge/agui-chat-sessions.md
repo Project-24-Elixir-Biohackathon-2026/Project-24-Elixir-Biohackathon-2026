@@ -76,8 +76,8 @@ image.
 ## 6. Clicking "New chat" right after `page.goto()` can be silently dropped
 
 **Symptom.** `platform/dev/e2e/sessions.py`'s `check_stop`, called right after `page.goto(BASE + "/")` with no
-other check in between, sends its message but `agent.isRunning` never flips: *New chat* stays enabled and no
-run is ever recorded, even though the button visibly exists and the click reports success.
+other check in between, sends its message but `agent.isRunning` never flips (in the page of that time, which disabled *New chat*
+during a run, it stayed enabled) and no run is ever recorded, even though the button visibly exists and the click reports success.
 
 **Cause.** A fresh `page.goto()` return (the `load` event) does not mean the React app has hydrated yet. A
 server-rendered *New chat* button exists in the DOM before its `onClick` is attached; a click landing in that
