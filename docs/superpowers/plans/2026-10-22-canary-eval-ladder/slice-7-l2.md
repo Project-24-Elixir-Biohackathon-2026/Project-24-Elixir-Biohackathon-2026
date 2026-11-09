@@ -44,7 +44,7 @@ and secret objects the live checks use.
 **Decisions:** 6.
 
 - [ ] **Step 1: Genomes and secret objects exist.** Every level shares the hand-off directory
-  `output/denbi-agui-01/` in the private checkout `PRIVATE` (slice 4, Task 5):
+  `output/denbi-agui-01/` in the private checkout `PRIVATE` (slice 4, Task 6):
 
 ```bash
 PRIVATE=/workspace/biohackathon/biohackathon/elixir-biohackathon-2026-test/platform/ansible   # adjust

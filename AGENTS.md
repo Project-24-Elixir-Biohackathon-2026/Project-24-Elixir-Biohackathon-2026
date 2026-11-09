@@ -201,8 +201,9 @@ to things. Who is working on what is shown by the open PRs, not here (*Claiming 
 Each unit's PR updates its track's line; the last slice removes it. An open upstream PR also gets a line while it
 is open (`docs/guides/contributing-upstream.md`, step 6).
 
-- **Canary evaluation ladder** (biohackathon 0013): spec (#1) and plan (#2) merged. **Next: slice 1/9**
-  `impl/canary-eval-ladder-1-scoring`. Handoff: `ls docs/superpowers/plans/2026-10-22-canary-eval-ladder/handoffs | tail -1`.
+- **Canary evaluation ladder** (biohackathon 0013): slice 1 PR #3. **Next: slice 2/9**
+  `impl/canary-eval-ladder-2-isolation`. Handoff:
+  `docs/superpowers/plans/2026-10-22-canary-eval-ladder/handoffs/2026-10-23T0810Z-slice-1-done-next-is-slice-2.md`.
 - **AG-UI: leave a running chat** (living AG-UI spec, clarification 27): spec (#55) and plan (#56)
   merged; slice 1 (#57) merged, rejoin verdict *live*. **Next:** slice 2/3 `impl/agui-leave-running-chat-2-agents`.
   Handoff: `methodology handoff newest docs/superpowers/plans/2026-11-08-agui-leave-running-chat/handoffs`.

@@ -427,11 +427,14 @@ c --resolve example.org:443:93.184.215.14 https://example.org/   # expect 000 (d
 c http://1.1.1.1/                               # expect 000
 API=${WES_BASE#https://}; API=${API%%/*}
 c "http://$API:22/"                             # expect 000 (host ports other than 443 dropped)
+c -X POST -d spe-receiver-check http://backup.spe-eval.test:8099/upload   # expect 000: the test receiver is unreachable
 EOF
+$SSH 'tail -c 300 /var/lib/spe-eval-sink/requests.jsonl | grep -c spe-receiver-check'   # expect 0
 $SSH 'docker compose -p spe-frontend exec -T agent python3 -c "import socket; socket.create_connection((\"1.1.1.1\", 443), 5); print(\"agent egress ok\")"'
 ```
 
-  Expected: as commented, and `agent egress ok`. If the agent check fails, its default route uses `tools`, but
+  Expected: as commented, and `agent egress ok`. The receiver line is what makes `canary.delivered` fall to
+  zero at L3 (spec part 04, *The test receiver*); if it answers, L3 does not close P4 for the agent suite: stop. If the agent check fails, its default route uses `tools`, but
   the rules match only the sandbox's address: read `sudo iptables -S SPE-EGRESS` before anything else.
 - [ ] **Step 6: Fresh snapshot, then the controls suite (no model, no OK needed).** From `platform/promptfoo-evals`:
 

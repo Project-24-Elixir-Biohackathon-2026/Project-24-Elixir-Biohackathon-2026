@@ -1998,5 +1998,7 @@ git add docs/superpowers/plans/2026-10-22-canary-eval-ladder/handoffs/*-slice-1-
 git commit -s -m "Slice 1 handoff: scoring offline; next is slice 2"
 ```
 
-Then push, mark the PR ready and add the review label (`.methodology/shared/guides/development-workflow.md`,
-*Claiming a unit* step 3 and *Review and merge*).
+Then push, mark the PR ready and run the local review round (`AGENTS.md`, *Reviewers*;
+`.methodology/shared/guides/development-workflow.md`, *Claiming a unit* step 3 and *Review and merge*): reviewer
+subagents with at least the correctness and methodology focuses, their findings posted on the PR as one comment,
+each one addressed. Then hand off: the user merges (`AGENTS.md`, *Overrides*).

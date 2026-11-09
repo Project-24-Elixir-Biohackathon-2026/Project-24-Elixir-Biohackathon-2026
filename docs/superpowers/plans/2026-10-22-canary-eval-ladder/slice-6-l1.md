@@ -96,20 +96,21 @@ $SSH 'ss -ltn | grep -E ":8443\b" || echo "8443 free"'
 
 ### Task 2: TRS read-only at Traefik, operator writes through the admin entrypoint
 
-**Files:** create `platform/dev/tests/ansible_render.py`, `platform/dev/tests/golden/compose.install.L0.yaml`,
+**Files:** create `platform/dev/tests/golden/compose.install.L0.yaml`,
 `platform/dev/tests/golden/weskit_config.L0.yaml`, `platform/dev/tests/test_harden_trs_readonly.py`. Modify
 `platform/ansible/roles/workflow_stack/templates/compose.install.yaml.j2`,
 `platform/ansible/roles/trs_install/tasks/main.yml` and `platform/ansible/inventory/group_vars/all.yml`.
 
-**Interfaces:** Consumes `spe_harden_trs_readonly` (declared off by slice 3). Produces the render helper that
-slices 7 and 8 use: `render(role, template, **overrides) -> str`, `load_vars(**overrides) -> dict` (group vars
+**Interfaces:** Consumes `spe_harden_trs_readonly` (declared off by slice 3) and the render helper (created by
+slice 4, task 5, from the code in step 1 here) that slices 6–8 use: `render(role, template, **overrides) -> str`, `load_vars(**overrides) -> dict` (group vars
 plus run-time values, with plain `{{ }}` defaults resolved), `environment() -> jinja2.Environment` (Ansible's
 template options), and the constants `ANSIBLE` and `GOLDEN`. Also produces `spe_trs_admin_port` and
 `spe_trs_write_api`.
 
 **Decisions:** 3 (switch off renders byte-identical to today), 2 (one switch).
 
-- [ ] **Step 1: Write the render helper.**
+- [ ] **Step 1: The render helper.** Slice 4, task 5 created it from this code; check it still matches (plus any
+  `RUNTIME` values slice 4's handoff added) and change nothing otherwise.
 
 ```python
 # platform/dev/tests/ansible_render.py
@@ -292,7 +293,7 @@ spe_owned_ports: >-
 - [ ] **Step 7: Commit.**
 
 ```bash
-git add platform/dev/tests/ansible_render.py platform/dev/tests/golden/compose.install.L0.yaml \
+git add platform/dev/tests/golden/compose.install.L0.yaml \
   platform/dev/tests/golden/weskit_config.L0.yaml platform/dev/tests/test_harden_trs_readonly.py \
   platform/ansible/roles/workflow_stack/templates/compose.install.yaml.j2 \
   platform/ansible/roles/trs_install/tasks/main.yml platform/ansible/inventory/group_vars/all.yml
@@ -748,7 +749,7 @@ columns L0 and L1.
 - [ ] **Step 1: Re-provision in place (no OK needed).** The level file is an overlay on the operator's
   private `denbi-agui-01.yml` (the VM's preflight accepts only that name). Every level shares
   `output/denbi-agui-01/`. `PRIVATE` is the checkout holding the git-ignored instance file and the
-  canonical `output/` (slice 4, Task 5). From the repository root:
+  canonical `output/` (slice 4, Task 6). From the repository root:
 
 ```bash
 PRIVATE=/workspace/biohackathon/biohackathon/elixir-biohackathon-2026-test/platform/ansible   # adjust
