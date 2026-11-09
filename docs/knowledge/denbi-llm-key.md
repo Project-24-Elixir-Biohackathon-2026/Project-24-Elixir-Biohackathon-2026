@@ -84,3 +84,21 @@ ansible-playbook -i inventory/hosts.yml <play> \
 **Caveat:** the record's `commit` is read from the controller checkout (the worktree's branch tip), not from the
 VM's own clone, so it can disagree with what the VM is actually running. A later rebuild with a key available
 rewrites `hardening.json` from `create.yml`'s own run of the same tasks, which corrects it.
+
+**Coder is back (2026-11-09), and the key can be swapped in place.** `coder list` works again from this guest
+(`thodkatz/thodkatz-workspace`; check it is `Started` first, see above), and its key is the working `52bb9f98`.
+After a ladder level is built with the placeholder key (`ladder-level-build-allowed-models.md`), the chat's
+"401 … LiteLLM Virtual Key expected. Received=plac****call" goes away without a rebuild: pipe the key from the
+workspace into the VM's `agent.env` and recreate only the agent (the level and its hardening stay as built):
+
+```bash
+coder ssh thodkatz/thodkatz-workspace 'docker exec spe-frontend-open-webui-1 printenv OPENAI_API_KEY' 2>/dev/null \
+  | tr -d '\r\n' | ssh agent-service-1 'read -r K || true; F=~/spe-frontend/agent.env; umask 077;
+    awk -v k="$K" "/^OPENAI_API_KEY=/{print \"OPENAI_API_KEY=\" k; next} {print}" $F > $F.new && mv $F.new $F;
+    cd ~/spe-frontend && docker compose -p spe-frontend -f docker-compose.yml \
+      -f ~/sperange/platform/instance/compose.eval-sink.yml up -d --no-deps --force-recreate agent'
+```
+
+The next `create.yml` rewrites `agent.env` from the controller's environment, so export `DENBI_LLM_API_KEY` the
+same way for that run, or the placeholder comes back. Compare hashes with `printf %s "$K" | sha256sum`: hashing a
+`grep` line adds its newline and gives another hash (`e42ecbb3` for the same key).
