@@ -78,3 +78,7 @@ GH_REPO=thodkatz/elixir-biohackathon-2026-test methodology gate wait <n>     # i
 ```
 
 The same prefix should serve `gate approve`, `gate clear` and `next --end --blocked` (untried).
+
+Merging has the same org-token failure (`gh pr merge`); the REST merge works:
+`gh api -X PUT repos/thodkatz/elixir-biohackathon-2026-test/pulls/<n>/merge -f merge_method=squash -f sha=<head> -f commit_title="<title> (#<n>)"`
+(used for #69, 2026-11-09).
