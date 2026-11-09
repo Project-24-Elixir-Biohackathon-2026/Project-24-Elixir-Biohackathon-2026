@@ -206,6 +206,16 @@ is open (`docs/guides/contributing-upstream.md`, step 6).
 - **AG-UI: leave a running chat** (living AG-UI spec, clarification 27): spec (#55) and plan (#56)
   merged; slice 1 (#57) merged, rejoin verdict *live*. **Next:** slice 2/3 `impl/agui-leave-running-chat-2-agents`.
   Handoff: `methodology handoff newest docs/superpowers/plans/2026-11-08-agui-leave-running-chat/handoffs`.
+- **Upstream PR kraatz #28** (`contrib/agui-archive-markdown`): archive Markdown wording, autolinks, refusal
+  reason, bad timestamps; waits on upstream's review.
+- **Upstream PR kraatz #29** (`contrib/agui-chat-ui-polish`): reopened sessions land on their end, menu focus;
+  waits on upstream's review.
+- **Upstream PR kraatz #30** (`contrib/denbi-example-data-root`): denbi example's local `spe_data_root` and API
+  IP; waits on upstream's review.
+- **Upstream PR kraatz #31** (`contrib/agui-tool-group-steps`): tool calls grouped across model steps; waits on
+  upstream's review.
+- **Upstream PR kraatz #32** (`contrib/agui-title-on-send`): a new session titled as its first run starts; waits
+  on upstream's review.
 - **Not scheduled**: `BACKLOG.md` holds every deferred item without a slice; its *Next*, the ones due soon or
   waiting on the user.
 
