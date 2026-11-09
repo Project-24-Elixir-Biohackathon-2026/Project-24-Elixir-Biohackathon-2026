@@ -208,6 +208,15 @@ read differently (repeated framing headers or parameters, encoded parts). WESkit
 client-settable. The agent's runbook does not change: an infrastructure control does not touch the
 agent. Going back below L1 removes `wes-guard` (`remove_orphans`).
 
+### L2: `spe_harden_data_tiers`
+
+A list of tiers from `spe_tiers`, e.g. `[ref, genomes]`. The WESkit services mount only those tiers'
+directories (`spe_tier_dirs`) of `spe_data_root`, at `/drs-data` and `/data-share`, and
+`WESKIT_CONTAINER_MOUNTS` lists the same. A workflow run on a `registry` or `secret` DRS object fails:
+its file is not mounted. DRS still lists those objects, and drs-filer keeps the full mount (metadata
+only). The verify smoke run uses the first object of a mounted tier. An unknown or unseeded tier stops the
+build.
+
 ## The chats and the agent
 
 `spe_frontends` lists what runs: `[openwebui, agui]` by default, one of them, or

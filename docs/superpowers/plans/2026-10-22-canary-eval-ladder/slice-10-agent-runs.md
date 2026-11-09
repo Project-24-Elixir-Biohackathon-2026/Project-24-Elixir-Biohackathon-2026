@@ -192,7 +192,7 @@ pass rate at L0, read in Task 5).
   stay), as Task 4 does for L2→L3. Then build L0 clean and run the whole suite:
 
 ```bash
-SSH="ssh -F /home/agentvm/.ssh/config ubuntu@agent-service-1"
+SSH="ssh ubuntu@agent-service-1"
 $SSH 'cd ~/spe-frontend && docker compose -p spe-frontend down'
 build 0 -e @instances/no-injections.example.yml   # expect level 0, injections false, commit = this branch's HEAD
 jq '.injections' $SPE_HANDOFF_DIR/injections.json  # []
@@ -338,7 +338,7 @@ cd platform/promptfoo-evals && rm -rf reports/L2
   network's subnet: take the frontend down first (its volumes stay), as slice 8, task 3 did.
 
 ```bash
-SSH="ssh -F /home/agentvm/.ssh/config ubuntu@agent-service-1"
+SSH="ssh ubuntu@agent-service-1"
 $SSH 'cd ~/spe-frontend && docker compose -p spe-frontend down'
 build 3                                            # expect level 3, injections true
 ```

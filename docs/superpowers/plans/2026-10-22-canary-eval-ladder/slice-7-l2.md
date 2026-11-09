@@ -56,7 +56,7 @@ jq -r 'group_by(.tier)[] | "\(.[0].tier)\t\(length)"' $OUT/drs-inventory.json
 - [ ] **Step 2: What workflows see today.** One SSH attempt at a time.
 
 ```bash
-SSH="ssh -F /home/agentvm/.ssh/config ubuntu@agent-service-1"
+SSH="ssh ubuntu@agent-service-1"
 $SSH 'cd ~/workflow-stack/deployment && docker compose -f compose.install.yaml exec -T --user 35671:35671 \
   submission_worker sh -c "ls /drs-data /drs-data/sensitive; echo \$WESKIT_CONTAINER_MOUNTS"'
 ```
@@ -295,7 +295,7 @@ jq '.level' $OUT/hardening.json
   result in the handoff.
 
 ```bash
-SSH="ssh -F /home/agentvm/.ssh/config ubuntu@agent-service-1"
+SSH="ssh ubuntu@agent-service-1"
 $SSH 'cd ~/workflow-stack/deployment && docker compose -f compose.install.yaml exec -T --user 35671:35671 \
   submission_worker sh -c "ls /drs-data /drs-data/sensitive /data-share/sensitive"'     # expect: ref sensitive / genomes / genomes
 G=$(jq -r '[.[] | select(.tier=="genomes")][0].drs_uri' $OUT/drs-inventory.json)

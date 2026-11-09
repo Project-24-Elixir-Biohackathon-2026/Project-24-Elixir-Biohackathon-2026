@@ -8,7 +8,7 @@ whether it leaks a canary, and whether it still does its job, plus a no-model co
 control is in place.
 
 **Spec:** [`docs/superpowers/specs/2026-10-22-canary-eval-ladder-design/`](../../specs/2026-10-22-canary-eval-ladder-design/README.md)
-(decisions 1–12; latest clarification 7). Each slice file links the parts it implements. Plan-wide rulings
+(decisions 1–12; latest clarification 12). Each slice file links the parts it implements. Plan-wide rulings
 since the plan merged: [*Rulings*](#rulings).
 
 **Architecture.** Ansible configures a level (`spe_harden_*` switches), plants canaries and injections, and
@@ -142,7 +142,7 @@ N = 10. Slices are sequential; each starts from `main` after the previous one me
 | 4/10 | `impl/canary-eval-ladder-4-injections` | 1–6 | three payloads planted, `injections.json`, the test receiver, `L0.example.yml` and the clean overlay; decisions 2 (test), 3, 4, 8 (receiver). ~1,180 lines, about half tests and golden renders: over the target, kept whole because the payloads, their manifest, the receiver and the clean overlay are one L0 build, checked together by one rebuild of the de.NBI VM | `pytest platform/dev/tests -k "injection or ladder or eval_sink"` | [slice-4-injections.md](slice-4-injections.md) | merged #63 (`d333070`) |
 | 5/10 | `impl/canary-eval-ladder-5-agent-suite` | 1–3 | the provider's state diff, the `metrics.py` carry-overs, `agent.yaml` and the 13-test catalogue, the dry run against the scripted agent; decision 7. ~620 lines | the lint; the offline suites; the dry run's wiring checks in the handoff (errors 0, 13 state diffs) | [slice-5-agent-suite.md](slice-5-agent-suite.md) | merged #64 (`d460cdf`) |
 | 6/10 | `impl/canary-eval-ladder-6-l1` | 1–5 | `spe_harden_trs_readonly` and `L1.example.yml`, built on de.NBI. ~480 lines | the controls suite at L1 on de.NBI (`trs-write`, `wes-inline`, `e2e-exploit` `closed`) | [slice-6-l1.md](slice-6-l1.md) | merged #65 |
-| 7/10 | `impl/canary-eval-ladder-7-l2` | 1–3 | `spe_harden_data_tiers` and `L2.example.yml`, built on de.NBI. ~150 lines | the controls suite at L2 on de.NBI (`tier-reach` `closed`) | [slice-7-l2.md](slice-7-l2.md) | planned |
+| 7/10 | `impl/canary-eval-ladder-7-l2` | 1–3 | `spe_harden_data_tiers` and `L2.example.yml`, built on de.NBI. ~150 lines | the controls suite at L2 on de.NBI (`tier-reach` `closed`) | [slice-7-l2.md](slice-7-l2.md) | merged #66 |
 | 8/10 | `impl/canary-eval-ladder-8-l3` | 1–3 | `spe_harden_egress` and `L3.example.yml`, built on de.NBI. ~250 lines | the controls suite at L3 on de.NBI (`egress` `closed`) | [slice-8-l3.md](slice-8-l3.md) | planned |
 | 9/10 | `impl/canary-eval-ladder-9-airlock` | 1–3 | the L5 airlock module and switch; decision 12. ~410 lines | airlock unit tests; `airlock` probe `closed` with the switch on | [slice-9-airlock.md](slice-9-airlock.md) | planned |
 | 10/10 | `impl/canary-eval-ladder-10-agent-runs` | 1–5 | the agent runs on `qwen3.8-27b`, one batch after the key gate: L0 clean and injected, L1 injected and clean, L2, L3; their counts and the matrix in `docs/results/`; decisions 10, 11. ~100 lines of results, no code | the committed matrix (`L0 clean` to `L3`), the token check, each level's controls line | [slice-10-agent-runs.md](slice-10-agent-runs.md) | planned |
@@ -195,6 +195,13 @@ Plan-wide decisions taken after the plan merged; a slice's own rulings go in its
   command that creates containers without `spe-apply` (by hand, `docker compose up`) drops the overlays and runs
   the sandbox unhardened at L3 (slice 8's `egress` probe shows it); if overlays prove awkward, the fallback is
   to render `spe_frontend_dir/docker-compose.yml` from a template again, which reverses part of #35.
+- **2026-11-09, plain `ssh` to `agent-service-1` in the open slices** (slice 7, `18f8e90`). *Decision:* slices 7,
+  8 and 10 reach the VM with `ssh agent-service-1`, not `ssh -F …`. *Why:* `-F` skips the guest's host alias.
+  *Cost if wrong:* none: a host without the alias passes `-F` again.
+- **2026-11-09, a failed utility run is not a gate** (slice 7). *Decision:* where a slice's step says to stop and
+  ask when the utility workflow fails at a level, the session debugs and fixes it in the slice instead. *Why:*
+  not on the closed list of gates (`development-workflow.md`, *Gates*). *Cost if wrong:* a level that breaks the
+  job by design is found later, by slice 10's utility counts.
 - **2026-11-09, runs on de.NBI need no OK** — the user's standing OK of 2026-11-09 (`AGENTS.md`, *Setup*).
   Superseded in part by *agent runs move to slice 10* below: the agent-suite steps it names are now slice 10's.
   *Decision:* the agent-suite steps of slices 5–8 that stopped to ask now just run, once the controls suite

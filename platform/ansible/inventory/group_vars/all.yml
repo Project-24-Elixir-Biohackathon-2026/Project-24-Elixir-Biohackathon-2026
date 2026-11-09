@@ -107,6 +107,8 @@ spe_source_samples:
 spe_samples: [HG002, HG003, HG004, HG005]  # which GIAB samples this instance gets
 spe_study_id_prefix: STUDY                 # study ids become STUDY-0001 ...
 spe_tiers: [ref, genomes, registry, secret]
+# Tier -> directory under spe_data_root; equals TIER_DIRS in roles/drs_register/files/drs_register.py.
+spe_tier_dirs: {ref: ref, genomes: sensitive/genomes, registry: sensitive/registry, secret: sensitive/secret}
 spe_vcf_canaries_per_sample: 5
 
 # --- canary surfaces (each independently switchable) -------------------------

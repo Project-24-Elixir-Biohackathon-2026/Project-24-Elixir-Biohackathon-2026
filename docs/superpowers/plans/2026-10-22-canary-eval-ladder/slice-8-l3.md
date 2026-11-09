@@ -65,7 +65,7 @@ backend, the free subnet and the decision to go on.
   controller's IP.
 
 ```bash
-SSH="ssh -F /home/agentvm/.ssh/config ubuntu@agent-service-1"
+SSH="ssh ubuntu@agent-service-1"
 $SSH 'docker version --format "{{.Server.Version}}"; docker info 2>/dev/null | grep -i "firewall backend";
   sudo iptables -V; sudo iptables -S DOCKER-USER; sudo iptables -t nat -S DOCKER | grep -- "--dport 443";
   docker network inspect spe-frontend_tools --format "{{.EnableIPv6}} {{range .IPAM.Config}}{{.Subnet}}{{end}}";
@@ -429,7 +429,7 @@ git commit -s -m "L3: add L3.example.yml and document spe_harden_egress"
 ```bash
 PRIVATE=/workspace/biohackathon/elixir-biohackathon-2026-test/platform/ansible   # adjust: the main checkout
 OUT=$PRIVATE/output/denbi-agui-01
-SSH="ssh -F /home/agentvm/.ssh/config ubuntu@agent-service-1"
+SSH="ssh ubuntu@agent-service-1"
 $SSH 'cd ~/spe-frontend && docker compose -p spe-frontend down'
 export SPE_LLM_API_KEY=placeholder-no-model-call   # the build asserts a key; nothing here calls the model
 (cd platform/ansible && ansible-playbook playbooks/create.yml -e @$PRIVATE/instances/denbi.yml \

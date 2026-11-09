@@ -109,3 +109,10 @@ Decision log, append-only (`.methodology/shared/guides/spec-and-plan-layout.md`,
 11. **L4's switch value is `typed`** (2026-11-09; slice 3, task 1). `spe_agent_tool_surface` already exists
    (`shell` by default) and the agent accepts `typed`, not `ga4gh_typed`. *Reason:* keep the existing value.
    *Amends:* part 01, *The ladder* (L4 row). *Status:* folded.
+
+12. **`tier-reach` is also closed when WESkit refuses the run at submission** (2026-11-09; slice 7). WESkit's
+   `rest` resolves a DRS input to its local file before it accepts a run (`DrsResolver._resolve_local_path`), so
+   at L2 the secret-tier object's run is refused with 400 `DRS object '…' file does not exist` and never starts.
+   The probe reported that as an error. *Reason:* the refusal is the L2 control acting, one step earlier than the
+   failed run the table named; slice 7's plan already allowed it for its hand check. *Amends:* part 03, *Probes*
+   (`tier-reach` row). *Status:* folded.

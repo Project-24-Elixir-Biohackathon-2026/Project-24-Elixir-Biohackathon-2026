@@ -1,4 +1,28 @@
 # Managed by Ansible (spe-ansible). Do not edit on the instance.
+{% macro data_volumes() %}
+{% if spe_harden_data_tiers %}
+{% for t in spe_harden_data_tiers %}
+    - {{ spe_data_root }}/{{ spe_tier_dirs[t] }}:/drs-data/{{ spe_tier_dirs[t] }}:ro
+    - {{ spe_data_root }}/{{ spe_tier_dirs[t] }}:/data-share/{{ spe_tier_dirs[t] }}:ro
+{% endfor %}
+{% else %}
+    - {{ spe_data_root }}:/drs-data:ro
+    - {{ spe_data_root }}:/data-share:ro
+{% endif %}
+{% endmacro %}
+{% macro container_mounts() %}
+{% if spe_harden_data_tiers %}
+{% set ns = namespace(items=[]) %}
+{% for t in spe_harden_data_tiers %}
+{% for base in ['/drs-data', '/data-share'] %}
+{% set ns.items = ns.items + [{'source': base ~ '/' ~ spe_tier_dirs[t], 'target': base ~ '/' ~ spe_tier_dirs[t], 'mode': 'ro'}] %}
+{% endfor %}
+{% endfor %}
+{{ ns.items | tojson }}
+{% else %}
+[{"source":"/drs-data","target":"/drs-data","mode":"ro"},{"source":"/data-share","target":"/data-share","mode":"ro"}]
+{% endif %}
+{% endmacro %}
 networks:
   weskit:
     driver: bridge
@@ -46,13 +70,12 @@ services:
 {% if spe_harden_trs_readonly %}
       WESKIT_REQUEST_VALIDATION_CONFIG: /home/weskit/weskit_config/request-validation.yaml
 {% endif %}
-      WESKIT_CONTAINER_MOUNTS: '[{"source":"/drs-data","target":"/drs-data","mode":"ro"},{"source":"/data-share","target":"/data-share","mode":"ro"}]'
+      WESKIT_CONTAINER_MOUNTS: '{{ container_mounts() | trim }}'
     volumes:
     - ../config/weskit_config:/home/weskit/weskit_config:ro
     - weskit-data:/data:rw
     - weskit-workflows:/workflows:rw
-    - {{ spe_data_root }}:/drs-data:ro
-    - {{ spe_data_root }}:/data-share:ro
+    {{ data_volumes() | trim }}
     networks:
     - weskit
     working_dir: /weskit
@@ -135,7 +158,7 @@ services:
       RESULT_BACKEND: redis://result_broker:6379
       BROKER_URL: redis://result_broker:6379
       WESKIT_WORKFLOWS: /workflows
-      WESKIT_CONTAINER_MOUNTS: '[{"source":"/drs-data","target":"/drs-data","mode":"ro"},{"source":"/data-share","target":"/data-share","mode":"ro"}]'
+      WESKIT_CONTAINER_MOUNTS: '{{ container_mounts() | trim }}'
     working_dir: /weskit
     entrypoint:
     - conda
@@ -158,8 +181,7 @@ services:
     - ../config/weskit_config:/home/weskit/weskit_config:ro
     - weskit-data:/data:rw
     - weskit-workflows:/workflows:rw
-    - {{ spe_data_root }}:/drs-data:ro
-    - {{ spe_data_root }}:/data-share:ro
+    {{ data_volumes() | trim }}
     networks:
     - weskit
     restart: unless-stopped
@@ -174,7 +196,7 @@ services:
       RESULT_BACKEND: redis://result_broker:6379
       BROKER_URL: redis://result_broker:6379
       WESKIT_WORKFLOWS: /workflows
-      WESKIT_CONTAINER_MOUNTS: '[{"source":"/drs-data","target":"/drs-data","mode":"ro"},{"source":"/data-share","target":"/data-share","mode":"ro"}]'
+      WESKIT_CONTAINER_MOUNTS: '{{ container_mounts() | trim }}'
     working_dir: /weskit
     entrypoint:
     - conda
@@ -197,8 +219,7 @@ services:
     - ../config/weskit_config:/home/weskit/weskit_config:ro
     - weskit-data:/data:rw
     - weskit-workflows:/workflows:rw
-    - {{ spe_data_root }}:/drs-data:ro
-    - {{ spe_data_root }}:/data-share:ro
+    {{ data_volumes() | trim }}
     networks:
     - weskit
     restart: unless-stopped
@@ -213,7 +234,7 @@ services:
       RESULT_BACKEND: redis://result_broker:6379
       BROKER_URL: redis://result_broker:6379
       WESKIT_WORKFLOWS: /workflows
-      WESKIT_CONTAINER_MOUNTS: '[{"source":"/drs-data","target":"/drs-data","mode":"ro"},{"source":"/data-share","target":"/data-share","mode":"ro"}]'
+      WESKIT_CONTAINER_MOUNTS: '{{ container_mounts() | trim }}'
     working_dir: /weskit
     entrypoint:
     - conda
@@ -232,8 +253,7 @@ services:
     - ../config/weskit_config:/home/weskit/weskit_config:ro
     - weskit-data:/data:rw
     - weskit-workflows:/workflows:rw
-    - {{ spe_data_root }}:/drs-data:ro
-    - {{ spe_data_root }}:/data-share:ro
+    {{ data_volumes() | trim }}
     networks:
     - weskit
     restart: unless-stopped

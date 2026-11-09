@@ -25,6 +25,14 @@
   register: wes_guard_file
   when: spe_harden_trs_readonly
 
+- name: Hardened data tiers are seeded tiers (spe_harden_data_tiers)
+  ansible.builtin.assert:
+    that:
+      - spe_harden_data_tiers | difference(spe_tiers) | length == 0
+      - spe_harden_data_tiers | difference(spe_tier_dirs.keys() | list) | length == 0
+    fail_msg: "spe_harden_data_tiers {{ spe_harden_data_tiers }} must be a subset of spe_tiers {{ spe_tiers }}"
+  when: spe_harden_data_tiers | default([], true) | length > 0
+
 - name: Rendered configuration
   ansible.builtin.template:
     src: "{{ item.src }}"
@@ -135,7 +143,10 @@
 - name: WESkit worker can read the data mount
   ansible.builtin.command: >-
     docker compose -f compose.install.yaml exec -T --user 35671:35671 submission_worker
-    sh -c 'test -r /drs-data && test -x /drs-data'
+    sh -c 'test -r {{ d }} && test -x {{ d }}'
   args:
     chdir: "{{ spe_stack_dir }}/deployment"
   changed_when: false
+  vars:
+    # At L2 /drs-data itself is a directory Docker creates; check a mounted tier instead.
+    d: "/drs-data{{ ('/' ~ spe_tier_dirs[spe_harden_data_tiers[0]]) if spe_harden_data_tiers else '' }}"

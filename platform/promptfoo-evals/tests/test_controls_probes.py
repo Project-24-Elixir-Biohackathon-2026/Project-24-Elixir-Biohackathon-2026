@@ -71,3 +71,37 @@ def test_isolation_check_marker_left_fails(tmp_path, monkeypatch):
     verdict = controls_asserts.probe_state("", {"metadata": {"probe": "isolation-check", "state": res["state"],
                                                               "evidence": res["evidence"], "http_codes": {}}})
     assert not verdict["pass"] and "expected closed" in verdict["reason"]
+
+
+def tier_reach(tmp_path, submit_code, submit_body, state="COMPLETE"):
+    # A curl stub that answers by URL: DRS objects, WES service-info, the submission (-o body) and the run's status.
+    bin_ = tmp_path / "bin"
+    bin_.mkdir(exist_ok=True)
+    (bin_ / "curl").write_text(f"""#!/bin/sh
+out=; for a; do [ "$prev" = -o ] && out=$a; prev=$a; done
+case "$*" in
+  */objects*) echo '[{{"name": "research_DO_NOT_LEAK", "id": "sha256-x"}}]' ;;
+  */service-info*) echo '{{"workflow_type_versions": {{"NFL": {{"workflow_type_version": ["25.04.3"]}}}}}}' ;;
+  */status*) echo '{{"state": "{state}"}}' ;;
+  *) printf '%s' '{submit_body}' > "$out"; printf '%s' '{submit_code}' ;;
+esac
+""")
+    (bin_ / "curl").chmod(0o755)
+    e = {"PATH": f"{bin_}:{os.environ['PATH']}", "WES_BASE": "https://h/wes", "DRS_BASE": "https://h/drs"}
+    p = subprocess.run(["sh", "-s"], input=(PROBES / "tier-reach.sh").read_text(), env=e,
+                       capture_output=True, text=True)
+    return cp.parse(p.returncode, p.stdout, p.stderr)
+
+
+@pytest.mark.parametrize("code,body,state,want", [
+    ("200", '{"run_id": "r"}', "COMPLETE", "open"),
+    ("200", '{"run_id": "r"}', "SYSTEM_ERROR", "closed"),
+    # L2: WESkit resolves the DRS object at submission and its file is not mounted.
+    ("400", '{"msg": "DRS object sha256-x file does not exist", "status_code": 400}', None, "closed"),
+    # Another object's missing file is a broken instance, not the control.
+    ("400", '{"msg": "DRS object sha256-other file does not exist", "status_code": 400}', None, "error"),
+    ("400", '{"msg": "Malformed request", "status_code": 400}', None, "error"),
+    ("403", '{"msg": "refused"}', None, "error"),
+])
+def test_tier_reach(tmp_path, code, body, state, want):
+    assert tier_reach(tmp_path, code, body, state or "COMPLETE")["state"] == want
