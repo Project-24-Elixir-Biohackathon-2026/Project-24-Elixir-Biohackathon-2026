@@ -42,22 +42,40 @@ Acceptance (decision 44, Playwright, task 3): a run started from a second tab sh
 
 Build the branch the verdict names; delete the other paragraph from this file in the same commit.
 
-**Live (the spec's design).** Acceptance (decision 42): reload during a slow run: the chat keeps streaming, every
-message id is shown once, and at the run's end the messages equal `GET`'s; the same from a second tab; stop in the
-rejoined chat journals `cancelled`; opening a session not running makes no `connect` request.
+**Live (the spec's design; slice 1's verdict).** Acceptance (decision 42): reload during a slow run: the chat keeps
+streaming, every message id is shown once, and at the run's end the messages equal `GET`'s; the same from a second
+tab; stop in the rejoined chat journals `cancelled`; opening a session not running makes no `connect` request.
 
 - Create: `CHAT/lib/rejoin.ts`, `CHAT/lib/rejoin.test.ts`; modify `CHAT/app/session-agent.tsx`, `app/page.tsx`.
-- `export function rejoinedMessages(history: Message[], current: Message[]): Message[]` — `history` is the
-  journal's branch; `current` the agent's messages after the replay. Keeps `history` in order, each message
-  replaced in place by `current`'s copy of the same id when that copy belongs to the run in progress (after the
-  last replayed `RUN_STARTED`, as slice 1's verdict found it marked), and appends `current`'s messages whose id
-  `history` lacks; every other replayed copy is dropped. The verdict may name a different marker for "the run in
-  progress"; use it.
+- `export function rejoinedMessages(history: Message[], current: Message[], inProgress: ReadonlySet<string>): Message[]`
+  — `history` is the journal's branch; `current` the agent's messages; `inProgress` the ids of the run in
+  progress. Keeps `history` in order, each message replaced in place by `current`'s copy of the same id when
+  `inProgress` holds that id, and appends `current`'s messages whose id `history` lacks; every other replayed copy
+  is dropped. The marker slice 1's verdict found: `inProgress` holds, for the replayed events since the last
+  `RUN_STARTED`, each event's `messageId` and `parentMessageId` (strings), the `toolCallId` of a `TOOL_CALL_START` (`@ag-ui/client`
+  creates the assistant message with that id when the event names no parent; pydantic-ai always names one) and the ids of every message of a
+  `MESSAGES_SNAPSHOT` (the recorder sends one right after `RUN_STARTED`, `lib/recorder.ts:210–212`; all its ids,
+  because it is the run's own branch as the server holds it, never older than the history's copy).
+- `export function nextInProgress(ids: ReadonlySet<string>, event: BaseEvent): ReadonlySet<string>` — the
+  collector, called from an `onEvent` handler in the same `agent.subscribe` as the `onMessagesChanged` one below, made before
+  `connectAgent` (as slice 1's passing page did): an empty set on `RUN_STARTED`, else `ids` plus the
+  event's ids as above.
 - Tests: `a past run replayed is shown once`, `the current run's partial message is replaced by its live copy`,
-  `a new message of the current run is appended`, `no replay: history unchanged`.
+  `a new message of the current run is appended`, `no replay: history unchanged`, `a tool call and its result of
+  the current run keep each id once`, `a MESSAGES_SNAPSHOT during the replay keeps each id once`; and the
+  collector itself, fed a replayed event sequence (a past run's events, `RUN_STARTED`, a `MESSAGES_SNAPSHOT`
+  with a changed copy of a history message, text and tool-call events): `nextInProgress marks the current run's
+  ids, a snapshot's included, and no past run's`, and `rejoinedMessages` over its result shows the snapshot's
+  copy, each id once.
 - `SessionAgent` gains `rejoin: boolean` (the `GET` answered `running` and `live.streaming` lacks the id, or an
-  open idle session turned `running` in a list fetch): it calls `copilotkit.connectAgent({ agent })` once, applies
-  `rejoinedMessages` as slice 1 did, and joins `live.streaming` (`runStarted`) until the run ends.
+  open idle session turned `running` in a list fetch): it calls `copilotkit.connectAgent({ agent })` once and
+  applies `rejoinedMessages` **on every message change while the connect lasts** (an `onMessagesChanged`
+  subscriber made before `connectAgent` is called, so it also catches `connectAgent`'s own `setMessages([])`; not
+  only from the replay's first event, which slice 1 found fails) **and once after it resolves**, setting the
+  messages only when the result differs; then it joins `live.streaming` (`runStarted`) until the run ends. Why,
+  and the ordering race this rests on: [`progress.md`](progress.md), *Verdicts*.
+- Task 3's `check_rejoin` checks the streamed text grows during the run (the slow-step count rises between ticks),
+  not only its final count, which shows each step once (the race's symptom is repeated text).
 
 **Fallback (only if the verdict says so).** Acceptance: its own check (decision 42): a session opened during a run
 from a second tab shows its saved part with the running mark, the composer and stop disabled, and at the run's end

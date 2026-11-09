@@ -31,6 +31,10 @@ start reads this section; keep it short.
 
 <!-- - <item> — from <PR #n / review thread / spec Inputs for>, waits because <reason>. -->
 
+- Carry `docs/knowledge/subagent-stall-after-usage-limit.md` to agent-methodology's `tooling-gotchas.md`, then drop the
+  local note at the next `methodology update` — from #57's methodology review (finding 7); waits because it is a
+  change to another repository, its own unit.
+
 - agent-methodology: `methodology worktree` takes the main checkout from `git worktree list`'s first line, which in a
   submodule is the parent's `.git/modules/<name>`, so here it misplaces the worktree and claims nothing
   (`docs/knowledge/methodology-worktree-submodule.md`). `next-session.sh` (`--unit`'s worktree, the `repo=` hint)

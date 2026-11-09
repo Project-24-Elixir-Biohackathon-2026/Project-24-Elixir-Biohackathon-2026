@@ -47,7 +47,7 @@ test("GET one: the metadata and the tip's branch, without version and title_sour
   assert.equal(response.status, 200);
   const view = await response.json();
   assert.deepEqual(Object.keys(view).sort(),
-    ["created_at", "hidden", "id", "messages", "pinned", "tags", "title", "updated_at"]);
+    ["created_at", "hidden", "id", "messages", "pinned", "running", "tags", "title", "updated_at"]);
   assert.deepEqual(view.messages.map((m: { content: string }) => m.content),
     ["hello", "echo: hello", "again", "echo: again"]);
   assert.equal((await getSession(journals, randomUUID())).status, 404);
@@ -100,7 +100,7 @@ test("PATCH: 200 with the new metadata, exactly one meta line added; 404 when mi
   const meta = await response.json();
   assert.deepEqual([meta.id, meta.title, meta.tags, meta.pinned, meta.hidden], [id, "Mine", ["dns"], true, false]);
   assert.deepEqual(Object.keys(meta).sort(),
-    ["created_at", "hidden", "id", "last_run_at", "pinned", "tags", "title", "updated_at"]);
+    ["created_at", "hidden", "id", "last_run_at", "pinned", "running", "tags", "title", "updated_at"]);
   const after = await fs.readFile(file(journals, id), "utf8");
   assert.ok(after.startsWith(before));
   const added = after.slice(before.length).trimEnd().split("\n").map((l) => JSON.parse(l));

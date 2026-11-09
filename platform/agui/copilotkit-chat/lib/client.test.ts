@@ -15,7 +15,10 @@ function fake(status: number, body: unknown, seen: { url?: string; init?: Reques
 }
 
 function meta(id: string, updated_at: string, extra: Partial<SessionMeta> = {}): SessionMeta {
-  return { id, title: id, tags: [], pinned: false, hidden: false, created_at: updated_at, updated_at, last_run_at: null, ...extra };
+  return {
+    id, title: id, tags: [], pinned: false, hidden: false, created_at: updated_at, updated_at, last_run_at: null,
+    running: false, ...extra,
+  };
 }
 
 test("fetchSession: 404 is null, 500 an ApiError with the generic message", async () => {

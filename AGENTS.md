@@ -204,8 +204,8 @@ is open (`docs/guides/contributing-upstream.md`, step 6).
 - **Canary evaluation ladder** (biohackathon 0013): spec (#1) and plan (#2) merged. **Next: slice 1/9**
   `impl/canary-eval-ladder-1-scoring`. Handoff: `ls docs/superpowers/plans/2026-10-22-canary-eval-ladder/handoffs | tail -1`.
 - **AG-UI: leave a running chat** (living AG-UI spec, clarification 27): spec (#55) and plan (#56)
-  merged. **Next:** slice 1/3 `impl/agui-leave-running-chat-1-rejoin-check`. Handoff: `methodology handoff newest
-  docs/superpowers/plans/2026-11-08-agui-leave-running-chat/handoffs`.
+  merged; slice 1 (#57) merged, rejoin verdict *live*. **Next:** slice 2/3 `impl/agui-leave-running-chat-2-agents`.
+  Handoff: `methodology handoff newest docs/superpowers/plans/2026-11-08-agui-leave-running-chat/handoffs`.
 - **Not scheduled**: `BACKLOG.md` holds every deferred item without a slice; its *Next*, the ones due soon or
   waiting on the user.
 

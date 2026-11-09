@@ -1,0 +1,314 @@
+NOTE (read first). Step 4's dedupe layer: three runs of checks C and E, newest first. C and E are judged alike: shown
+ids equal GET's at the end, no duplicate, no gap at a tick, no committed id list lacking a history id, one connect and
+exactly 10 slow steps. (Without the layer, rejoin-check.txt: C1, C2, C3 and E FAIL, each on one empty committed id
+list right after the connect, from connectAgent's setMessages([]).)
+  1. `--dedupe every` (?dedupe=1): the page merges rejoinedMessages(history, agent.messages) on every message
+     change during connectAgent, including connectAgent's own setMessages([]), and once after it resolves.
+     C1, C2, C3 and E PASS; the slow run streams whole (10 of 10 steps), no committed id list is empty.
+  2. `--dedupe wait` (?dedupe=wait): the same, but merging only from the replay's first event on. The stream is
+     whole (10 of 10), but connectAgent's setMessages([]) commits one empty id list first, as without the layer:
+     C1, C2, C3 and E FAIL on that list alone.
+  3. [superseded] 19:27 UTC, the first try of the layer (code not kept: page.tsx was rewritten at 19:28, before any
+     commit), run by an older script whose criterion it passed; its verdict lines are prefixed `[superseded]`.
+     Ids correct and no duplicates, but the streamed message FROZE: the slow-step count stayed at the history's
+     (2, or 3 in E) for the whole run ("streamed on (steps 0->2)"), against 10 without the layer. A real defect
+     of that layer, not a script artefact. The likely cause, from the output: that rule kept the history's copy
+     of a message whose id the history held, without the current-run exception, so every merge put the
+     history's partial copy back over the replay's growing one. The current rule (the current run's ids,
+     collected from the replay's events since its last RUN_STARTED, take the replay's copy in place) fixes it:
+     runs 1 and 2.
+"Slow steps shown at the first tick" is the count the first tick's line shows; 0 there means the chat's text had
+not painted yet (its id list was already full), not that the stream restarted.
+
+######## 1. --dedupe every ########
+fake agent on http://127.0.0.1:18108/agent, run log /var/tmp/fake-agent-y4lhbc_b/runs.jsonl
+▲ Next.js 16.4.5
+- Local:         http://127.0.0.1:3108
+- Network:       http://127.0.0.1:3108
+✓ Ready in 0ms
+✓ Running next.config took 69ms
+rejoin check, 2026-11-08 21:12:55, dedupe layer every, CopilotKit 1.84.1
+== C. Rejoin after a reload (C1: with earlier runs through this server process)
+  session 5a3f2417-95b0-4da7-8096-d1b0720b231d, 2 earlier run(s); journal before the reload: 12 ids, runs ['completed', 'completed', 'incomplete']
+  [C1-1] t= 0.0s running=True status='connecting dedupe every' steps=2 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C1-1] t= 1.1s running=True status='connecting dedupe every' steps=3 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C1-1] t= 2.1s running=True status='connecting dedupe every' steps=4 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C1-1] t= 3.2s running=True status='connecting dedupe every' steps=5 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C1-1] t= 4.2s running=True status='connecting dedupe every' steps=6 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C1-1] t= 5.2s running=True status='connecting dedupe every' steps=7 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C1-1] t= 6.3s running=True status='connecting dedupe every' steps=8 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C1-1] t= 7.3s running=True status='connecting dedupe every' steps=9 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C1-1] t= 8.4s running=False status='connect-resolved dedupe every merges=21' steps=10 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C1-1] t= 9.4s running=False status='connect-resolved dedupe every merges=21' steps=10 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C1-1] t=10.5s running=False status='connect-resolved dedupe every merges=21' steps=10 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  committed id lists from the connect on: 13; with a duplicate: 0; lacking one of the 12 ids the journal held at the rejoin: 0 (lengths [], at ms []); lengths in order: [12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12], the first five at ms [0, 26, 396, 1392, 2401]
+  C1 at the end: shown 12 ids, journal 12; equal=True duplicates=[] journal-not-shown=[] shown-not-in-journal=[]
+  request [C1-1] GET /api/copilotkit/info
+  request [C1-1] POST /api/copilotkit/agent/spe/connect
+  connect requests from the rejoining page: 1; journal runs ['completed', 'completed', 'completed']; slow steps shown at the first tick 2, at the end 10
+  every id shown more than once: []; every journal id not shown at some tick: []
+PASS C1: connects 1; duplicates 0; ids missing at some tick 0; committed lists with a duplicate 0, lacking a history id 0 of 13; slow steps shown at the end 10 of 10 (exactly 10: streamed whole, none repeated); equal to GET at the end True; runs ['completed', 'completed', 'completed']
+== C. Rejoin after a reload (C2: a fresh session)
+  session 725cb85c-b1b9-4734-9b91-28627738e3ea, 0 earlier run(s); journal before the reload: 4 ids, runs ['incomplete']
+  [C2-1] t= 0.0s running=True status='connecting dedupe every' steps=2 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t= 1.1s running=True status='connecting dedupe every' steps=3 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t= 2.1s running=True status='connecting dedupe every' steps=4 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t= 3.1s running=True status='connecting dedupe every' steps=5 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t= 4.2s running=True status='connecting dedupe every' steps=6 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t= 5.2s running=True status='connecting dedupe every' steps=7 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t= 6.3s running=True status='connecting dedupe every' steps=8 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t= 7.3s running=True status='connecting dedupe every' steps=9 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t= 8.3s running=False status='connect-resolved dedupe every merges=7' steps=10 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t= 9.4s running=False status='connect-resolved dedupe every merges=7' steps=10 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t=10.4s running=False status='connect-resolved dedupe every merges=7' steps=10 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  committed id lists from the connect on: 12; with a duplicate: 0; lacking one of the 4 ids the journal held at the rejoin: 0 (lengths [], at ms []); lengths in order: [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4], the first five at ms [0, 17, 430, 1430, 2435]
+  C2 at the end: shown 4 ids, journal 4; equal=True duplicates=[] journal-not-shown=[] shown-not-in-journal=[]
+  request [C2-1] GET /api/copilotkit/info
+  request [C2-1] POST /api/copilotkit/agent/spe/connect
+  connect requests from the rejoining page: 1; journal runs ['completed']; slow steps shown at the first tick 2, at the end 10
+  every id shown more than once: []; every journal id not shown at some tick: []
+PASS C2: connects 1; duplicates 0; ids missing at some tick 0; committed lists with a duplicate 0, lacking a history id 0 of 12; slow steps shown at the end 10 of 10 (exactly 10: streamed whole, none repeated); equal to GET at the end True; runs ['completed']
+== C. Rejoin after a reload (C3: earlier runs made before a chat UI restart: only the journal holds them)
+shutdown: 0 run(s) cancelled, journals written
+▲ Next.js 16.4.5
+- Local:         http://127.0.0.1:3108
+- Network:       http://127.0.0.1:3108
+✓ Ready in 0ms
+✓ Running next.config took 49ms
+  session 11d1c72a-baec-4603-9cf5-3402e1b96373, 2 earlier run(s) before a chat UI restart; journal before the reload: 12 ids, runs ['completed', 'completed', 'incomplete']
+  [C3-1] t= 0.0s running=True status='connecting dedupe every' steps=0 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t= 1.1s running=True status='connecting dedupe every' steps=3 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t= 2.1s running=True status='connecting dedupe every' steps=4 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t= 3.1s running=True status='connecting dedupe every' steps=5 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t= 4.1s running=True status='connecting dedupe every' steps=6 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t= 5.2s running=True status='connecting dedupe every' steps=7 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t= 6.2s running=True status='connecting dedupe every' steps=8 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t= 7.2s running=True status='connecting dedupe every' steps=9 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t= 8.2s running=False status='connect-resolved dedupe every merges=22' steps=10 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t= 9.3s running=False status='connect-resolved dedupe every merges=22' steps=10 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t=10.3s running=False status='connect-resolved dedupe every merges=22' steps=10 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  committed id lists from the connect on: 14; with a duplicate: 0; lacking one of the 12 ids the journal held at the rejoin: 0 (lengths [], at ms []); lengths in order: [12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12], the first five at ms [0, 31, 544, 1543, 2544]
+  C3 at the end: shown 12 ids, journal 12; equal=True duplicates=[] journal-not-shown=[] shown-not-in-journal=[]
+  request [C3-1] GET /api/copilotkit/info
+  request [C3-1] POST /api/copilotkit/agent/spe/connect
+  connect requests from the rejoining page: 1; journal runs ['completed', 'completed', 'completed']; slow steps shown at the first tick 0, at the end 10
+  every id shown more than once: []; every journal id not shown at some tick: []
+PASS C3: connects 1; duplicates 0; ids missing at some tick 0; committed lists with a duplicate 0, lacking a history id 0 of 14; slow steps shown at the end 10 of 10 (exactly 10: streamed whole, none repeated); equal to GET at the end True; runs ['completed', 'completed', 'completed']
+== E. Second tab
+  session e42963c3-a1ad-4185-84bb-cf25dd9c529f, 1 earlier run(s); journal before the second-tab: 8 ids, runs ['completed', 'incomplete']
+  [E-2] t= 0.0s running=True status='connecting dedupe every' steps=0 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [E-2] t= 1.1s running=True status='connecting dedupe every' steps=4 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [E-2] t= 2.1s running=True status='connecting dedupe every' steps=5 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [E-2] t= 3.1s running=True status='connecting dedupe every' steps=6 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [E-2] t= 4.1s running=True status='connecting dedupe every' steps=7 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [E-2] t= 5.1s running=True status='connecting dedupe every' steps=8 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [E-2] t= 6.2s running=True status='connecting dedupe every' steps=9 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [E-2] t= 7.2s running=False status='connect-resolved dedupe every merges=14' steps=10 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [E-2] t= 8.2s running=False status='connect-resolved dedupe every merges=14' steps=10 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [E-2] t= 9.2s running=False status='connect-resolved dedupe every merges=14' steps=10 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  committed id lists from the connect on: 13; with a duplicate: 0; lacking one of the 8 ids the journal held at the rejoin: 0 (lengths [], at ms []); lengths in order: [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8], the first five at ms [0, 48, 991, 1994, 3074]
+  E at the end: shown 8 ids, journal 8; equal=True duplicates=[] journal-not-shown=[] shown-not-in-journal=[]
+  E first tab at the end: shown 8 ids, journal 8; equal=True duplicates=[] journal-not-shown=[] shown-not-in-journal=[]
+  request [E-2] GET /api/copilotkit/info
+  request [E-2] POST /api/copilotkit/agent/spe/connect
+  connect requests from the rejoining page: 1; journal runs ['completed', 'completed']; slow steps shown at the first tick 0, at the end 10
+  every id shown more than once: []; every journal id not shown at some tick: []
+PASS E: connects 1; duplicates 0; ids missing at some tick 0; committed lists with a duplicate 0, lacking a history id 0 of 13; slow steps shown at the end 10 of 10 (exactly 10: streamed whole, none repeated); equal to GET at the end True; runs ['completed', 'completed']
+== Browser console (errors and warnings)
+== Summary: all PASS
+shutdown: 0 run(s) cancelled, journals written
+
+######## 2. --dedupe wait ########
+fake agent on http://127.0.0.1:18108/agent, run log /var/tmp/fake-agent-p0xeyejz/runs.jsonl
+▲ Next.js 16.4.5
+- Local:         http://127.0.0.1:3108
+- Network:       http://127.0.0.1:3108
+✓ Ready in 0ms
+✓ Running next.config took 22ms
+rejoin check, 2026-11-08 21:14:05, dedupe layer wait, CopilotKit 1.84.1
+== C. Rejoin after a reload (C1: with earlier runs through this server process)
+  session e1405932-6071-464b-aec4-ef7abad71fb5, 2 earlier run(s); journal before the reload: 12 ids, runs ['completed', 'completed', 'incomplete']
+  [C1-1] t= 0.0s running=True status='connecting dedupe wait' steps=0 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C1-1] t= 1.1s running=True status='connecting dedupe wait' steps=3 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C1-1] t= 2.1s running=True status='connecting dedupe wait' steps=4 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C1-1] t= 3.1s running=True status='connecting dedupe wait' steps=5 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C1-1] t= 4.1s running=True status='connecting dedupe wait' steps=6 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C1-1] t= 5.2s running=True status='connecting dedupe wait' steps=7 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C1-1] t= 6.2s running=True status='connecting dedupe wait' steps=8 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C1-1] t= 7.2s running=True status='connecting dedupe wait' steps=9 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C1-1] t= 8.2s running=False status='connect-resolved dedupe wait merges=20' steps=10 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C1-1] t= 9.3s running=False status='connect-resolved dedupe wait merges=20' steps=10 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C1-1] t=10.3s running=False status='connect-resolved dedupe wait merges=20' steps=10 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  committed id lists from the connect on: 13; with a duplicate: 0; lacking one of the 12 ids the journal held at the rejoin: 1 (lengths [0], at ms [0]); lengths in order: [0, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12], the first five at ms [0, 37, 522, 1527, 2527]
+  C1 at the end: shown 12 ids, journal 12; equal=True duplicates=[] journal-not-shown=[] shown-not-in-journal=[]
+  request [C1-1] GET /api/copilotkit/info
+  request [C1-1] POST /api/copilotkit/agent/spe/connect
+  connect requests from the rejoining page: 1; journal runs ['completed', 'completed', 'completed']; slow steps shown at the first tick 0, at the end 10
+  every id shown more than once: []; every journal id not shown at some tick: []
+FAIL C1: connects 1; duplicates 0; ids missing at some tick 0; committed lists with a duplicate 0, lacking a history id 1 of 13; slow steps shown at the end 10 of 10 (exactly 10: streamed whole, none repeated); equal to GET at the end True; runs ['completed', 'completed', 'completed']
+== C. Rejoin after a reload (C2: a fresh session)
+  session 6d92e197-ed9a-4a5b-aff5-846a563fe8b3, 0 earlier run(s); journal before the reload: 4 ids, runs ['incomplete']
+  [C2-1] t= 0.0s running=True status='connecting dedupe wait' steps=2 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t= 1.0s running=True status='connecting dedupe wait' steps=3 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t= 2.1s running=True status='connecting dedupe wait' steps=4 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t= 3.1s running=True status='connecting dedupe wait' steps=5 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t= 4.1s running=True status='connecting dedupe wait' steps=6 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t= 5.1s running=True status='connecting dedupe wait' steps=7 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t= 6.1s running=True status='connecting dedupe wait' steps=8 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t= 7.1s running=True status='connecting dedupe wait' steps=9 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t= 8.2s running=False status='connect-resolved dedupe wait merges=6' steps=10 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t= 9.2s running=False status='connect-resolved dedupe wait merges=6' steps=10 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t=10.2s running=False status='connect-resolved dedupe wait merges=6' steps=10 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  committed id lists from the connect on: 14; with a duplicate: 0; lacking one of the 4 ids the journal held at the rejoin: 1 (lengths [0], at ms [0]); lengths in order: [0, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4], the first five at ms [0, 21, 472, 1475, 2482]
+  C2 at the end: shown 4 ids, journal 4; equal=True duplicates=[] journal-not-shown=[] shown-not-in-journal=[]
+  request [C2-1] GET /api/copilotkit/info
+  request [C2-1] POST /api/copilotkit/agent/spe/connect
+  connect requests from the rejoining page: 1; journal runs ['completed']; slow steps shown at the first tick 2, at the end 10
+  every id shown more than once: []; every journal id not shown at some tick: []
+FAIL C2: connects 1; duplicates 0; ids missing at some tick 0; committed lists with a duplicate 0, lacking a history id 1 of 14; slow steps shown at the end 10 of 10 (exactly 10: streamed whole, none repeated); equal to GET at the end True; runs ['completed']
+== C. Rejoin after a reload (C3: earlier runs made before a chat UI restart: only the journal holds them)
+shutdown: 0 run(s) cancelled, journals written
+▲ Next.js 16.4.5
+- Local:         http://127.0.0.1:3108
+- Network:       http://127.0.0.1:3108
+✓ Ready in 0ms
+✓ Running next.config took 46ms
+  session f99213f7-7732-4dc2-940d-fee50e526adb, 2 earlier run(s) before a chat UI restart; journal before the reload: 12 ids, runs ['completed', 'completed', 'incomplete']
+  [C3-1] t= 0.0s running=True status='connecting dedupe wait' steps=0 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t= 1.0s running=True status='connecting dedupe wait' steps=3 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t= 2.1s running=True status='connecting dedupe wait' steps=4 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t= 3.1s running=True status='connecting dedupe wait' steps=5 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t= 4.1s running=True status='connecting dedupe wait' steps=6 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t= 5.1s running=True status='connecting dedupe wait' steps=7 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t= 6.1s running=True status='connecting dedupe wait' steps=8 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t= 7.2s running=True status='connecting dedupe wait' steps=9 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t= 8.2s running=False status='connect-resolved dedupe wait merges=21' steps=10 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t= 9.2s running=False status='connect-resolved dedupe wait merges=21' steps=10 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t=10.2s running=False status='connect-resolved dedupe wait merges=21' steps=10 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  committed id lists from the connect on: 12; with a duplicate: 0; lacking one of the 12 ids the journal held at the rejoin: 1 (lengths [0], at ms [0]); lengths in order: [0, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12], the first five at ms [0, 26, 554, 1555, 2556]
+  C3 at the end: shown 12 ids, journal 12; equal=True duplicates=[] journal-not-shown=[] shown-not-in-journal=[]
+  request [C3-1] GET /api/copilotkit/info
+  request [C3-1] POST /api/copilotkit/agent/spe/connect
+  connect requests from the rejoining page: 1; journal runs ['completed', 'completed', 'completed']; slow steps shown at the first tick 0, at the end 10
+  every id shown more than once: []; every journal id not shown at some tick: []
+FAIL C3: connects 1; duplicates 0; ids missing at some tick 0; committed lists with a duplicate 0, lacking a history id 1 of 12; slow steps shown at the end 10 of 10 (exactly 10: streamed whole, none repeated); equal to GET at the end True; runs ['completed', 'completed', 'completed']
+== E. Second tab
+  session 4d82c807-211a-487e-8da2-b01c5e7bcd96, 1 earlier run(s); journal before the second-tab: 8 ids, runs ['completed', 'incomplete']
+  [E-2] t= 0.0s running=True status='connecting dedupe wait' steps=0 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [E-2] t= 1.1s running=True status='connecting dedupe wait' steps=4 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [E-2] t= 2.1s running=True status='connecting dedupe wait' steps=5 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [E-2] t= 3.1s running=True status='connecting dedupe wait' steps=6 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [E-2] t= 4.1s running=True status='connecting dedupe wait' steps=7 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [E-2] t= 5.1s running=True status='connecting dedupe wait' steps=8 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [E-2] t= 6.2s running=True status='connecting dedupe wait' steps=9 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [E-2] t= 7.2s running=False status='connect-resolved dedupe wait merges=13' steps=10 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [E-2] t= 8.2s running=False status='connect-resolved dedupe wait merges=13' steps=10 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [E-2] t= 9.2s running=False status='connect-resolved dedupe wait merges=13' steps=10 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  committed id lists from the connect on: 12; with a duplicate: 0; lacking one of the 8 ids the journal held at the rejoin: 1 (lengths [0], at ms [0]); lengths in order: [0, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8], the first five at ms [0, 53, 919, 1914, 2917]
+  E at the end: shown 8 ids, journal 8; equal=True duplicates=[] journal-not-shown=[] shown-not-in-journal=[]
+  E first tab at the end: shown 8 ids, journal 8; equal=True duplicates=[] journal-not-shown=[] shown-not-in-journal=[]
+  request [E-2] GET /api/copilotkit/info
+  request [E-2] POST /api/copilotkit/agent/spe/connect
+  connect requests from the rejoining page: 1; journal runs ['completed', 'completed']; slow steps shown at the first tick 0, at the end 10
+  every id shown more than once: []; every journal id not shown at some tick: []
+FAIL E: connects 1; duplicates 0; ids missing at some tick 0; committed lists with a duplicate 0, lacking a history id 1 of 12; slow steps shown at the end 10 of 10 (exactly 10: streamed whole, none repeated); equal to GET at the end True; runs ['completed', 'completed']
+== Browser console (errors and warnings)
+== Summary: FAIL: C1 C2 C3 E
+shutdown: 0 run(s) cancelled, journals written
+
+######## 3. [superseded] 19:27 UTC, the first try (broken: the stream froze) ########
+fake agent on http://127.0.0.1:18108/agent, run log /var/tmp/fake-agent-_nmm2yq7/runs.jsonl
+▲ Next.js 16.4.5
+- Local:         http://127.0.0.1:3108
+- Network:       http://127.0.0.1:3108
+✓ Ready in 0ms
+✓ Running next.config took 85ms
+rejoin check, 2026-11-08 19:26:40, dedupe layer on, CopilotKit 1.84.1
+== C. Rejoin after a reload (C1: with earlier runs through this server process)
+  session 379b91e5-b7df-4cc4-a9ac-ff0f4bde1823, 2 earlier run(s); journal before the reload: 12 ids, runs ['completed', 'completed', 'incomplete']
+  [C1-1] t= 0.1s running=True status='connecting dedupe' steps=2 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C1-1] t= 1.2s running=True status='connecting dedupe' steps=2 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C1-1] t= 2.2s running=True status='connecting dedupe' steps=2 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C1-1] t= 3.2s running=True status='connecting dedupe' steps=2 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C1-1] t= 4.3s running=True status='connecting dedupe' steps=2 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C1-1] t= 5.3s running=True status='connecting dedupe' steps=2 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C1-1] t= 6.3s running=True status='connecting dedupe' steps=2 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C1-1] t= 7.4s running=False status='connect-resolved dedupe merges=35' steps=2 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C1-1] t= 8.4s running=False status='connect-resolved dedupe merges=35' steps=2 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C1-1] t= 9.4s running=False status='connect-resolved dedupe merges=35' steps=2 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  committed id lists from the connect on: 13; with a duplicate: 0; lacking one of the 12 ids the journal held at the rejoin: 0 (lengths [], at ms []); lengths in order: [12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12], the first five at ms [0, 135, 1117, 2176, 3122]
+  C1 at the end: shown 12 ids, journal 12; equal=True duplicates=[] journal-not-shown=[] shown-not-in-journal=[]
+  request [C1-1] GET /api/copilotkit/info
+  request [C1-1] POST /api/copilotkit/agent/spe/connect
+  connect requests from the rejoining page: 1; journal runs ['completed', 'completed', 'completed']; slow steps shown at rejoin 0, at the end 2
+  every id shown more than once: []; every journal id not shown at some tick: []
+[superseded] PASS C1: connects 1; duplicates 0; ids missing at some tick 0; committed lists with a duplicate 0, lacking a history id 0 of 13; streamed on (steps 0->2); equal to GET at the end True; runs ['completed', 'completed', 'completed']
+== C. Rejoin after a reload (C2: a fresh session)
+  session f99b5d4a-50d9-487b-8c69-71fc3a5fff33, 0 earlier run(s); journal before the reload: 4 ids, runs ['incomplete']
+  [C2-1] t= 0.0s running=True status='connecting dedupe' steps=2 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t= 1.1s running=True status='connecting dedupe' steps=2 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t= 2.1s running=True status='connecting dedupe' steps=2 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t= 3.1s running=True status='connecting dedupe' steps=2 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t= 4.2s running=True status='connecting dedupe' steps=2 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t= 5.2s running=True status='connecting dedupe' steps=2 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t= 6.2s running=True status='connecting dedupe' steps=2 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t= 7.3s running=True status='connecting dedupe' steps=2 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t= 8.3s running=False status='connect-resolved dedupe merges=21' steps=2 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t= 9.3s running=False status='connect-resolved dedupe merges=21' steps=2 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C2-1] t=10.4s running=False status='connect-resolved dedupe merges=21' steps=2 shown=4 journal=4 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  committed id lists from the connect on: 12; with a duplicate: 0; lacking one of the 4 ids the journal held at the rejoin: 0 (lengths [], at ms []); lengths in order: [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4], the first five at ms [0, 57, 358, 1360, 2371]
+  C2 at the end: shown 4 ids, journal 4; equal=True duplicates=[] journal-not-shown=[] shown-not-in-journal=[]
+  request [C2-1] GET /api/copilotkit/info
+  request [C2-1] POST /api/copilotkit/agent/spe/connect
+  connect requests from the rejoining page: 1; journal runs ['completed']; slow steps shown at rejoin 0, at the end 2
+  every id shown more than once: []; every journal id not shown at some tick: []
+[superseded] PASS C2: connects 1; duplicates 0; ids missing at some tick 0; committed lists with a duplicate 0, lacking a history id 0 of 12; streamed on (steps 0->2); equal to GET at the end True; runs ['completed']
+== C. Rejoin after a reload (C3: earlier runs made before a chat UI restart: only the journal holds them)
+shutdown: 0 run(s) cancelled, journals written
+▲ Next.js 16.4.5
+- Local:         http://127.0.0.1:3108
+- Network:       http://127.0.0.1:3108
+✓ Ready in 0ms
+✓ Running next.config took 147ms
+  session 37d8b106-dffd-4947-a4d6-310b2785f9dd, 2 earlier run(s) before a chat UI restart; journal before the reload: 12 ids, runs ['completed', 'completed', 'incomplete']
+  [C3-1] t= 0.0s running=True status='connecting dedupe' steps=2 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t= 1.1s running=True status='connecting dedupe' steps=2 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t= 2.1s running=True status='connecting dedupe' steps=2 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t= 3.2s running=True status='connecting dedupe' steps=2 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t= 4.2s running=True status='connecting dedupe' steps=2 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t= 5.2s running=True status='connecting dedupe' steps=2 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t= 6.2s running=True status='connecting dedupe' steps=2 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t= 7.3s running=True status='connecting dedupe' steps=2 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t= 8.3s running=False status='connect-resolved dedupe merges=22' steps=2 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t= 9.3s running=False status='connect-resolved dedupe merges=22' steps=2 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [C3-1] t=10.4s running=False status='connect-resolved dedupe merges=22' steps=2 shown=12 journal=12 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  committed id lists from the connect on: 15; with a duplicate: 0; lacking one of the 12 ids the journal held at the rejoin: 0 (lengths [], at ms []); lengths in order: [12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12], the first five at ms [0, 48, 405, 1413, 2410]
+  C3 at the end: shown 12 ids, journal 12; equal=True duplicates=[] journal-not-shown=[] shown-not-in-journal=[]
+  request [C3-1] GET /api/copilotkit/info
+  request [C3-1] POST /api/copilotkit/agent/spe/connect
+  connect requests from the rejoining page: 1; journal runs ['completed', 'completed', 'completed']; slow steps shown at rejoin 0, at the end 2
+  every id shown more than once: []; every journal id not shown at some tick: []
+[superseded] PASS C3: connects 1; duplicates 0; ids missing at some tick 0; committed lists with a duplicate 0, lacking a history id 0 of 15; streamed on (steps 0->2); equal to GET at the end True; runs ['completed', 'completed', 'completed']
+== E. Second tab
+  session cf88f326-bd53-403b-9678-3f1d883936a8, 1 earlier run(s); journal before the second-tab: 8 ids, runs ['completed', 'incomplete']
+  [E-2] t= 0.1s running=True status='connecting dedupe' steps=3 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [E-2] t= 1.1s running=True status='connecting dedupe' steps=3 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [E-2] t= 2.2s running=True status='connecting dedupe' steps=3 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [E-2] t= 3.2s running=True status='connecting dedupe' steps=3 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [E-2] t= 4.2s running=True status='connecting dedupe' steps=3 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [E-2] t= 5.3s running=True status='connecting dedupe' steps=3 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [E-2] t= 6.3s running=True status='connecting dedupe' steps=3 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [E-2] t= 7.4s running=False status='connect-resolved dedupe merges=28' steps=3 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [E-2] t= 8.4s running=False status='connect-resolved dedupe merges=28' steps=3 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  [E-2] t= 9.4s running=False status='connect-resolved dedupe merges=28' steps=3 shown=8 journal=8 dups=[] journal-not-shown=[] shown-not-in-journal=[]
+  committed id lists from the connect on: 14; with a duplicate: 0; lacking one of the 8 ids the journal held at the rejoin: 0 (lengths [], at ms []); lengths in order: [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8], the first five at ms [0, 77, 479, 1485, 2479]
+  E at the end: shown 8 ids, journal 8; equal=True duplicates=[] journal-not-shown=[] shown-not-in-journal=[]
+  E first tab at the end: shown 8 ids, journal 8; equal=True duplicates=[] journal-not-shown=[] shown-not-in-journal=[]
+  request [E-2] GET /api/copilotkit/info
+  request [E-2] POST /api/copilotkit/agent/spe/connect
+  connect requests from the rejoining page: 1; journal runs ['completed', 'completed']; slow steps shown at rejoin 0, at the end 3
+  every id shown more than once: []; every journal id not shown at some tick: []
+[superseded] PASS E: connects 1; duplicates 0; ids missing at some tick 0; committed lists with a duplicate 0, lacking a history id 0 of 14; streamed on (steps 0->3); equal to GET at the end True; runs ['completed', 'completed']
+== Browser console (errors and warnings)
+[superseded] == Summary: all PASS
+shutdown: 0 run(s) cancelled, journals written

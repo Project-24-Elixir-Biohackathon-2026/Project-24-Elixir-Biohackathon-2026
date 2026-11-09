@@ -43,8 +43,8 @@ and rewrites the task text it changes.
    (2026-11-08). *Cost if wrong:* none expected; slice 1's check runs on 1.84.1 either way.
 2. **The rejoin check's page and script are throwaway**: built and run in slice 1, the page removed before the PR
    merges; the script, its output and the verdict stay under `evidence/slice-1/` and in `progress.md`. *Cost if
-   wrong:* re-running the check after a CopilotKit upgrade means restoring the page from slice 1's branch history
-   (the PR's commits).
+   wrong:* re-running the check after a CopilotKit upgrade means restoring the page from
+   `658ba7b:platform/agui/copilotkit-chat/app/rejoin-check/page.tsx` (the squash merge keeps only the PR's ref).
 3. **`running` is part of `SessionMeta`**, so the list, `GET` one, `PATCH` and `POST …/title` all answer it (§6:
    "the metadata … `running` included"); `SessionView` keeps it. *Cost if wrong:* none: one boolean per item.
 4. **A session gone from the list is "gone" only if this page saw it listed before** (`LiveSessions.listed`): a
@@ -104,7 +104,7 @@ to the next slice; slice 3 closes the track (its task 4).
 
 | n/N | Branch | Tasks | Delivers | Est. LOC | Reviewer checks | File | Status |
 |---|---|---|---|---|---|---|---|
-| 1/3 | `impl/agui-leave-running-chat-1-rejoin-check` | 3 | `running` in the API (43); the **rejoin check** (42, early output, first part) and its verdict; the stop point | ~250 kept (+~200 throwaway) | `npm test`; the check's output in `evidence/slice-1/`; the verdict in `progress.md` | [slice-1-rejoin-check.md](slice-1-rejoin-check.md) | planned |
+| 1/3 | `impl/agui-leave-running-chat-1-rejoin-check` | 3 | `running` in the API (43); the **rejoin check** (42, early output, first part) and its verdict; the stop point | ~250 kept (+~200 throwaway) | `npm test`; the check's output in `evidence/slice-1/`; the verdict in `progress.md` | [slice-1-rejoin-check.md](slice-1-rejoin-check.md) | merged #57 |
 | 2/3 | `impl/agui-leave-running-chat-2-agents` | 4 | an agent per session; switching and New chat enabled (26, 40, 41); the running mark and the Delete rule (44, part); the **screenshot** (early output, second part) | ~750 | `npm test`; `npm run build`; e2e `--scenario leave-running`, `stop`, `all`; the screenshot | [slice-2-agents.md](slice-2-agents.md) | planned |
 | 3/3 | `impl/agui-leave-running-chat-3-rejoin` | 4 | rejoin through `connect`, or the fallback, as slice 1 ruled (42); refresh on focus and polling (44); run errors with their title (44); docs; spec built | ~650 | `npm test`; `npm run build`; e2e `--scenario rejoin`, `running-marks`, `all` | [slice-3-rejoin.md](slice-3-rejoin.md) | planned |
 

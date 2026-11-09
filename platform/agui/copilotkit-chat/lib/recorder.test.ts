@@ -16,7 +16,7 @@ import { parseJournal } from "./journal.ts";
 import type { Clock, JournalFs, Line, NewLine, RunEndLine, RunStartLine } from "./journal.ts";
 import { branchOfTip } from "./rebuild.ts";
 import { REFUSAL_MESSAGES, SessionRecorder } from "./recorder.ts";
-import { Journals, shared } from "./sessions.ts";
+import { Journals, isRunning, shared } from "./sessions.ts";
 import { startTestAgent } from "./test-agent.ts";
 import type { TestAgent } from "./test-agent.ts";
 
@@ -100,7 +100,6 @@ function drive(
 }
 
 const sessionOf = (key: string) => (JSON.parse(key) as string[])[0];
-const isRunning = (id: string) => [...shared().running.keys()].some((k) => sessionOf(k) === id);
 function handleOf(id: string) {
   for (const [key, handle] of shared().running) if (sessionOf(key) === id) return handle;
   return undefined;
@@ -185,6 +184,42 @@ test("RUN_FINISHED: created, run_start, every event, run_end completed; the sess
     for (const line of all) assert.match(line.at, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/);
     assert.equal((await journals.list())[0].title, "list the home directory");
     assert.equal(isRunning(id), false);
+  } finally {
+    await server.close();
+  }
+});
+
+test("running: true in the list and GET between run_start and run_end, false before and after (decision 43)", async () => {
+  const { journals, server, recorder, agent } = await setup();
+  try {
+    const id = randomUUID();
+    assert.equal((await journals.list()).some((m) => m.id === id), false); // before the run: not journaled yet
+
+    // A "hang" run: running once admitted, in both the list and GET; not running once cancelled.
+    const hanging = drive(recorder, input(id, "hang for rejoin"), agent());
+    for (let i = 0; i < 100 && !isRunning(id); i++) await new Promise((r) => setTimeout(r, 5));
+    assert.equal((await journals.list()).find((m) => m.id === id)?.running, true);
+    assert.equal((await journals.get(id))?.running, true);
+    handleOf(id)?.cancel();
+    await hanging;
+    await settled(id);
+    assert.equal((await journals.list()).find((m) => m.id === id)?.running, false);
+    assert.equal((await journals.get(id))?.running, false);
+    assert.equal(ofType(await lines(journals, id), "run_end").at(-1)?.status, "cancelled");
+
+    // A failed run: not running once it ends.
+    await drive(recorder, input(id, "error please"), agent());
+    await settled(id);
+    assert.equal((await journals.list()).find((m) => m.id === id)?.running, false);
+    assert.equal((await journals.get(id))?.running, false);
+    assert.equal(ofType(await lines(journals, id), "run_end").at(-1)?.status, "failed");
+
+    // A completed run: not running once it ends.
+    await drive(recorder, input(id, "all good"), agent());
+    await settled(id);
+    assert.equal((await journals.list()).find((m) => m.id === id)?.running, false);
+    assert.equal((await journals.get(id))?.running, false);
+    assert.equal(ofType(await lines(journals, id), "run_end").at(-1)?.status, "completed");
   } finally {
     await server.close();
   }
