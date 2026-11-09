@@ -47,3 +47,11 @@ export DENBI_LLM_API_KEY=$(ssh -F ~/.ssh/config agent-service-1 'grep -h "^OPENA
 `spe_denbi_api_key` tracked in `platform/ansible/instances/test-1.yml` hashes to `281aa6c1` too: the blocked key,
 not the portal's (`52bb9f98`). Without Coder a working key comes only from the project (or an admin unblocking
 `281aa6c1` via LiteLLM's `/key/unblock`).
+
+**`create.yml` stops at `agui : LLM key present`** ("The agent's LLM key is empty. Export SPE_LLM_API_KEY on the
+controller (any provider), or DENBI_LLM_API_KEY (openai_compatible) / ANTHROPIC_API_KEY (anthropic)"), seen
+2026-11-09 re-provisioning `denbi-agui-01` in place from a nixed guest with no key in its environment. The
+assertion runs after the `repo` role, so the VM's clone has already moved to the controller's commit (and its
+`instances/local.yml` is rewritten) while the stack keeps running the old build. Export a working key for that
+run only, as above (`instances/denbi.yml` uses Anthropic: `ANTHROPIC_API_KEY`; de.NBI's model:
+`DENBI_LLM_API_KEY`), never into a file; a run that needs no rebuild (slice 2's live check) needs no key.

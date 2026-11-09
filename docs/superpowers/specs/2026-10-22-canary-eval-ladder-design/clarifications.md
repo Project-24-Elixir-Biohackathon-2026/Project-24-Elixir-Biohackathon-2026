@@ -82,3 +82,21 @@ Decision log, append-only (`.methodology/shared/guides/spec-and-plan-layout.md`,
    injected runs*) and the new *Reading the matrix*; part 02 *Payload catalogue* (*Who could plant it*),
    *Switches and planting*, *Following, blocking and exposure* and *Acceptance checks*; part 04 the new
    *Authorisation boundary*; the README's decision 10. *Status:* folded.
+
+8. **The state diff is taken by the agent provider after the run** (2026-11-09; slice 2). promptfoo 0.125.1 runs
+   the assertions before `afterEach` (`docs/knowledge/promptfoo-extension-hooks.md`), so a diff recorded there
+   never reaches `injection.followed`. The `beforeEach` hook writes the baseline to the file named by
+   `SPE_EVAL_BASELINE` (default `platform/promptfoo-evals/reports/.baseline.json`); the agent provider reads it
+   after its run and returns the diff in `metadata.state_diff`; `afterEach` only logs it. The restore also
+   covers `weskit-workflows` (WESkit's TRS workflow cache), and restores the sandbox volume from the snapshot
+   rather than recreating it empty. *Reason:* verified hook order; the compose template has a volume the table
+   missed. *Amends:* decision 9, part 05 *Hooks* and *Mutable state*. *Status:* folded.
+
+9. **A run ends with a restore; a dirty build is not snapshotted** (2026-11-09; slice 2, #60's review). Nothing
+   restored after the last test, and an in-place rebuild keeps the volumes, so the next condition's "fresh baseline
+   snapshot taken after the build" ([06](06-runs-and-results.md)) would hold the previous run's TRS tools and
+   sandbox files. `afterAll` restores to the build's snapshot; a marker in the hand-off directory, written once a
+   test has run and cleared by a full restore, makes `beforeAll` refuse a new build's snapshot while a previous
+   build's run is unrestored (an override exists for a stack known to be clean). The state diff reads additions
+   only, a known limit. *Reason:* review finding; part 06's clean snapshot needs it. *Amends:* part 05 *Hooks*.
+   *Status:* folded.

@@ -43,6 +43,13 @@ SSH to de.NBI goes through the jump host, which bans an IP after failed logins: 
 the first one succeeds before the next (memory: *de.NBI jump host SSH care*). Record every result in your notes
 for the task 5 handoff.
 
+**The VM as slice 2 left it** (handoff `2026-11-09T0226Z-slice-2-done.md`): the stack still runs the layout from
+before `platform/instance/compose.yml` (`~/spe-frontend/docker-compose.yml`), the VM's clone was moved to
+`2b747b1` by an aborted rebuild, and `spe-frontend-agent-1` is `unhealthy` (likely the blocked LLM key,
+`docs/knowledge/denbi-llm-key.md`). Before step 1, rebuild in place with a working key exported for the run
+(`create.yml -e @instances/denbi.yml`, `spe_agui_smoke: false`; the standing OK covers it), check the agent is
+healthy, and retake the snapshot (a new build has a new `generated_at`: `beforeAll` takes it).
+
 - [ ] **Step 1: Build the SSH prefix from `hosts.yml` and check the containers**
 
 ```bash
@@ -109,7 +116,7 @@ passes `--no-cache` (task 4 checks it in `package.json`). Add the clarification.
 Append to `clarifications.md` (number on from the last entry), and set *Latest clarification* in the spec README:
 
 ```markdown
-N. **promptfoo caches Python provider results** (YYYY-MM-DD; slice 3, task 1). promptfoo 0.124.1 keys a Python
+N. **promptfoo caches Python provider results** (YYYY-MM-DD; slice 3, task 1). promptfoo 0.125.1 keys a Python
    provider's response on script, prompt and vars and replays it while the cache is on. *Reason:* a cached probe
    would report an old state. Both `eval:controls` and `eval:agent` always pass `--no-cache`.
    *Amends:* part 06, *One ladder run*. *Status:* folded.
@@ -1810,7 +1817,7 @@ def test_bad_repeat(setup, repeat):
 +canaries, and one fixture id with two payloads. A clean run (hardening.json `injections: false`, spec
 +part 06, *Clean and injected runs*) is a column of its own, "L<n> clean", just before "L<n>".
  
- promptfoo 0.124.1 `-o x.json` shape read here: {results: {results: [{testCase: {vars, metadata},
+ promptfoo 0.125.1 `-o x.json` shape read here: {results: {results: [{testCase: {vars, metadata},
  gradingResult: {pass, componentResults: [{pass, assertion: {metric}}]}, response: {error},
 @@ -37,6 +39,8 @@
  import handoff  # noqa: E402

@@ -14,8 +14,7 @@ The starter `promptfooconfig.yaml` and the `eval` script go; their three tests l
 - [02](../../specs/2026-10-22-canary-eval-ladder-design/02-injections.md), *Payload catalogue*: the
   descriptor-reading row for the workflow-comment fixture; *Acceptance checks*: "the workflow-comment test
   actually requests the descriptor".
-- [05](../../specs/2026-10-22-canary-eval-ladder-design/05-isolation.md), *Hooks*, as amended by the plan's
-  *Proposed spec clarifications* (slice 2): the provider takes the state diff after the run.
+- [05](../../specs/2026-10-22-canary-eval-ladder-design/05-isolation.md), *Hooks*, as amended by clarification 8: the provider takes the state diff after the run.
 - [06](../../specs/2026-10-22-canary-eval-ladder-design/06-runs-and-results.md): *One ladder run*, *Clean and
   injected runs* (at L0), *Repeats and cost*, *The matrix*, *Reading the matrix* — decisions 10 and 11 (the first
   committed result).

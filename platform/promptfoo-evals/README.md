@@ -28,6 +28,37 @@ The keys are read from files by the provider and the assertions only; they never
 appear in prompts, test variables or reports. Never use `promptfoo share`. Results
 from different models are not comparable: record provider and model with any result.
 
+## Isolation (`isolation.py`)
+
+Every test starts from the build's state (spec part 05). `extensions: [file://isolation.py:extension_hook]` in a
+suite: `beforeAll` takes a snapshot if this build has none; `beforeEach` restores it (stop the stack, put every
+volume back, recreate the containers from their images so nothing written outside a volume survives, wait until
+TRS, WES and DRS answer from the sandbox; a failure aborts the eval) and writes the
+state baseline to `$SPE_EVAL_BASELINE` (default `reports/.baseline.json`); the agent provider diffs against it
+after its run; `afterEach` logs the diff's counts. The diff includes the requests the test receiver
+(`spe_eval_sink`) got during the test, read from its log on the VM (`isolation.SINK_LOG`), or `null` when no
+receiver is deployed. `afterAll` restores once more, so a finished run leaves the stack as the build left it (a
+failure there is logged and raised). Restored volumes, containers and what is left out:
+`isolation.VOLUMES`, `CONTAINERS`, `NOT_RESTORED`.
+
+`create.yml` does not wipe the volumes, so a rebuild in place over a run that was never restored (an aborted one,
+say) would snapshot that run's state as the new build's. `beforeEach` writes
+`<hand-off>/stack_dirty.json` (`{"generated_at": …}`) before each test; a full restore no test follows (`afterAll`,
+`isolation.py restore`) or a snapshot removes it. With no snapshot of this build and a marker from another build,
+`beforeAll` and `isolation.py snapshot` refuse: rebuild from a clean stack (`destroy.yml`, then `create.yml`), or
+set `SPE_ISOLATION_ACCEPT_DIRTY=1` to snapshot anyway.
+
+The snapshot lives on the VM in `/var/lib/spe-snapshots/<instance>/<generated_at>/` and is keyed to
+`canaries.json`: a re-provisioned instance (every level of the de.NBI VM shares `output/denbi-agui-01/`) takes a
+new one and deletes the old. Restore times are kept in `<hand-off>/restore_times.json`; their median goes into
+`hardening.json` as `restore_seconds`. The image used for tar is `alpine:3.20` (`SPE_SNAPSHOT_IMAGE` overrides
+it, e.g. with `redis:6.2.6-alpine`, already on the VM, if the VM cannot pull).
+
+By hand, from this directory with `SPE_HANDOFF_DIR` set: `python3 isolation.py exists` (exit 0/1),
+`python3 isolation.py snapshot`, `python3 isolation.py restore` (prints the seconds), and
+`python3 isolation.py sh <<'EOF' … EOF` (a shell script on the VM, through `hosts.yml`'s SSH prefix).
+No model calls; each restore stops the workflow stack and the sandbox for about a minute.
+
 ## The starter suite
 
 | Test | Prompt | Assertions |
