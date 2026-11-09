@@ -15,7 +15,10 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
-from ag_ui.core import BaseEvent, EventType, RunAgentInput, RunErrorEvent, RunFinishedEvent, RunStartedEvent
+from ag_ui.core import (
+    BaseEvent, EventType, RunAgentInput, RunErrorEvent, RunFinishedEvent, RunStartedEvent, TextMessageContentEvent,
+    TextMessageEndEvent,
+)
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
@@ -25,6 +28,7 @@ from pydantic_ai.messages import ToolCallPart
 from pydantic_ai.ui.ag_ui import AGUIAdapter, AGUIEventStream
 from pydantic_ai.usage import RunUsage
 
+from . import airlock
 from .agent import RunDeps, build_agent, build_model, compose_prompt
 from .compaction import (
     CompactionRecord, build_sent, estimate_tokens, marker_events, markers_to_activities, nothing_to_compact,
@@ -127,7 +131,8 @@ class Ready:
 
 class Service:
     def __init__(self, config: Config, secrets: Secrets, model: Model, client: SandboxClient, *,
-                 owns_client: bool, retry_delay: float, max_retry_delay: float, probe_interval: float):
+                 owns_client: bool, retry_delay: float, max_retry_delay: float, probe_interval: float,
+                 airlock_prefix: str | None = None):
         self.config = config
         self._secrets = secrets.values()
         self._agent_key = secrets.agent_api_key.encode()
@@ -137,6 +142,7 @@ class Service:
         self._retry_delay = retry_delay
         self._max_retry_delay = max_retry_delay
         self._probe_interval = probe_interval
+        self._airlock_prefix = airlock_prefix
         self._base_prompt = self._read_prompt(fail=True)
         self.runlog = RunLog(config.run_log, self._secrets)
         self.ready: Ready | None = None
@@ -238,6 +244,7 @@ class Service:
         deps = RunDeps(session_id=run_input.thread_id)
         stream = adapter.run_stream(deps=deps, usage_limits=self.config.limits.usage_limits(), on_complete=on_complete)
         status = "cancelled"  # unless a terminal event arrives: client gone or task cancelled
+        held: dict[str, list[str]] = {}
         try:
             async for event in stream:
                 if event.type in _MARKER_BEFORE:
@@ -250,8 +257,9 @@ class Service:
                     status = "failed"
                 elif isinstance(event, RunFinishedEvent):
                     status = "completed"
-                recorder.observe(event)
-                yield event
+                for out in self._airlock(event, held):
+                    recorder.observe(out)
+                    yield out
         finally:
             # Closing the adapter stream ends the agent run (and its model request) if it is
             # still going. Commands the sandbox started in the background keep running there.
@@ -261,6 +269,30 @@ class Service:
                 self.runlog.write(recorder.finish(status))
             except OSError:
                 log.exception("could not write the run log")
+
+    def _airlock(self, event: BaseEvent, held: dict[str, list[str]]) -> list[BaseEvent]:
+        """With the airlock on (L5), a text message's deltas are held and go out redacted, as one delta, at the
+        message's end, or before the run's terminal event if the message never ended. A pattern can span
+        chunks, so nothing of a message leaves before all of it is known. Off, events pass as they are."""
+        if self._airlock_prefix is None:
+            return [event]
+        if isinstance(event, TextMessageContentEvent):
+            held.setdefault(event.message_id, []).append(event.delta)
+            return []
+        if isinstance(event, TextMessageEndEvent):
+            return [*self._release(held, event.message_id), event]
+        if isinstance(event, (RunErrorEvent, RunFinishedEvent)):
+            return [*(out for message_id in list(held) for out in self._release(held, message_id)), event]
+        return [event]
+
+    def _release(self, held: dict[str, list[str]], message_id: str) -> list[BaseEvent]:
+        text = "".join(held.pop(message_id, []))
+        if not text:
+            return []
+        text, classes = airlock.redact(text, self._airlock_prefix)
+        if classes:
+            log.info("airlock redacted: %s", ", ".join(classes))  # classes only, never the values
+        return [TextMessageContentEvent(message_id=message_id, delta=text)]
 
     async def _command_events(self, adapter: _Adapter, command: dict) -> AsyncIterator[BaseEvent]:
         run_input = adapter.run_input
@@ -314,11 +346,13 @@ class Service:
 
 def create_app(config: Config, secrets: Secrets, model_override: Model | None = None,
                sandbox_client: SandboxClient | None = None, *, retry_delay: float = 1.0,
-               max_retry_delay: float = 30.0, probe_interval: float = 30.0) -> FastAPI:
+               max_retry_delay: float = 30.0, probe_interval: float = 30.0,
+               airlock_prefix: str | None = None) -> FastAPI:
     model = model_override or build_model(config.model, secrets.llm_api_key)
     client = sandbox_client or SandboxClient(config.tools.sandbox_url, secrets.sandbox_api_key)
     service = Service(config, secrets, model, client, owns_client=sandbox_client is None,
-                      retry_delay=retry_delay, max_retry_delay=max_retry_delay, probe_interval=probe_interval)
+                      retry_delay=retry_delay, max_retry_delay=max_retry_delay, probe_interval=probe_interval,
+                      airlock_prefix=airlock_prefix)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):

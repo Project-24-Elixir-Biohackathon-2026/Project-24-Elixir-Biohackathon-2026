@@ -191,7 +191,7 @@ deployment (L0).
 | `spe_harden_data_tiers` | L2 | the tiers workflow containers mount, e.g. `[ref, genomes]`; `[]` mounts all |
 | `spe_harden_egress` | L3 | the sandbox reaches only the API host on 443 |
 | `spe_agent_tool_surface` | L4 | anything but `shell` gives the agent only typed tools |
-| `spe_harden_airlock` | L5 | a pattern filter on the agent's final answer |
+| `spe_harden_airlock` | L5 | a pattern filter on the agent's final answer; default `false`; only the AG-UI agent has an airlock, so `create.yml` refuses it while `openwebui` is in `spe_frontends` |
 
 `hardening.json`'s `level` counts the leading switches that are on, in this order; a non-contiguous pattern
 never counts past its first switch that is off. The `handoff` role writes it (`roles/handoff/tasks/hardening.yml`).

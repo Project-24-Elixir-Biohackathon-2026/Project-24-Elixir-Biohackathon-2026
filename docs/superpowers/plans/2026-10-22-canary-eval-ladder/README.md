@@ -127,7 +127,7 @@ level instance files are overlays on the operator's instance file, without an in
 | `platform/ansible/roles/workflow_stack/templates/*` (Traefik: TRS read-only for the sandbox, operator writes on a localhost entrypoint; WESkit), a standard-library WES write guard, `instances/L1.example.yml`, `platform/dev/tests/golden/` (today's renders, for decision 3); the runbook `roles/sandbox/files/agent/AGENTS.md` stays as it is | 6 | L1 |
 | `platform/ansible/roles/workflow_stack/templates/compose.install.yaml.j2` (WESkit and worker mounts by tier), the verify smoke input, `instances/L2.example.yml` | 7 | L2 |
 | `platform/instance/compose.egress.yml` (a fixed sandbox address, an overlay on `platform/instance/compose.yml`), `roles/egress/` (`DOCKER-USER` firewall rules), `instances/L3.example.yml` | 8 | L3 |
-| `platform/agui/pydantic-ai-agent/` (airlock), `roles/agui/templates/agent.env.j2`, `playbooks/create.yml` (refuses the airlock with `openwebui` in `spe_frontends`) | 9 | L5 airlock |
+| `platform/agui/pydantic-ai-agent/` (airlock), `roles/agui/templates/agent.env.j2`, `inventory/group_vars/all.yml`, `playbooks/create.yml` (refuses the airlock with `openwebui` in `spe_frontends`), `platform/dev/tests/test_agui_env.py` | 9 | L5 airlock |
 | `docs/results/canary-ladder-qwen3.8-27b.md`, `docs/results/qwen3.8-27b/L{0,1}{,-clean}.json`, `L2.json`, `L3.json`, `docs/README.md` (the `results/` row) | 10 | the agent runs at L0–L3 and the matrix |
 
 ## PR slices
@@ -144,7 +144,7 @@ N = 10. Slices are sequential; each starts from `main` after the previous one me
 | 6/10 | `impl/canary-eval-ladder-6-l1` | 1–5 | `spe_harden_trs_readonly` and `L1.example.yml`, built on de.NBI. ~480 lines | the controls suite at L1 on de.NBI (`trs-write`, `wes-inline`, `e2e-exploit` `closed`) | [slice-6-l1.md](slice-6-l1.md) | merged #65 |
 | 7/10 | `impl/canary-eval-ladder-7-l2` | 1–3 | `spe_harden_data_tiers` and `L2.example.yml`, built on de.NBI. ~150 lines | the controls suite at L2 on de.NBI (`tier-reach` `closed`) | [slice-7-l2.md](slice-7-l2.md) | merged #66 |
 | 8/10 | `impl/canary-eval-ladder-8-l3` | 1–3 | `spe_harden_egress` and `L3.example.yml`, built on de.NBI. ~250 lines | the controls suite at L3 on de.NBI (`egress` `closed`) | [slice-8-l3.md](slice-8-l3.md) | merged #68 |
-| 9/10 | `impl/canary-eval-ladder-9-airlock` | 1–3 | the L5 airlock module and switch; decision 12. ~410 lines | airlock unit tests; `airlock` probe `closed` with the switch on | [slice-9-airlock.md](slice-9-airlock.md) | planned |
+| 9/10 | `impl/canary-eval-ladder-9-airlock` | 1–3 | the L5 airlock module and switch; decision 12. ~410 lines | airlock unit tests; `airlock` probe `closed` with the switch on | [slice-9-airlock.md](slice-9-airlock.md) | merged #69 |
 | 10/10 | `impl/canary-eval-ladder-10-agent-runs` | 1–5 | the agent runs on `qwen3.8-27b`, one batch after the key gate: L0 clean and injected, L1 injected and clean, L2, L3; their counts and the matrix in `docs/results/`; decisions 10, 11. ~100 lines of results, no code | the committed matrix (`L0 clean` to `L3`), the token check, each level's controls line | [slice-10-agent-runs.md](slice-10-agent-runs.md) | planned |
 
 L4 (the typed tool server) has its own spec ([out-of-scope](../../specs/2026-10-22-canary-eval-ladder-design/out-of-scope.md)).

@@ -13,10 +13,12 @@
           - spe_provision in ['openstack', 'existing']
           - spe_frontends is sequence and spe_frontends is not string
           - spe_frontends | difference(['openwebui', 'agui']) | length == 0
+          - not (spe_harden_airlock | bool and 'openwebui' in spe_frontends)
         fail_msg: >-
           set spe_instance and spe_seed (pass -e @instances/<name>.yml); spe_provision is
           openstack or existing; spe_frontends is a list of openwebui and/or agui (both by
-          default, [] for none)
+          default, [] for none); spe_harden_airlock filters the AG-UI agent only: set
+          spe_frontends: [agui] with it
   roles:
     - { role: os_provision, tags: [always], when: spe_provision == 'openstack' }
     - { role: existing_host, tags: [always], when: spe_provision == 'existing' }

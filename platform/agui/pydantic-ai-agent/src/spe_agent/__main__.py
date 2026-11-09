@@ -8,6 +8,7 @@ from pathlib import Path
 
 import uvicorn
 
+from .airlock import AirlockConfigError, settings as airlock_settings
 from .app import create_app
 from .config import ConfigError, load_config, load_secrets
 
@@ -18,8 +19,8 @@ def main() -> int:
     path = Path(os.environ.get("SPE_AGENT_CONFIG", "/etc/spe-agent/agent.yaml"))
     try:
         config = load_config(path)
-        app = create_app(config, load_secrets(config, os.environ))
-    except ConfigError as e:
+        app = create_app(config, load_secrets(config, os.environ), airlock_prefix=airlock_settings(os.environ))
+    except (ConfigError, AirlockConfigError) as e:
         print(f"spe-agent: {e}", file=sys.stderr)
         return 2
     host, port = os.environ.get("SPE_AGENT_HOST", "0.0.0.0"), int(os.environ.get("SPE_AGENT_PORT", "8100"))
@@ -39,8 +40,8 @@ def app_factory():
     path = Path(os.environ.get("SPE_AGENT_CONFIG", "/etc/spe-agent/agent.yaml"))
     try:
         config = load_config(path)
-        return create_app(config, load_secrets(config, os.environ))
-    except ConfigError as e:
+        return create_app(config, load_secrets(config, os.environ), airlock_prefix=airlock_settings(os.environ))
+    except (ConfigError, AirlockConfigError) as e:
         sys.exit(f"spe-agent: {e}")
 
 
