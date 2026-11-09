@@ -36,7 +36,7 @@
   ansible.builtin.command:
     argv: >-
       {{ ['/usr/bin/python3', '/opt/spe/bin/trs_install.py',
-          '--catalog', '/opt/spe/catalog', '--api', 'https://' ~ spe_api_host ~ '/ga4gh/trs/v2',
+          '--catalog', '/opt/spe/catalog', '--api', spe_trs_write_api,
           '--seed', spe_seed | string]
          + (spe_workflows | map('regex_replace', '^(.*)$', '--workflow=\1') | list)
          + (['--canary-descriptions'] if spe_canary_trs_descriptions else [])

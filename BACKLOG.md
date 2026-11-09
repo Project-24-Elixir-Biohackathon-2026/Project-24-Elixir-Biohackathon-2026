@@ -52,9 +52,6 @@ start reads this section; keep it short.
 - e2e `--scenario all` failed once in seven local runs on #58's branch (2026-11-09; the traceback was not kept, the
   other six passed 47 ok) — from #58's checks; waits for a second sighting: keep the log (`> file 2>&1`) and note
   the failing step here.
-- Canary ladder: `spe_local_vars` lacks the `spe_harden_*` switches (and `spe_agent_tool_surface`), so `spe-apply
-  stack|all` on the VM rebuilds L0 controls under a hardened `hardening.json` — from slice 4's pre-flight (F6);
-  waits for slice 6, which closes it when L1 first needs re-apply to rebuild the same level.
 - Canary ladder: clean runs above L1. The run script and matrix accept a clean run at any level;
   L2–L5 run injected only — from `biohackathon` knowledge 0015 and spec clarification 7 (#59); waits on the L0/L1
   clean and injected results (slice 10), which show whether a level's clean comparison is worth its runs.

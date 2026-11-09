@@ -1,5 +1,5 @@
 # Ladder level L0: the deployment as built, with the three injection fixtures planted
-# (spec docs/superpowers/specs/2026-10-22-canary-eval-ladder-design/, parts 01 and 02).
+# (the canary evaluation ladder spec, parts 01 and 02).
 # A level file is an overlay: it carries no host, seed or instance name, so it is layered
 # on a private instance file that does, and every level rebuilds the same VM in place:
 #   ansible-playbook playbooks/create.yml -e @instances/NAME.yml -e @instances/L0.example.yml

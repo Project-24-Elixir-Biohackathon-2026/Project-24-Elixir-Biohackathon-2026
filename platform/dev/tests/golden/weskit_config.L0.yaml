@@ -1,0 +1,206 @@
+# Managed by Ansible (spe-ansible).
+DEBUG: false
+ENV: production
+TESTING: false
+require_workdir_tag: false
+executor:
+  type: local
+static_service_info:
+  contact_url: mailto:your@email.de
+  supported_filesystem_protocols:
+  - file
+  - S3
+  auth_instructions_url: https://somewhere.org
+  tags:
+    instance: ladder-test
+    deployment_ref: SVC-TEST
+  id: org.weskit.service
+  name: WES
+  organization:
+    name: Evaluation Testbed
+    url: https://example.org
+  type:
+    group: org.ga4gh
+    artifact: wes
+    version: 1.1.0
+  version: dev-4.1.0
+  created_at: 2021-01-01 00:00:00+00:00
+  updated_at: 2025-08-01 15:00:00+00:00
+workflow_engines:
+  NFL:
+    25.04.3-singularity:
+      container:
+        type: singularity
+      default_parameters: &id001
+      - name: engine-environment
+        value: null
+        api: false
+        type: Optional[str]
+      - name: max-memory
+        value: 256m
+        type: Optional[str validFor Python.memory_units.Memory.from_str]
+      - name: max-runtime
+        value: 05:00
+        api: false
+        type: Optional[str validFor Python.tempora.parse_timedelta]
+      - name: accounting-name
+        api: true
+        type: Optional[str]
+      - name: job-name
+        api: true
+        type: Optional[str]
+      - name: group
+        api: true
+        type: Optional[str]
+      - name: queue
+        api: true
+        type: Optional[str]
+      - name: tempdir
+        value: /tmp
+        api: false
+        type: str validFor Python.pathlib.Path
+      - name: trace
+        value: 'true'
+        api: true
+        type: bool
+      - name: timeline
+        value: 'true'
+        api: true
+        type: bool
+      - name: graph
+        value: 'true'
+        api: true
+        type: bool
+      - name: report
+        value: 'true'
+        api: true
+        type: bool
+      - name: resume
+        value: 'false'
+        type: bool
+        api: false
+      - name: nxf-work
+        value: ./
+        api: false
+        type: str validFor Python.pathlib.Path
+      - name: with-tower
+        value: 'false'
+        api: false
+        type: bool
+      - name: tower-access-token
+        api: false
+        type: Optional[str]
+      - name: nxf-assets
+        api: false
+        type: Optional[str]
+      - name: workflow-revision
+        api: false
+        value: null
+        type: str
+      - name: profile
+        api: false
+        type: Optional[str]
+    25.04.3:
+      default_parameters: *id001
+  SMK:
+    9.16.3-singularity:
+      container:
+        type: singularity
+      default_parameters: &id002
+      - name: engine-environment
+        value: null
+        api: true
+        type: Optional[str]
+      - name: smk-cores
+        value: '1'
+        api: false
+        type: Optional[int]
+      - name: max-memory
+        value: 100m
+        api: true
+        type: Optional[str validFor Python.memory_units.Memory.from_str($)]
+      - name: max-runtime
+        value: 05:00
+        api: true
+        type: Optional[str validFor Python.tempora.parse_timedelta($)]
+      - name: accounting-name
+        api: true
+        type: Optional[str]
+      - name: job-name
+        api: true
+        type: Optional[str]
+      - name: group
+        api: true
+        type: Optional[str]
+      - name: queue
+        api: true
+        type: Optional[str]
+      - name: use-conda
+        api: false
+        type: bool
+        value: 'false'
+      - name: use-singularity
+        api: false
+        type: bool
+        value: 'false'
+      - name: profile
+        api: false
+        type: Optional[str]
+      - name: tes
+        api: false
+        type: Optional[Url]
+      - name: data-aws-access-key-id
+        api: false
+        type: Optional[str]
+      - name: data-aws-secret-access-key
+        api: false
+        type: Optional[str]
+      - name: task-conda-pkgs-dir
+        api: false
+        type: Optional[Path]
+      - name: task-conda-envs-path
+        api: false
+        type: Optional[Path]
+        value: conda_envs/
+      - name: task-home
+        api: false
+        type: Optional[Path]
+      - name: resume
+        value: 'true'
+        type: bool
+        api: false
+      - name: job-limit
+        value: '1'
+        api: false
+        type: Optional[int]
+      - name: wms-monitor
+        api: false
+        type: str
+      - name: wms-monitor-arg
+        api: false
+        type: str
+    9.16.3:
+      default_parameters: *id002
+cors:
+  enabled: false
+login:
+  enabled: false
+celery: {}
+monitoring:
+  polling_interval_seconds: 30.0
+drs:
+  servers:
+  - id: local
+    host: drs-filer.weskit.internal
+    port: 8080
+    scheme: http
+    local_root: /drs-data
+    allowed_access_schemes:
+    - file
+    timeout_seconds: 10
+trs:
+  servers:
+  - id: local
+    host: trs-filer.weskit.internal
+    port: 8080
+    scheme: http

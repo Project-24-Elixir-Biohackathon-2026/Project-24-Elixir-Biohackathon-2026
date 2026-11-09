@@ -17,17 +17,28 @@
     mode: "0644"
   loop: [log-config.yaml, redis.conf]
 
+- name: WES write guard (spe_harden_trs_readonly)
+  ansible.builtin.copy:
+    src: wes_guard.py
+    dest: "{{ spe_stack_dir }}/deployment/wes_guard.py"
+    mode: "0644"
+  register: wes_guard_file
+  when: spe_harden_trs_readonly
+
 - name: Rendered configuration
   ansible.builtin.template:
     src: "{{ item.src }}"
     dest: "{{ item.dest }}"
     mode: "0644"
-  loop:
-    - { src: weskit_config.yaml.j2, dest: "{{ spe_stack_dir }}/config/weskit_config/config.yaml" }
-    - { src: drs_config.yaml.j2, dest: "{{ spe_stack_dir }}/config/drs_config.yaml" }
-    - { src: trs_config.yaml.j2, dest: "{{ spe_stack_dir }}/config/trs_config.yaml" }
-    - { src: tls.yaml.j2, dest: "{{ spe_stack_dir }}/deployment/tls.yaml" }
-    - { src: compose.install.yaml.j2, dest: "{{ spe_stack_dir }}/deployment/compose.install.yaml" }
+  loop: >-
+    {{ [{'src': 'weskit_config.yaml.j2', 'dest': spe_stack_dir ~ '/config/weskit_config/config.yaml'},
+        {'src': 'drs_config.yaml.j2', 'dest': spe_stack_dir ~ '/config/drs_config.yaml'},
+        {'src': 'trs_config.yaml.j2', 'dest': spe_stack_dir ~ '/config/trs_config.yaml'},
+        {'src': 'tls.yaml.j2', 'dest': spe_stack_dir ~ '/deployment/tls.yaml'},
+        {'src': 'compose.install.yaml.j2', 'dest': spe_stack_dir ~ '/deployment/compose.install.yaml'}]
+       + ([{'src': 'request-validation.yaml.j2',
+            'dest': spe_stack_dir ~ '/config/weskit_config/request-validation.yaml'}]
+          if spe_harden_trs_readonly else []) }}
   loop_control:
     label: "{{ item.dest | basename }}"
   register: rendered
@@ -95,8 +106,11 @@
     project_src: "{{ spe_stack_dir }}/deployment"
     files: [compose.install.yaml]
     state: present
+    remove_orphans: true   # going back below L1 removes wes-guard and its routes
     build: always   # services with a build section (added in a workspace) follow their sources; cached when unchanged
-    recreate: "{{ 'always' if rendered.changed or (cert.changed | default(false)) else 'auto' }}"
+    recreate: >-
+      {{ 'always' if rendered.changed or (cert.changed | default(false))
+         or (wes_guard_file.changed | default(false)) else 'auto' }}
   register: stack_up
   # weskit-data-init is one-shot (restart: 'no'): every up starts it again and
   # compose reports that as a change. Its copy and chown are idempotent, so only

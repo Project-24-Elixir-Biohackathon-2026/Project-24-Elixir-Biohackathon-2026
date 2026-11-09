@@ -257,7 +257,10 @@ def test_vm_runner_timeout_is_an_isolation_error(hdir, monkeypatch):
 
 def _compose(path):
     # The workflow stack's file is a Jinja template; the frontend's is plain Compose with ${VAR}s, which YAML reads as is.
-    data = yaml.safe_load(re.sub(r"\{\{.*?\}\}", "x", path.read_text()))
+    # Its {% if %} blocks are read switched on (every ladder switch only adds), so each {% else %} branch is dropped.
+    text = re.sub(r"^\{% else %\}\n.*?(?=^\{% endif %\})", "", path.read_text(), flags=re.M | re.S)
+    text = re.sub(r"^\{%.*?%\}\n", "", text, flags=re.M)
+    data = yaml.safe_load(re.sub(r"\{\{.*?\}\}", "x", text))
     return data["name"], set(data.get("volumes") or {}), set(data["services"])
 
 

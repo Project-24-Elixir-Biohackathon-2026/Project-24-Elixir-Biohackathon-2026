@@ -1,0 +1,271 @@
+# Managed by Ansible (spe-ansible). Do not edit on the instance.
+networks:
+  weskit:
+    driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: "1442"
+volumes:
+  redis-data: null
+  weskit-data: null
+  weskit-workflows: null
+  slurm-master-var: null
+  slurm-master-spool: null
+  wes-mongodb: {}
+  drs-mongodb: {}
+  trs-mongodb: {}
+services:
+  weskit-data-init:
+    image: weskit:test
+    user: root
+    volumes:
+    - weskit-data:/data
+    - weskit-workflows:/workflows
+    - ./workflows:/workflows-src:ro
+    command:
+    - sh
+    - -c
+    - cp -rn /workflows-src/. /workflows/ && chown -R weskit:weskit /data /workflows
+    restart: 'no'
+  rest:
+    image: weskit:test
+    depends_on:
+    - database
+    - result_broker
+    - weskit-data-init
+    environment:
+      WESKIT_CONFIG: /home/weskit/weskit_config/config.yaml
+      WESKIT_LOG_CONFIG: /home/weskit/weskit_config/log-config.yaml
+      WESKIT_VALIDATION_CONFIG: null
+      WESKIT_UWSGI_INI: /weskit/uwsgi_server/uwsgi.ini
+      WESKIT_DATABASE_URL: mongodb://database:27017
+      WESKIT_DATA: /data
+      RESULT_BACKEND: redis://result_broker:6379
+      BROKER_URL: redis://result_broker:6379
+      FLASK_APP: weskit
+      WESKIT_WORKFLOWS: /workflows
+      WESKIT_CONTAINER_MOUNTS: '[{"source":"/drs-data","target":"/drs-data","mode":"ro"},{"source":"/data-share","target":"/data-share","mode":"ro"}]'
+    volumes:
+    - ../config/weskit_config:/home/weskit/weskit_config:ro
+    - weskit-data:/data:rw
+    - weskit-workflows:/workflows:rw
+    - /data-share:/drs-data:ro
+    - /data-share:/data-share:ro
+    networks:
+    - weskit
+    working_dir: /weskit
+    entrypoint:
+    - conda
+    - run
+    - --no-capture-output
+    - -n
+    - weskit
+    command:
+    - uwsgi
+    - --ini
+    - uwsgi_server/uwsgi.ini
+    labels:
+    - traefik.enable=true
+    - traefik.http.routers.weskit_rest.rule=PathPrefix(`/ga4gh/wes`) || PathPrefix(`/weskit/v1`)
+    - traefik.http.routers.weskit_rest.entrypoints=websecure
+    - traefik.http.routers.weskit_rest.tls=true
+    - traefik.http.routers.weskit_rest.service=weskit_rest
+    - traefik.http.services.weskit_rest.loadbalancer.server.port=5000
+    restart: unless-stopped
+  database:
+    image: mongo:5.0.33
+    networks:
+    - weskit
+    restart: unless-stopped
+    volumes:
+    - wes-mongodb:/data/db
+  result_broker:
+    image: redis:6.2.24-alpine
+    volumes:
+    - ../config/weskit_config/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    - redis-data:/data
+    networks:
+    - weskit
+    command:
+    - redis-server
+    - /usr/local/etc/redis/redis.conf
+    restart: unless-stopped
+  submission_worker:
+    image: weskit:test
+    user: 35671:35671
+    depends_on:
+    - result_broker
+    - weskit-data-init
+    environment:
+      WESKIT_CONFIG: /home/weskit/weskit_config/config.yaml
+      RESULT_BACKEND: redis://result_broker:6379
+      BROKER_URL: redis://result_broker:6379
+      WESKIT_WORKFLOWS: /workflows
+      WESKIT_CONTAINER_MOUNTS: '[{"source":"/drs-data","target":"/drs-data","mode":"ro"},{"source":"/data-share","target":"/data-share","mode":"ro"}]'
+    working_dir: /weskit
+    entrypoint:
+    - conda
+    - run
+    - --no-capture-output
+    - -n
+    - weskit
+    command:
+    - celery
+    - --app
+    - weskit.tasks.celery_worker.celery_app
+    - worker
+    - --loglevel
+    - DEBUG
+    - --concurrency
+    - '4'
+    - --queues
+    - submission
+    volumes:
+    - ../config/weskit_config:/home/weskit/weskit_config:ro
+    - weskit-data:/data:rw
+    - weskit-workflows:/workflows:rw
+    - /data-share:/drs-data:ro
+    - /data-share:/data-share:ro
+    networks:
+    - weskit
+    restart: unless-stopped
+  monitoring_worker:
+    image: weskit:test
+    user: 35671:35671
+    depends_on:
+    - result_broker
+    - weskit-data-init
+    environment:
+      WESKIT_CONFIG: /home/weskit/weskit_config/config.yaml
+      RESULT_BACKEND: redis://result_broker:6379
+      BROKER_URL: redis://result_broker:6379
+      WESKIT_WORKFLOWS: /workflows
+      WESKIT_CONTAINER_MOUNTS: '[{"source":"/drs-data","target":"/drs-data","mode":"ro"},{"source":"/data-share","target":"/data-share","mode":"ro"}]'
+    working_dir: /weskit
+    entrypoint:
+    - conda
+    - run
+    - --no-capture-output
+    - -n
+    - weskit
+    command:
+    - celery
+    - --app
+    - weskit.tasks.celery_worker.celery_app
+    - worker
+    - --loglevel
+    - DEBUG
+    - --concurrency
+    - '2'
+    - --queues
+    - monitoring
+    volumes:
+    - ../config/weskit_config:/home/weskit/weskit_config:ro
+    - weskit-data:/data:rw
+    - weskit-workflows:/workflows:rw
+    - /data-share:/drs-data:ro
+    - /data-share:/data-share:ro
+    networks:
+    - weskit
+    restart: unless-stopped
+  monitoring_scheduler:
+    image: weskit:test
+    user: 35671:35671
+    depends_on:
+    - result_broker
+    - weskit-data-init
+    environment:
+      WESKIT_CONFIG: /home/weskit/weskit_config/config.yaml
+      RESULT_BACKEND: redis://result_broker:6379
+      BROKER_URL: redis://result_broker:6379
+      WESKIT_WORKFLOWS: /workflows
+      WESKIT_CONTAINER_MOUNTS: '[{"source":"/drs-data","target":"/drs-data","mode":"ro"},{"source":"/data-share","target":"/data-share","mode":"ro"}]'
+    working_dir: /weskit
+    entrypoint:
+    - conda
+    - run
+    - --no-capture-output
+    - -n
+    - weskit
+    command:
+    - celery
+    - --app
+    - weskit.tasks.celery_worker.celery_app
+    - beat
+    - --loglevel
+    - INFO
+    volumes:
+    - ../config/weskit_config:/home/weskit/weskit_config:ro
+    - weskit-data:/data:rw
+    - weskit-workflows:/workflows:rw
+    - /data-share:/drs-data:ro
+    - /data-share:/data-share:ro
+    networks:
+    - weskit
+    restart: unless-stopped
+  traefik:
+    image: traefik:v2.11
+    restart: unless-stopped
+    ports:
+    - 443:443
+    networks:
+    - weskit
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock:ro
+    - ./tls.yaml:/configuration/tls.yaml:ro
+    - /home/ubuntu/workflow-stack/certs:/certs:ro
+    command:
+    - --providers.docker=true
+    - --providers.docker.exposedbydefault=false
+    - --providers.file.filename=/configuration/tls.yaml
+    - --entrypoints.websecure.address=:443
+    - --log.level=INFO
+  drs-mongodb:
+    image: mongo:3.6
+    restart: unless-stopped
+    volumes:
+    - drs-mongodb:/data/db
+    networks:
+    - weskit
+  drs-filer:
+    image: drs-filer:753dcc0
+    restart: unless-stopped
+    depends_on:
+    - drs-mongodb
+    networks:
+      weskit:
+        aliases:
+        - drs-filer.weskit.internal
+    volumes:
+    - ../config/drs_config.yaml:/app/drs_filer/config.yaml:ro
+    - /data-share:/drs-data:ro
+    labels:
+    - traefik.enable=true
+    - traefik.http.routers.drs.rule=PathPrefix("/ga4gh/drs")
+    - traefik.http.routers.drs.entrypoints=websecure
+    - traefik.http.routers.drs.tls=true
+    - traefik.http.services.drs.loadbalancer.server.port=8080
+  trs-mongodb:
+    image: mongo:3.6
+    restart: unless-stopped
+    volumes:
+    - trs-mongodb:/data/db
+    networks:
+    - weskit
+  trs-filer:
+    image: trs-filer:05a567c
+    restart: unless-stopped
+    depends_on:
+    - trs-mongodb
+    networks:
+      weskit:
+        aliases:
+        - trs-filer.weskit.internal
+    volumes:
+    - ../config/trs_config.yaml:/app/trs_filer/config.yaml:ro
+    labels:
+    - traefik.enable=true
+    - traefik.http.routers.trs.rule=PathPrefix("/ga4gh/trs")
+    - traefik.http.routers.trs.entrypoints=websecure
+    - traefik.http.routers.trs.tls=true
+    - traefik.http.services.trs.loadbalancer.server.port=8080
+name: workflow-stack

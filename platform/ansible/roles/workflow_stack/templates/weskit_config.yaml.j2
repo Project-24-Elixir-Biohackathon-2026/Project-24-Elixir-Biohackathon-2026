@@ -109,7 +109,7 @@ workflow_engines:
       default_parameters: &id002
       - name: engine-environment
         value: null
-        api: true
+        api: {{ 'false' if spe_harden_trs_readonly else 'true' }}
         type: Optional[str]
       - name: smk-cores
         value: '1'

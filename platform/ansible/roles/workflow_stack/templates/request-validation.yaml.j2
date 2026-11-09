@@ -1,0 +1,16 @@
+# Managed by Ansible (spe-ansible); rendered only with spe_harden_trs_readonly.
+# WESkit's run-request schema, upstream config/request-validation.yaml, plus the
+# workflow_url regex: only TRS URIs of the stack's own TRS (ladder level L1).
+run_request:
+  workflow_params: {required: true, type: string}
+  workflow_type: {required: true, type: string}
+  workflow_type_version: {required: true, type: string}
+  tags: {required: false, type: string}
+  workflow_engine_parameters: {required: false, type: string}
+  workflow_engine: {required: false, type: string}
+  workflow_engine_version: {required: false, type: string, dependencies: workflow_engine}
+  workflow_url:
+    required: true
+    type: string
+    # \Z, not $: Cerberus uses re.match, and $ also matches before a trailing newline.
+    regex: '^trs://trs-filer\.weskit\.internal:8080/[^\s?#]+\Z'

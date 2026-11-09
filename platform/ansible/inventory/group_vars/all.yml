@@ -47,7 +47,9 @@ spe_frontend_ports: >-
   {{ ([spe_webui_local_port] if 'openwebui' in spe_frontends else [])
      + ([spe_agui_ui_port, spe_agui_agent_port] if 'agui' in spe_frontends else []) }}
 spe_owned_ports: >-
-  {{ dict([['443', 'workflow-stack']] + (spe_frontend_ports | map('string') | product(['spe-frontend']) | list)
+  {{ dict([['443', 'workflow-stack']]
+          + ([[spe_trs_admin_port | string, 'workflow-stack']] if spe_harden_trs_readonly else [])
+          + (spe_frontend_ports | map('string') | product(['spe-frontend']) | list)
           + ([[spe_eval_sink_port | string, 'spe-eval-sink']] if spe_eval_sink | bool else [])) }}
 
 # --- controller-side paths ---------------------------------------------------
@@ -85,7 +87,8 @@ spe_mongo_image: mongo:5.0.33           # WESkit database
 spe_redis_image: redis:6.2.24-alpine    # WESkit result broker
 spe_traefik_image: traefik:v2.11
 spe_filer_mongo_image: mongo:3.6        # drs-filer and trs-filer databases
-spe_stack_images: "{{ [spe_mongo_image, spe_redis_image, spe_traefik_image, spe_filer_mongo_image] }}"
+spe_wes_guard_image: python:3.12-alpine   # L1 WES write guard (spe_harden_trs_readonly)
+spe_stack_images: "{{ [spe_mongo_image, spe_redis_image, spe_traefik_image, spe_filer_mongo_image] + ([spe_wes_guard_image] if spe_harden_trs_readonly else []) }}"
 spe_prefetch_images: "{{ spe_stack_images + ([spe_frontend_webui_image] if 'openwebui' in spe_frontends else []) }}"
 # sha256 of every data file, computed in the background after seeding and read
 # by the DRS registration (role drs_register).
@@ -210,6 +213,11 @@ spe_local_vars:
   - spe_agent_compaction_summary_max_tokens
   - spe_agent_title_generation
   - spe_webui_auth
+  - spe_agent_tool_surface
+  - spe_harden_trs_readonly
+  - spe_harden_data_tiers
+  - spe_harden_egress
+  - spe_harden_airlock
 spe_local_vars_extra: []     # instance files add their own overrides here
 spe_frontend_webui_image: ghcr.io/open-webui/open-webui:v0.13.0
 spe_frontend_terminal_image: spe-open-terminal:0.16.1
@@ -309,6 +317,10 @@ spe_harden_data_tiers: []        # L2: tiers workflow containers mount, e.g. [re
 spe_harden_egress: false         # L3: the sandbox reaches only the API host on 443
 # L4 is spe_agent_tool_surface (above) set to anything but 'shell'
 spe_harden_airlock: false        # L5: pattern filter on the agent's final answer
+# L1 (spe_harden_trs_readonly): operator TRS writes use a Traefik entrypoint published
+# on the VM's 127.0.0.1 only; the sandbox's TRS route is read-only.
+spe_trs_admin_port: 8443
+spe_trs_write_api: "https://{{ ('127.0.0.1:' ~ spe_trs_admin_port) if spe_harden_trs_readonly else spe_api_host }}/ga4gh/trs/v2"
 spe_agent_sandbox_operations: all    # or a list of open-terminal operationIds
 spe_agent_include_sandbox_prompt: true
 spe_agent_max_output_bytes: 16384

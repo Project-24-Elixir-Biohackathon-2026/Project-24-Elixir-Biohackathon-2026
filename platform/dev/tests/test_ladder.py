@@ -71,3 +71,11 @@ def test_level_files_carry_no_host_identity():
     for n, level in levels().items():
         own = [k for k in level if k in ("spe_instance", "spe_seed", "spe_provision") or k.startswith("spe_existing_")]
         assert own == [], f"L{n} sets {own}: those belong in the private instance file"
+
+
+def test_spe_apply_keeps_every_ladder_switch():
+    # spe-apply re-renders from spe_local_vars; a switch missing there falls back to off,
+    # and remove_orphans then drops the level's controls under a hardened hardening.json.
+    harden = {k for k in DEFAULTS if k.startswith("spe_harden_")}
+    assert harden <= set(LADDER)
+    assert set(LADDER) <= set(DEFAULTS["spe_local_vars"])

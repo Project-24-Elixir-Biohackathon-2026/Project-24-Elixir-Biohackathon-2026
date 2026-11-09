@@ -196,6 +196,18 @@ deployment (L0).
 `hardening.json`'s `level` counts the leading switches that are on, in this order; a non-contiguous pattern
 never counts past its first switch that is off. The `handoff` role writes it (`roles/handoff/tasks/hardening.yml`).
 
+### L1: `spe_harden_trs_readonly`
+
+The agent cannot add code to run. Traefik routes TRS for the sandbox only on `GET`/`HEAD`; writes on
+port 443 get 403 and never reach trs-filer. The build's own TRS writes (`trs_install`) use the
+`admin` entrypoint, published on the VM's `127.0.0.1:{{ spe_trs_admin_port }}` (8443) only
+(`spe_trs_write_api`). Every WES write passes `wes-guard` (`roles/workflow_stack/files/wes_guard.py`),
+which refuses file parts and non-TRS `workflow_url`s, and any request its parser and WESkit's could
+read differently (repeated framing headers or parameters, encoded parts). WESkit's own request schema
+(`request-validation.yaml.j2`) refuses non-TRS URLs too, and SMK's `engine-environment` is no longer
+client-settable. The agent's runbook does not change: an infrastructure control does not touch the
+agent. Going back below L1 removes `wes-guard` (`remove_orphans`).
+
 ## The chats and the agent
 
 `spe_frontends` lists what runs: `[openwebui, agui]` by default, one of them, or
