@@ -16,6 +16,7 @@ const BROWSER_START = START;
 // A session whose last recorded run ended at `ran`; `updated_at` as late as that, or later.
 const row = (ran: string | null, id = ID, updated = ran ?? "2026-10-29T08:00:00.000Z"): SessionMeta => ({
   id, title: "t", tags: [], pinned: false, hidden: false, created_at: updated, updated_at: updated, last_run_at: ran,
+  running: false,
 });
 
 test("showsRun: the session present with last_run_at not older than the run's start", () => {

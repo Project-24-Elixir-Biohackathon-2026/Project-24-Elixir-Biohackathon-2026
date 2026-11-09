@@ -119,9 +119,9 @@ test("a run makes a listed session: auto title, created_at, updated_at and last_
   const { id } = await seedRun(journals, "  List the\nhome directory ");
   const [meta] = await journals.list();
   assert.deepEqual(Object.keys(meta).sort(),
-    ["created_at", "hidden", "id", "last_run_at", "pinned", "tags", "title", "updated_at"]);
+    ["created_at", "hidden", "id", "last_run_at", "pinned", "running", "tags", "title", "updated_at"]);
   assert.deepEqual(meta, {
-    id, title: "List the home directory", tags: [], pinned: false, hidden: false,
+    id, title: "List the home directory", tags: [], pinned: false, hidden: false, running: false,
     created_at: at(1).toISOString(), updated_at: at(1).toISOString(), last_run_at: at(1).toISOString(),
   });
 });
@@ -133,7 +133,7 @@ test("get(): the tip's branch and the metadata without last_run_at; null when mi
   const view = await journals.get(first.id);
   assert.ok(view);
   assert.deepEqual(Object.keys(view).sort(),
-    ["created_at", "hidden", "id", "messages", "pinned", "tags", "title", "updated_at"]);
+    ["created_at", "hidden", "id", "messages", "pinned", "running", "tags", "title", "updated_at"]);
   assert.deepEqual(view.messages.map((m) => [m.role, m.content]), [
     ["user", "first question"], ["assistant", "echo: first question"],
     ["user", "second question"], ["assistant", "echo: second question"],
