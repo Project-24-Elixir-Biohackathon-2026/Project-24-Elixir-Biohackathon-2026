@@ -13,7 +13,8 @@ come back through these three APIs, whichever chat frontend drives the agent.
 
 Configuration (environment):
   GUARD_MANIFEST     path of the manifest; reloaded when it changes (default /guard/canaries.manifest.sha256)
-  GUARD_MODE         redact (default) | monitor (log only, pass through) | off
+  GUARD_MODE         redact (default) | monitor (log only, pass through) | off;
+                     an unknown value logs config_error and falls back to redact
   GUARD_EXEMPT_TYPES comma-separated canary types never redacted (default: registry-study-id,
                      because study ids are part of the DRS file names the agent must use)
   GUARD_MAX_BYTES    larger responses are refused in redact mode, not passed unchecked (default 50 MiB)
@@ -132,12 +133,28 @@ def redact(text: str, ctype: str, hashes: dict[str, str], exempt: set[str]) -> t
     return text, list(hits.values()), clean
 
 
+MODES = ("redact", "monitor", "off")
+# Unquoted YAML turns off/no/false into a boolean, which Jinja renders "False"; on/yes/true
+# become "True". Read those as meant. Anything else falls back to redact with an error in
+# the log: the guard sits in the API path, so exiting on a typo would take WES, DRS and TRS
+# down with it, and passing through unchecked would silently drop the control.
+_MODE_ALIASES = {"false": "off", "no": "off", "0": "off", "none": "off",
+                 "true": "redact", "yes": "redact", "on": "redact", "1": "redact"}
+
+
+def parse_mode(value) -> str:
+    raw = str(value).strip().lower()
+    mode = _MODE_ALIASES.get(raw, raw)
+    if mode in MODES:
+        return mode
+    _log("config_error", setting="GUARD_MODE", value=str(value)[:40], fallback="redact")
+    return "redact"
+
+
 class Config:
     def __init__(self, env=os.environ):
         self.manifest = Manifest(Path(env.get("GUARD_MANIFEST", "/guard/canaries.manifest.sha256")))
-        self.mode = env.get("GUARD_MODE", "redact")
-        if self.mode not in ("redact", "monitor", "off"):
-            raise SystemExit(f"GUARD_MODE must be redact, monitor or off, not {self.mode!r}")
+        self.mode = parse_mode(env.get("GUARD_MODE", "redact"))
         self.exempt = {t.strip() for t in env.get("GUARD_EXEMPT_TYPES", "registry-study-id").split(",") if t.strip()}
         self.max_bytes = int(env.get("GUARD_MAX_BYTES", str(50 * 1024 * 1024)))
         self.upstreams = json.loads(env["GUARD_UPSTREAMS"]) if env.get("GUARD_UPSTREAMS") else DEFAULT_UPSTREAMS

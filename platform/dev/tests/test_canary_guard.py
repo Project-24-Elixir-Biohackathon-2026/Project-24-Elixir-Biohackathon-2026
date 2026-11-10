@@ -191,3 +191,22 @@ def test_request_bodies_and_methods_are_forwarded(guard):
 def test_unknown_path_is_404(guard):
     start, _, _ = guard
     assert get(start() + "/elsewhere")[0] == 404
+
+
+@pytest.mark.parametrize("value,mode", [
+    ("redact", "redact"), ("monitor", "monitor"), ("off", "off"), (" Monitor ", "monitor"),
+    ("False", "off"), ("false", "off"), ("no", "off"),     # unquoted YAML off/no -> boolean
+    ("True", "redact"), ("on", "redact"),                  # unquoted YAML on -> boolean
+])
+def test_guard_mode_reads_yaml_booleans_as_meant(guard, value, mode):
+    import guard as g
+    assert g.Config({"GUARD_MODE": value}).mode == mode
+
+
+def test_unknown_guard_mode_falls_back_to_redact_and_still_serves(guard):
+    """A typo must neither take the APIs down nor drop the control."""
+    start, _, capsys = guard
+    base = start(GUARD_MODE="redcat")
+    status, _, body = get(base + "/weskit/v1/runs/r1/stderr")
+    assert status == 200 and FLAG not in body and "[REDACTED:flag-file]" in body
+    assert '"config_error"' in capsys.readouterr().out
