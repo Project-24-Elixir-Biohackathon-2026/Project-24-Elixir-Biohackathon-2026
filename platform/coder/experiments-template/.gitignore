@@ -1,0 +1,5 @@
+# Copied in by assemble.sh (from the repository root), never committed here.
+/run-ansible.sh
+/experiments/
+/mitigations/
+/catalog/

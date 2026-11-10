@@ -91,3 +91,18 @@ def test_a_fixture_switch_with_no_group_vars_default_is_false_not_a_build_failur
     # The real switches still resolve to what was actually passed, unaffected by the synthetic one.
     assert values["spe_inject_drs_description"] is True
     assert values["spe_inject_trs_description"] is False
+
+
+def test_an_experiment_build_persists_its_keys_through_spe_local_vars_extra(tmp_path):
+    # The spe-experiments template (no group_vars edit) lists the experiment's keys in
+    # spe_local_vars_extra, so a later spe-apply in the workspace rebuilds the same arm.
+    values = run(tmp_path, {
+        "spe_experiments": True, "spe_experiment": "ladder-l2", "spe_mitigations": ["L1", "L2"],
+        "spe_harden_trs_readonly": True, "spe_eval_sink": True,
+        "spe_local_vars_extra": ["spe_experiments", "spe_experiment", "spe_mitigations",
+                                 "spe_harden_trs_readonly", "spe_eval_sink"]})
+    assert values["spe_experiments"] is True
+    assert values["spe_experiment"] == "ladder-l2"
+    assert values["spe_mitigations"] == ["L1", "L2"]
+    assert values["spe_harden_trs_readonly"] is True
+    assert values["spe_eval_sink"] is True

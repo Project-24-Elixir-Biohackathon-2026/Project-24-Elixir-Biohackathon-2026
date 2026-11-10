@@ -19,6 +19,83 @@
           openstack or existing; spe_frontends is a list of openwebui and/or agui (both by
           default, [] for none); spe_harden_airlock filters the AG-UI agent only: set
           spe_frontends: [agui] with it
+
+    # spe_mitigations (the spe-experiments template's selection) is checked against
+    # mitigations/<id>.yml at the repository root before anything is created (spec
+    # docs/specs/2026-11-10-experiments-design/02-coder-template.md, *Into Ansible*). Empty
+    # spe_mitigations (the default, every build outside that template) reads nothing here.
+    - name: Mitigation selection checked before anything is created
+      when: spe_mitigations | length > 0
+      vars:
+        spe_mitigations_root: "{{ playbook_dir }}/../../../mitigations"
+        # {% for %} + to_json round trip (as roles/handoff/tasks/hardening.yml's
+        # spe_injection_switches_on_json does): a list built item by item in a loop needs this to
+        # come back as a real list, not its string repr.
+        spe_mitigation_catalog_json: >-
+          {%- set ns = namespace(list=[]) -%}
+          {%- for f in query('ansible.builtin.fileglob', spe_mitigations_root ~ '/*.yml') -%}
+          {%- set _ = ns.list.append(lookup('ansible.builtin.file', f) | from_yaml) -%}
+          {%- endfor -%}
+          {{ ns.list | to_json }}
+        spe_mitigation_catalog: "{{ spe_mitigation_catalog_json | from_json }}"
+        spe_mitigation_known_ids: "{{ spe_mitigation_catalog | map(attribute='id') | list }}"
+        spe_mitigation_planned_ids: >-
+          {{ spe_mitigation_catalog | selectattr('status', 'defined')
+             | selectattr('status', 'equalto', 'planned') | map(attribute='id') | list }}
+        spe_mitigation_by_id: "{{ dict(spe_mitigation_known_ids | zip(spe_mitigation_catalog)) }}"
+        spe_mitigation_bad_ids: >-
+          {{ (spe_mitigations | reject('in', spe_mitigation_known_ids) | list
+              + spe_mitigations | select('in', spe_mitigation_planned_ids) | list) | unique | list }}
+        spe_mitigation_known_selected: "{{ spe_mitigations | difference(spe_mitigation_bad_ids) }}"
+        spe_mitigation_requires_problems_json: >-
+          {%- set ns = namespace(list=[]) -%}
+          {%- for mid in spe_mitigation_known_selected -%}
+          {%- set missing = (spe_mitigation_by_id[mid].requires | default([])) | difference(spe_mitigations) -%}
+          {%- if missing | length > 0 -%}
+          {%- set _ = ns.list.append(mid ~ ' requires ' ~ (missing | join(', '))) -%}
+          {%- endif -%}
+          {%- endfor -%}
+          {{ ns.list | to_json }}
+        spe_mitigation_requires_problems: "{{ spe_mitigation_requires_problems_json | from_json }}"
+        spe_mitigation_conflicts_problems_json: >-
+          {%- set ns = namespace(list=[]) -%}
+          {%- for mid in spe_mitigation_known_selected -%}
+          {%- set clashing = (spe_mitigation_by_id[mid].conflicts | default([])) | intersect(spe_mitigations) -%}
+          {%- if clashing | length > 0 -%}
+          {%- set _ = ns.list.append(mid ~ ' conflicts with ' ~ (clashing | join(', '))) -%}
+          {%- endif -%}
+          {%- endfor -%}
+          {{ ns.list | to_json }}
+        spe_mitigation_conflicts_problems: "{{ spe_mitigation_conflicts_problems_json | from_json }}"
+        spe_mitigation_ladder_selected: "{{ spe_mitigations | select('match', '^L[0-9]+$') | list | sort }}"
+        spe_mitigation_ladder_selected_n: >-
+          {{ spe_mitigation_ladder_selected | map('regex_replace', '^L', '') | map('int') | sort | list }}
+      block:
+        - name: Every selected mitigation id exists and is not status planned
+          ansible.builtin.assert:
+            that: spe_mitigation_bad_ids | length == 0
+            fail_msg: "spe_mitigations names unknown or planned mitigation id(s): {{ spe_mitigation_bad_ids | join(', ') }}"
+            quiet: true
+
+        - name: Every selected mitigation's requires is met
+          ansible.builtin.assert:
+            that: spe_mitigation_requires_problems | length == 0
+            fail_msg: "{{ spe_mitigation_requires_problems | join('; ') }}"
+            quiet: true
+
+        - name: No two selected mitigations conflict
+          ansible.builtin.assert:
+            that: spe_mitigation_conflicts_problems | length == 0
+            fail_msg: "{{ spe_mitigation_conflicts_problems | join('; ') }}"
+            quiet: true
+
+        - name: Selected ladder mitigations are contiguous from L1
+          ansible.builtin.assert:
+            that: spe_mitigation_ladder_selected_n == (range(1, spe_mitigation_ladder_selected_n | length + 1) | list)
+            fail_msg: >-
+              spe_mitigations selects non-contiguous ladder levels ({{ spe_mitigation_ladder_selected | join(', ') }});
+              select L1, then L2, ... with no gaps
+            quiet: true
   roles:
     - { role: os_provision, tags: [always], when: spe_provision == 'openstack' }
     - { role: existing_host, tags: [always], when: spe_provision == 'existing' }

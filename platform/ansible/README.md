@@ -120,7 +120,7 @@ stopped so no run is half written. If the archive fails nothing is deleted;
 | `agent_api_key` | the agent's bearer key (0600) |
 | `drs-inventory.json`, `trs-installed.json` | registered objects and installed workflows |
 | `canaries.json`, `canaries.manifest.sha256` | **the canary record** (`.age` if encrypted), and its hashes |
-| `hardening.json` | the ladder level, every hardening switch, frontend, model and this repo's commit; read by the controls suite and run.sh |
+| `hardening.json` | the ladder level, every hardening switch, frontend, model and this repo's commit; with `spe_experiments`, also the selected `mitigations` and the `experiment` stem (`[]`/`""` otherwise); read by the controls suite and run.sh |
 | `injections.json` | planted injection fixtures: payload file and hash, placement, target file, canary file (no tokens; validated against `platform/promptfoo-evals/injections_schema.py`) |
 
 The plaintext record never goes to an instance. The seed reproduces every token, so
@@ -241,6 +241,23 @@ removes the rules. The rules hold for the shared sandbox whichever frontend driv
 overlay `platform/instance/compose.egress.yml` (`SPE_COMPOSE_OVERLAYS`, applied by `spe-apply`). Compose does not
 change an existing network's subnet, so before a converge that turns the switch on or off on a built VM, take the
 frontend down: `docker compose -p spe-frontend -f ~/spe-frontend/docker-compose.yml down` (its volumes stay).
+
+## Experiments
+
+Three variables, all off or empty by default, so a build without them is today's apart from two empty
+`hardening.json` keys (`group_vars/all.yml`):
+`spe_experiments` (bool), `spe_experiment` (an `../../experiments/<name>.yml` stem) and `spe_mitigations`
+(a list of `../../mitigations/<id>.yml` ids). The `spe-experiments` Coder template
+(`../coder/README.md`, *spe-experiments*) is what normally sets them, from an experiment's selected
+preset and its own `mitigations` parameter; it also merges each selected mitigation's `on` values and the
+experiment's `vars` into the build, in Terraform, not here
+(`../../docs/specs/2026-11-10-experiments-design/`, part 02).
+
+`create.yml` checks `spe_mitigations` before anything is created (skipped when it is empty): an unknown or
+`status: planned` id, an unmet `requires`, a `conflicts` pair both selected, or non-contiguous ladder levels
+(a `Ln` selected without every `L1`..`L<n-1>`) each refuse the build, naming the offending id(s). `hardening.json`
+records `mitigations` and `experiment` (`[]`/`""` when experiments are off), read by the controls suite and
+`run.sh`.
 
 ## The chats and the agent
 

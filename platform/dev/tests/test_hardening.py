@@ -1,4 +1,6 @@
-"""roles/handoff hardening.json: switches from group_vars, level = leading switches on, the repo's commit."""
+"""roles/handoff hardening.json: switches from group_vars, level = leading switches on, the repo's commit,
+and (spec docs/specs/2026-11-10-experiments-design/01-experiment-model.md, *Mitigations*) the
+selected mitigations and the experiment's stem, [] and "" outside spe_experiments."""
 import json
 import os
 import shutil
@@ -42,13 +44,17 @@ def build(tmp_path, overrides):
     ({"spe_harden_trs_readonly": True, "spe_harden_data_tiers": ["ref", "genomes"]}, 2),
     ({"spe_harden_data_tiers": ["ref"]}, 0), ({"spe_harden_egress": True}, 0),
     ({"spe_harden_trs_readonly": True, "spe_harden_data_tiers": ["ref", "genomes"], "spe_harden_egress": True,
-      "spe_agent_tool_surface": "typed", "spe_harden_airlock": True}, 5)])
+      "spe_agent_tool_surface": "typed", "spe_harden_airlock": True}, 5),
+    ({"spe_mitigations": ["L1", "L2"]}, 0), ({"spe_experiment": "ladder-l2"}, 0),
+    ({"spe_harden_trs_readonly": True, "spe_mitigations": ["L1"], "spe_experiment": "ladder-l1"}, 1)])
 def test_hardening_json(tmp_path, overrides, level):
     rec = build(tmp_path, overrides)
     head = subprocess.run(["git", "-C", str(ANSIBLE), "rev-parse", "HEAD"], capture_output=True, text=True).stdout
-    assert rec == {"schema_version": 1, "instance": "t-01", "level": level, "switches": {**OFF, **overrides},
+    switch_overrides = {k: v for k, v in overrides.items() if k in OFF}
+    assert rec == {"schema_version": 1, "instance": "t-01", "level": level, "switches": {**OFF, **switch_overrides},
                    "frontend": "agui", "model_provider": "openai_compatible", "model": "test-model",
-                   "commit": head.strip(), "restore_seconds": None, "injections": False}
+                   "commit": head.strip(), "restore_seconds": None, "injections": False,
+                   "mitigations": overrides.get("spe_mitigations", []), "experiment": overrides.get("spe_experiment", "")}
 
 
 def test_injections_all_on(tmp_path):

@@ -50,8 +50,11 @@ from `main` within minutes.
 Beside the threats, `paths/` holds the routes a canary can leave by (`P<n>-*.md`, from
 `paths/TEMPLATE.md`) and `mitigations/` the switches that close them (`<id>.yml`: the ladder
 levels `L<n>` and contributed ones, each with the Ansible values it sets `on` and `off`).
-`validate.py` checks all three kinds, including that a mitigation's `off` values are the
-defaults and that no two mitigations set the same Ansible key.
+`experiments/` measures one threat and path against one mitigation (`<name>.yml`; `experiments/README.md`
+indexes them), each offered as a preset of the `spe-experiments` workspace template beside the plain `spe`
+one. `validate.py` checks all four kinds, including that a mitigation's `off` values are the defaults, that
+no two mitigations set the same Ansible key, and that an experiment names real threats, paths and
+mitigations.
 
 ## The platform
 

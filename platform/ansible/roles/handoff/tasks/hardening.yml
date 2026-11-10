@@ -64,4 +64,6 @@
       commit: "{{ spe_repo_head.stdout | trim }}"
       restore_seconds: null
       injections: "{{ spe_injections_planted }}"
+      mitigations: "{{ spe_mitigations }}"   # selected mitigations/<id>.yml ids; [] outside spe_experiments
+      experiment: "{{ spe_experiment }}"     # the experiments/<name>.yml stem; "" when none
   delegate_to: localhost

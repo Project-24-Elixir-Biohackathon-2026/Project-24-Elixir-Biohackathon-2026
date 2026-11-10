@@ -190,3 +190,14 @@ start reads this section; keep it short.
   `destroy.yml` leaves it on an existing host (only a build with `spe_eval_sink` off removes it) — from slice 4's
   pre-flight (F2); waits because the reset refuses any path outside the owned ones, and the evaluation reads the
   log by length, so an old log is harmless.
+- `sync-template.sh`: a branch `template/x-foo` and an experiment branch `experiment/foo` both map to the Coder
+  template name `spe-x-foo`: pushing one overwrites the other's, and deleting `template/x-foo` deletes it, not
+  re-pushed until `experiment/foo` moves (#86); waits for a fix: refuse `template/x-*` names.
+- `spe-experiments`: an experiment whose generated measures line (`<threat> via <paths> · <mitigation>`) is
+  already past the provider's 128-byte description limit fails the whole plan with a generic error naming no
+  field (#86); waits because no experiment reaches that length yet.
+- `spe-experiments`: a workspace moved onto a template version lacking its experiment or mitigation stem fails
+  every plan, stop included (`local.experiments[local.experiment_stem]` has no fallback) (#86); waits because no
+  workspace has hit it yet.
+- `experiments-template/assemble.sh`: an empty `experiments/` or `mitigations/` fails on the unexpanded glob
+  with a misleading "no such file" for a literal `*.yml` (#86); waits because the repo ships both populated.

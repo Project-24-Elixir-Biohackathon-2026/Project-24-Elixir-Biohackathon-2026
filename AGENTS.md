@@ -203,9 +203,8 @@ Each unit's PR updates its track's line; the last slice removes it. An open upst
 is open (`docs/guides/contributing-upstream.md`, step 6).
 
 - **Experiments** (spec `docs/specs/2026-11-10-experiments-design/`, merged; no plan, slices from its
-  `inputs-for-plan.md`): slice 2/7 (the new template) in #86; handoff
-  `docs/handoffs/2026-11-10T1309Z-experiments-slice-2.md`. Spec amendment (contribution kinds, slice 6's design)
-  in #87, waiting on the user's `approved`.
+  `inputs-for-plan.md`): slice 2/7 (the new template) in #86; next slice 3/7, `spe-eval`; handoff
+  `docs/handoffs/2026-11-10T1455Z-experiments-slice-3.md`.
 - **Upstream PR kraatz #28** (`contrib/agui-archive-markdown`): archive Markdown wording, autolinks, refusal
   reason, bad timestamps; waits on upstream's review.
 - **Upstream PR kraatz #29** (`contrib/agui-chat-ui-polish`): reopened sessions land on their end, menu focus;
@@ -232,6 +231,7 @@ new template), how the person tests it, and how a tested change becomes a templa
 |---|---|
 | `threats/`, `vocabulary.yaml`, `validate.py` | Threat model catalog (`TM-NNN-*.md`, new entries start from `threats/TEMPLATE.md`), its controlled vocabulary and validator |
 | `paths/`, `mitigations/` | Paths (`P<n>-*.md`) and mitigations (`<id>.yml`: ladder levels `L<n>` plus contributed ones), both checked by `validate.py` |
+| `experiments/` | A threat and path measured against a mitigation (`<name>.yml`, checked by `validate.py`; `experiments/README.md` indexes them): the `spe-experiments` Coder template's presets (`platform/coder/experiments-template/`) |
 | `platform/ansible/` | Playbooks that create, verify, archive and destroy one SPE instance (`platform/ansible/README.md`) |
 | `platform/coder/` | The self-service portal (Coder) that runs those playbooks for participants (`platform/coder/README.md`) |
 | `platform/site/` | The landing page and the threat catalog page served next to the portal, built from `threats/` (`platform/site/README.md`) |
@@ -277,7 +277,7 @@ pinned commit; move the pin there after the push.
 ### Running things
 
 ```bash
-uv run --with pyyaml python validate.py              # threats, paths, mitigations
+uv run --with pyyaml python validate.py              # threats, paths, mitigations, experiments
 uv run --with pyyaml --with mkdocs-material python platform/site/build.py   # landing page + catalog -> platform/site/dist/
 uv run --with pytest --with pyyaml --with mkdocs-material pytest platform/dev/tests -q   # dataset generator, host preflight, site build, archive
 (cd platform/agui/pydantic-ai-agent && uv run --group dev pytest -q)   # agent

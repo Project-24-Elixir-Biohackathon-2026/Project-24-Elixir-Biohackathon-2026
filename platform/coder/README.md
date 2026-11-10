@@ -202,6 +202,37 @@ after the stop; `openstack server list` shows no `cw-…-api` server left.
 Optional: `coder templates edit spe-testbed --default-ttl 12h` stops forgotten
 workspaces, which destroys their instances after archiving.
 
+## spe-experiments
+
+A second template, `experiments-template/`, offers the catalogue of threats, paths and mitigations
+(`../../threats/`, `../../paths/`, `../../mitigations/`) as `experiments/*.yml` presets
+(`../../experiments/README.md` indexes them) next to spe's own manual form:
+
+- **`experiment`** (order 1): a dropdown of `experiments/*.yml` stems, default `ladder-l0`. Picked with its
+  preset, which sets `samples`, `tiers`, `workflows`, `canaries`, `flavor` and `smoke_test` (orders 3–9, spe's
+  own parameters, unchanged) and its `vars` (e.g. `spe_frontends`, `spe_eval_sink`); `ladder-l0`'s values are
+  the form's own defaults, so a dropdown pick without its preset keeps the other values.
+- **`mitigations`** (order 2): a multi-select of every mitigation not `status: planned`
+  (`../../mitigations/*.yml`), default `[]`. Selected mitigations' `on` values, the experiment's `vars` and its
+  listed injections' switches all merge into the build; `validate.py` refuses an experiment whose `vars` set a
+  key any catalogue mitigation or injection fixture also sets, so the three never collide.
+- "Create workspace" lists one preset per experiment file, its description ending
+  `— <threat> via <paths> · <mitigation <id>: <name>, or "no mitigation (one arm)">`, cut to the provider's
+  128-byte limit on `description`, alongside the manual form.
+
+`experiments-template/assemble.sh <repo root> [<template dir>]` copies `experiments/`, `mitigations/`,
+`catalog/injections/fixtures.json` and `run-ansible.sh` into the template directory, since Terraform's
+`fileset()` only sees files already inside it (`.gitignore`d there, copied fresh before every plan or push,
+stale copies removed first).
+`sync-template.sh` pushes the result as `spe-experiments` (`SPE_EXPERIMENTS_TEMPLATE_NAME`) the same way it
+pushes `spe`, on its own head-changed check.
+
+**Testing the template without Coder:** `platform/dev/tests/test_experiments_template.py` plans it with
+OpenTofu and checks the planned values (presets offered, `build_vars` for a preset and for overridden
+parameters). It needs a `tofu` or `terraform` binary: on PATH, or named by `SPE_TOFU=<path>` (plus
+`TF_PLUGIN_CACHE_DIR=<dir>` to cache the coder provider across runs); without either, the 7 cases that need a
+plan are skipped and only the no-tofu `assemble.sh` case runs.
+
 ## Branch templates
 
 A pushed branch named `template/<name>` becomes the portal template `spe-<name>`
@@ -209,6 +240,11 @@ within 5 minutes, built from that branch's Ansible code, with the clone on the V
 that branch's commit. A push updates it; deleting the branch deletes it once no
 workspace uses it. `<name>`: lowercase letters, digits and hyphens, 28 characters at
 most. This is how a change is tried on a fresh workspace before it is merged.
+
+A pushed branch named `experiment/<name>` becomes the portal template `spe-x-<name>`
+(prefix `SPE_EXPERIMENT_TEMPLATE_PREFIX`, default `spe-x`) the same way, from that branch's
+`experiments-template/` (assembled before each push), with `<name>` at most 26 characters (`template/`
+allows 28). This is how a new or changed experiment is tried before it is merged.
 
 ## Working in a workspace
 

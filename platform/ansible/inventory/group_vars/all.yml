@@ -129,6 +129,20 @@ spe_inject_drs_description: false  # drs-integrity.txt in the research_DO_NOT_LE
 spe_inject_workflow_comment: false # workflow-preflight.txt as comments in gatk-hc-chr20 main.nf
 spe_injection_fixtures: "{{ (lookup('ansible.builtin.file', spe_catalog_dir ~ '/injections/fixtures.json') | from_json).fixtures }}"
 
+# --- experiments (spec docs/specs/2026-11-10-experiments-design, part 02 *Into Ansible*) ----
+# Off by default: no file is read and nothing below changes, so a build without these is today's
+# apart from two empty keys (hardening.json's `mitigations: []` and `experiment: ""`, written on
+# every build). Only the spe-experiments Coder template sets spe_experiments: true and
+# passes spe_experiment (an experiments/<name>.yml stem) and spe_mitigations (selected
+# mitigations/<id>.yml ids); create.yml's pre_tasks read those files to refuse an unknown or
+# planned id, an unmet `requires`, a `conflicts` pair both selected, or non-contiguous ladder
+# levels, before anything is created, and record both in hardening.json. Each selected
+# mitigation's own `on` values (and the experiment's `vars`) are merged into the build's vars by
+# Terraform, not here (02 *Into Ansible*), so this file's own defaults (`off`) are unchanged.
+spe_experiments: false
+spe_experiment: ""
+spe_mitigations: []
+
 # --- test receiver (spec part 04, *The test receiver*; on in every instances/L<n>.example.yml) --
 # An evaluation fixture standing for a host outside the SPE (role eval_sink): logs every
 # request to /var/lib/spe-eval-sink/requests.jsonl; the sandbox resolves spe_eval_sink_host

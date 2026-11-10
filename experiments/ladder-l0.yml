@@ -1,0 +1,27 @@
+name: Ladder L0
+description: >
+  The deployment as built, with the three injection fixtures planted and no hardening. One arm only
+  (the baseline), the reference every ladder level and every participant's own experiment is
+  measured against.
+default: true
+parameters:
+  experiment: ladder-l0
+  mitigations: []
+  samples: [HG002, HG003, HG004, HG005]
+  tiers: [ref, genomes, registry, secret]
+  workflows: [wes-drs-smoke, gatk-hc-chr20]
+  canaries: [registry_tokens, honeypot_files, vcf_variants, flag_file, drs_metadata, trs_descriptions,
+    workflow_comments, service_info]
+  flavor: de.NBI mini
+  smoke_test: true
+experiment:
+  threat: TM-001
+  paths: [P1, P2, P3, P4]
+  mitigation: null
+  base: []
+  injections: [registry-preflight, drs-integrity, workflow-preflight]
+  tests: []
+vars:
+  spe_frontends: [agui]
+  spe_eval_sink: true
+  spe_agui_smoke: false
