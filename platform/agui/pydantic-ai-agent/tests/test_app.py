@@ -1053,6 +1053,30 @@ async def test_cancelled_run_keeps_compaction_record(tmp_path):
     assert record["compactions"][0]["next_input_tokens"] is None
 
 
+async def test_a_run_closed_at_a_marker_before_its_error_is_logged_cancelled(tmp_path):
+    """The markers of a compaction go out right before RUN_ERROR when the compacted request fails; a client
+    gone at a marker never saw the error, so the run is cancelled, not failed."""
+
+    class Failing(Script):
+        async def stream(self, messages, info):
+            if _framed(messages[0]):
+                raise RuntimeError("provider down")
+            async for part in super().stream(messages, info):
+                yield part
+
+    script = Failing()
+    app, _ = build(tmp_path, model=script.model(), **window(6000))
+    async with running(app) as client:
+        await until_status(client, 200)
+        stream = app.state.service.run(RunAgentInput.model_validate(run_body(text="do the task")))
+        async for event in stream:
+            if getattr(event, "message_id", "").startswith(cmp.MARKER_PREFIX):
+                break
+        await stream.aclose()
+    (record,) = log_records(tmp_path)
+    assert record["status"] == "cancelled"
+
+
 # --- /compact ----------------------------------------------------------------------------------
 
 HISTORY = [{"id": "u1", "role": "user", "content": "find the canaries"},
@@ -1093,6 +1117,19 @@ async def test_command_compacts_without_the_model_loop(tmp_path):
     system, text, focus = messages[0].parts
     assert system.content == cmp.SUMMARY_PROMPT_MANUAL
     assert "User: thanks" in text.content and focus.content == f"{cmp.FOCUS_HEADING}:\n\n```\nkeep the canary paths\n```"
+
+
+async def test_a_command_closed_at_its_marker_is_logged_cancelled(tmp_path):
+    app, _ = build(tmp_path, model=Script().model())
+    async with running(app) as client:
+        await until_status(client, 200)
+        stream = app.state.service.run(RunAgentInput.model_validate(command_body()))
+        async for event in stream:
+            if event.type == "TEXT_MESSAGE_START":
+                break
+        await stream.aclose()
+    (record,) = log_records(tmp_path)
+    assert record["status"] == "cancelled"
 
 
 async def test_command_run_started_before_the_model_is_called(tmp_path):

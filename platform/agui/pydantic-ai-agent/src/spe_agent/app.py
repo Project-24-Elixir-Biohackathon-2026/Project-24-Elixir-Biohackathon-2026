@@ -249,10 +249,12 @@ class Service:
                         outgoing += marker_events(summary)
                 if isinstance(event, RunErrorEvent):
                     event = event.model_copy(update={"message": self.sanitize(event.message)})
-                    status = "failed"
-                elif isinstance(event, RunFinishedEvent):
-                    status = "completed"
                 for out in _gated(guard, [*outgoing, event]):
+                    # set as the terminal event goes out, not before the markers queued ahead of it
+                    if isinstance(out, RunErrorEvent):
+                        status = "failed"
+                    elif isinstance(out, RunFinishedEvent):
+                        status = "completed"
                     recorder.observe(out)
                     yield out
         finally:
@@ -312,9 +314,10 @@ class Service:
             records.append(CompactionRecord(
                 trigger="manual", focus=focus, estimated_tokens=estimate_tokens(history, 0),
                 messages_cut=len(adapter.messages), summary=summary.text, usage=summary.usage))
-            status = "completed"
             for e in end(*marker_events(summary.text, manual=True),
                          RunFinishedEvent(thread_id=run_input.thread_id, run_id=run_input.run_id)):
+                if isinstance(e, RunFinishedEvent):
+                    status = "completed"
                 yield e
         finally:
             recorder.usage(usage)
