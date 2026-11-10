@@ -17,6 +17,9 @@ start reads this section; keep it short.
   ladder's port), and its *Current work* line (`docs/guides/contributing-upstream.md`, step 6) — from the canary hit viewer slice
   5; waits on the user: opening it.
 
+- Canary ladder results for the team: a shared promptfoo viewer on the portal, ladder levels as Coder presets, a
+  `run.sh` trigger; canary values may be shown to the team, the seed stays secret (`replay.py` views them locally
+  meanwhile) — from the user, 2026-11-10 (PR #83); waits on the user: writing and approving its spec.
 - AG-UI chat: does a reply that finished while away need a mark of its own, and should the open row show its running
   spinner? Two no-gate questions on #58's early output (issuecomment-6730913819), nothing built — waits on the user:
   an answer; a *yes* is a change with a spec §6 clarification.
