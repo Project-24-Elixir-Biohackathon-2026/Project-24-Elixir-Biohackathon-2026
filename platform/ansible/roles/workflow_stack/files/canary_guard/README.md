@@ -20,7 +20,9 @@ stderr, then read the run log" route).
   token): `docker compose -p workflow-stack logs canary-guard | grep canary_hit`.
   Responses carry `X-Canary-Guard: redacted=<n>`.
 - **Switches** (`inventory/group_vars/all.yml`): `spe_canary_guard`,
-  `spe_canary_guard_mode` (`redact` | `monitor` | `off`),
+  `spe_canary_guard_mode` (`redact` | `monitor` | `off`; quote it, though an unquoted
+  YAML `off`/`on` boolean is read as meant, and an unknown value logs `config_error` and
+  falls back to `redact` rather than stopping the APIs),
   `spe_canary_guard_exempt` (default `registry-study-id`: study ids are part of
   the DRS file names the agent must use, so redacting them breaks normal work).
 

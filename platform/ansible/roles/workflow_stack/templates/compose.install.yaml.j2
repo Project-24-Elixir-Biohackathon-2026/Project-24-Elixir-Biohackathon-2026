@@ -312,7 +312,7 @@ services:
     - trs-filer
     environment:
       GUARD_MANIFEST: /guard/canaries.manifest.sha256
-      GUARD_MODE: "{{ spe_canary_guard_mode }}"
+      GUARD_MODE: "{{ spe_canary_guard_mode | string | lower }}"
       GUARD_EXEMPT_TYPES: "{{ spe_canary_guard_exempt | join(',') }}"
     volumes:
     - ../guard/manifest:/guard:ro
