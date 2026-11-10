@@ -146,12 +146,14 @@ spe_run_smoke_test: true
 # (our own agent over AG-UI with a CopilotKit chat, see below). Both are on by
 # default and share one sandbox (compose project spe-frontend); the person picks
 # the chat to use. An empty list deploys no frontend. (The portal passes nothing
-# here: every workspace gets both.) The old single-valued spe_frontend (openwebui,
-# agui or none) is still read when set, for instance files and workspaces from
-# before the list.
+# here: every workspace gets the default.) The old single-valued spe_frontend
+# (openwebui, agui or none) is still read when set, for instance files and
+# workspaces from before the list.
+# This branch (template/leak-controls) deploys only the AG-UI chat: its agent is
+# the one path the agent guard sees.
 spe_frontends: >-
   {{ [spe_frontend] if spe_frontend | default('') in ['openwebui', 'agui']
-     else ([] if spe_frontend | default('') == 'none' else ['openwebui', 'agui']) }}
+     else ([] if spe_frontend | default('') == 'none' else ['agui']) }}
 spe_frontend_dir: "/home/{{ spe_ssh_user }}/spe-frontend"
 # The repository clone on the instance (role repo): the compose file, the sandbox's
 # runbook and helper scripts, the agent's prompt and Python source run from it
@@ -299,7 +301,22 @@ spe_agent_llm_key: >-
      or (spe_denbi_api_key if spe_agent_model_provider == 'openai_compatible'
          else lookup('ansible.builtin.env', 'ANTHROPIC_API_KEY')) }}
 spe_agent_tool_surface: shell
-spe_agent_sandbox_operations: all    # or a list of open-terminal operationIds
+# all, or a list of open-terminal operationIds. This branch leaves out stdin to a running
+# process and the user's own terminal (read and type), which no analysis needs.
+spe_agent_sandbox_operations:
+  - list_files
+  - read_file
+  - display_file
+  - write_file
+  - replace_file_content
+  - grep_search
+  - match_files
+  - search_files
+  - glob_search
+  - list_processes
+  - run_command
+  - get_process_status
+  - kill_process
 spe_agent_include_sandbox_prompt: true
 spe_agent_max_output_bytes: 16384
 spe_agent_request_limit: 50          # per run, not an aggregate budget

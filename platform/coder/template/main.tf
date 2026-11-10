@@ -230,28 +230,10 @@ resource "coder_agent" "main" {
   }
 }
 
-# Every workspace runs both chat frontends against the same sandbox and stack
-# (Ansible's spe_frontends default); the person opens the one to use. Both are
-# bound to 127.0.0.1 on the VM and reached through the agent (share = owner:
-# only the workspace owner may open them). Open WebUI keeps chats and notes,
-# archived on stop; the AG-UI chat shows every tool call as a card. The run
+# The AG-UI chat (Ansible's spe_frontends default on this branch: no Open WebUI).
+# Bound to 127.0.0.1 on the VM and reached through the agent (share = owner: only
+# the workspace owner may open it). It shows every tool call as a card. The run
 # report is the "Report" app below, on the portal VM.
-resource "coder_app" "openwebui" {
-  agent_id     = coder_agent.main.id
-  slug         = "openwebui"
-  display_name = "Open WebUI"
-  icon         = "/icon/openai.svg"
-  url          = "http://localhost:8080"
-  subdomain    = true
-  share        = "owner"
-
-  healthcheck {
-    url       = "http://localhost:8080/health"
-    interval  = 10
-    threshold = 30
-  }
-}
-
 resource "coder_app" "chat" {
   agent_id     = coder_agent.main.id
   slug         = "chat"
