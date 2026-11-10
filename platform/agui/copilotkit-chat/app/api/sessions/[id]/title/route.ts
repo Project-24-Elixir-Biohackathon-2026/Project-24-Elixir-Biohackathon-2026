@@ -1,4 +1,4 @@
-// POST /api/sessions/{id}/title: a model-written title after the session's first completed run (lib/api.ts).
+// POST /api/sessions/{id}/title: a model-written title from the session's first question, asked as its first run starts (lib/api.ts).
 // The agent's URL and key come from the same server-side environment as the chat runtime's
 // (app/api/copilotkit/[[...slug]]/route.ts) and are sent only to the agent.
 import { titleSession } from "../../../../../lib/api.ts";

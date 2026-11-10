@@ -70,3 +70,63 @@ Open WebUI stack): create, converge, the no-cost checks, the smoke run, a two-tu
 the promptfoo suite (3/3) passed. §11 item 1: `spe-ga4gh-api-2` is the controller with a
 hand-run stack; `spe-ga4gh-api` refuses the de.NBI key; `agent-service-1` meets §7.0, with
 `/data-share` there being the mounted Manila share, so `spe_data_root` points elsewhere.
+
+### Leaving a running chat (2026-11-08 to 2026-11-09)
+
+Decisions 26 and 40–44, built in the fork's PRs #57, #58 and #62 (clarification 28). *Verified* against
+`platform/dev/fake_agent.py` in the browser (`platform/dev/e2e/sessions.py`, scenarios `leave-running`, `stop`,
+`rejoin`, `running-marks` and `all`) and by `npm test`; no model call.
+
+**Versions verified:** Next.js 16.4.5, React 19.3.1, CopilotKit 1.84.1 (`@copilotkit/react-core/v2`,
+`@copilotkit/runtime/v2`), `@ag-ui/client` 1.0.2. 1.84.1's `useAgent` takes the thread-scoped props §6 names
+(`agentId`, `runtimeAgentId`, `threadId`, all required), and `CopilotKitCore.connectAgent({ agent })` rejoins.
+
+**Decision 42 rejoins live.** A throwaway page checked it before the chat changed: two private agents stream in
+two sessions at once; an ordinary open, a remount and a send show each message id once with no `connect`
+request (the stop point did not apply); stop in a rejoined chat journals `cancelled`. What it found and the
+chat now does:
+
+- *`connectAgent` clears the messages first*: on a freshly loaded page every rejoin counts as a restore and
+  calls `agent.setMessages([])` before connecting, so with no merge the first list React drew was empty. The
+  merge (`lib/rejoin.ts`) therefore runs on every message change from a subscriber made before `connectAgent`
+  is called, and once after it ends (also when it fails, so a failed connect leaves the history), setting the
+  messages only when the result differs. A merge from the replay's first event on failed the check.
+- *The run in progress* is the set of ids the replay names since the last `RUN_STARTED`: each event's
+  `messageId` and `parentMessageId`, a `TOOL_CALL_START`'s `toolCallId` (`@ag-ui/client` makes the assistant
+  message with that id when no parent is named), and every message id of a `MESSAGES_SNAPSHOT` (the recorder
+  sends one right after `RUN_STARTED`, §13). The runtime replays past runs first, then the running run whole from
+  its own `RUN_STARTED`. A history message whose id is in that set is replaced by the agent's copy, the agent's
+  messages the history lacks are appended, and every other replayed copy is dropped.
+- *An ordering race the merge rests on*: the event pipeline works on its own copy of the agent's messages,
+  taken when it starts, and writes it back on every event; the merge on `connectAgent`'s clearing must land
+  after that copy, or the replay's `TEXT_MESSAGE_START` appends to the history's partial copy and repeats its
+  text. It never did (the check and every `rejoin` run), but it rests on how many awaits CopilotKit makes
+  between the clearing and the copy, which an upgrade can change. `rejoin` detects it: the streamed slow steps
+  rise between ticks and end on exactly the run's steps, each once.
+- *Cost*: one `GET /api/copilotkit/info` and one `POST /api/copilotkit/agent/spe/connect` per rejoin; none on an
+  ordinary open or a remount.
+- *A rejoin's end*: `connectAgent` fires the agent's run callbacks (`onRunInitialized`, `onRunFinalized`) like a
+  run, so a rejoined run ends through the same watch as any run, reconciled until the list shows the session no
+  longer `running` (§6 *Refresh*). A list without the session (deleted meanwhile) ends it with no error bar: the
+  holder is dropped as for any session gone from the list.
+
+**Behaviour made precise:**
+
+- *A chat reopened mid-run*: `@ag-ui/client` copies a run's subscribers when the run starts, so a `CopilotChat`
+  mounted on an agent already running froze. The holder forwards its agent's message changes, and the page
+  redraws the open chat on each while it was mounted mid-run.
+- *Only a session's latest run ends it*: an older run's end, whose list came back after a newer run started,
+  no longer drops the session from the page's streaming set (which unmounted a holder mid-run on a switch).
+- *List fetches apply in the order they started*: a session once listed and then missing from a list is gone
+  for good in the page (a New chat's first run is never dropped before it is listed), so a list fetched before
+  a newer one and answering after it is dropped as stale; it would otherwise have swapped an open New chat for
+  another at its run's end.
+- *Run errors* reach the error bar through each session's holder only; `CopilotChat`'s `onError` skips the run
+  error codes, so the open session's error shows once. A left session's errors, its save failure included,
+  carry its title (clarification 28).
+- *The running mark*: the row's spinner keeps turning under `prefers-reduced-motion: reduce`, being the only
+  motion that says another session's run goes on. The chat header has no running mark (its `⋯` is always
+  shown), only the Delete rule.
+- *Refresh*: the list is also fetched while the page is hidden if the polling holds (§6 says nothing against
+  it); a failed fetch's error goes once a list loads again; only the first load waits for the runtime
+  (clarification 28).

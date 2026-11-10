@@ -80,9 +80,26 @@ export async function reconcile(
   }
 }
 
-/** Which sessions get a model title asked for: those started in this page load (New chat), once each, after
- *  a run of theirs that finished (RUN_FINISHED: the only run the server can title from) and was recorded. A
- *  session that had runs before this page load is never started here, so it is never asked for. */
+/** Fetch the list once, then up to RECONCILE_RETRIES more times RECONCILE_DELAY_MS apart, until it has the
+ *  session `id`: a New chat's first run is listed once its run_start (with the user message) is on disk, which
+ *  the recorder writes before the agent is called. The last list fetched, and whether it had the session. A
+ *  fetch that throws ends the loop, as in reconcile(). */
+export async function waitListed(
+  fetchList: FetchList,
+  id: string,
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+): Promise<{ list: SessionMeta[]; listed: boolean }> {
+  for (let retry = 0; ; retry++) {
+    const { list } = await fetchList();
+    if (list.some((s) => s.id === id)) return { list, listed: true };
+    if (retry === RECONCILE_RETRIES) return { list, listed: false };
+    await sleep(RECONCILE_DELAY_MS);
+  }
+}
+
+/** Which sessions get a model title asked for: those started in this page load (New chat), once each, as their
+ *  first run starts (the server titles from that run's question, so the title can arrive before the answer).
+ *  A session that had runs before this page load is never started here, so it is never asked for. */
 export class TitleTrigger {
   private readonly fresh = new Set<string>();
 
@@ -90,10 +107,31 @@ export class TitleTrigger {
     this.fresh.add(id);
   }
 
-  /** True once per started session, for its first finished, recorded run; it is then forgotten. */
-  take(id: string, finished: boolean): boolean {
-    if (!finished || !this.fresh.has(id)) return false;
-    this.fresh.delete(id);
-    return true;
+  /** True once per started session, at its first run's start; it is then forgotten. `started` again re-arms it
+   *  (a run that was never listed: the next run tries again). */
+  take(id: string): boolean {
+    return this.fresh.delete(id);
+  }
+}
+
+/** A rejoined run's end, whose start this page does not know: fetch the list once, then up to
+ *  RECONCILE_RETRIES more times RECONCILE_DELAY_MS apart, until it shows the session `id` with `running`
+ *  false (`saved` true). Still running after the last: `saved` false (the page shows SAVE_FAILED_MESSAGE).
+ *  A list without the session ends the wait at once, `saved` false: the session left the list (deleted), so
+ *  no fetch would show it saved; the caller tells that apart by the list it gets back (the live sessions'
+ *  `gone`), not by an error bar. The last list fetched is returned either way. A fetch that throws ends the
+ *  loop, as in reconcile(). */
+export async function waitNotRunning(
+  fetchList: FetchList,
+  id: string,
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+): Promise<{ list: SessionMeta[]; saved: boolean }> {
+  for (let retry = 0; ; retry++) {
+    const { list } = await fetchList();
+    const s = list.find((x) => x.id === id);
+    if (s === undefined) return { list, saved: false };
+    if (!s.running) return { list, saved: true };
+    if (retry === RECONCILE_RETRIES) return { list, saved: false };
+    await sleep(RECONCILE_DELAY_MS);
   }
 }

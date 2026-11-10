@@ -9,11 +9,12 @@ import type { Journals } from "./sessions.ts";
 export type Seeded = { id: string; runId: string; user: Message; replyId: string };
 
 /** One run: `text` as its new user message and "echo: <text>" as the reply. Without `opts.id` a new session
- *  starts with its `created` line; with it, the run continues that session from `opts.anchor`. */
+ *  starts with its `created` line; with it, the run continues that session from `opts.anchor`. `opts.running`:
+ *  only its run_start, as while the agent is still working on it. */
 export async function seedRun(
   journals: Journals,
   text: string,
-  opts: { id?: string; anchor?: string | null; status?: RunStatus } = {},
+  opts: { id?: string; anchor?: string | null; status?: RunStatus; running?: boolean } = {},
 ): Promise<Seeded> {
   const id = opts.id ?? randomUUID();
   const runId = randomUUID();
@@ -33,6 +34,7 @@ export async function seedRun(
       type: "run_start", run_id: runId, anchor: opts.anchor ?? null, messages: [user], ignored: [],
       request: { tools: [], context: [], state: {}, forwardedProps: {} }, source: "chat",
     }, "now");
+    if (opts.running) return;
     for (const event of events) await journals.append(id, { type: "event", run_id: runId, event }, "soon");
     await journals.append(id, { type: "run_end", run_id: runId, status: opts.status ?? "completed", error: null }, "now");
   });
