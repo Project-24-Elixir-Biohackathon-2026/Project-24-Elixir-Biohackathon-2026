@@ -375,6 +375,26 @@ async def test_run_command_description_has_the_cwd(tmp_path):
     assert descriptions["run_command"].endswith("The current working directory is: /home/user")
 
 
+async def test_tools_a_client_sends_are_never_shown_to_the_model(tmp_path):
+    """AG-UI lets a client define tools of its own, which the model may call and the client answers (TM-004).
+    A run's tools are the sandbox's operations only."""
+    names: set = set()
+
+    async def stream(messages, info):
+        names.update(t.name for t in info.function_tools)
+        yield "ok"
+
+    body = run_body()
+    body["tools"] = [{"name": "client_tool", "description": "A tool the client defines.",
+                      "parameters": {"type": "object", "properties": {}}}]
+    app, _ = build(tmp_path, model=FunctionModel(stream_function=stream))
+    async with running(app) as c:
+        await until_status(c, 200)
+        evs = await post_body(c, body)
+    assert "client_tool" not in names and len(names) == 16
+    assert terminal(evs) == ["RUN_FINISHED"]
+
+
 async def test_usage_limit_ends_with_run_error_only(tmp_path):
     async def loop(messages, info):
         n = sum(1 for m in messages if isinstance(m, ModelRequest))

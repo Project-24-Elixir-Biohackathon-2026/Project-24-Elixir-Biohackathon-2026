@@ -114,7 +114,8 @@ class _Adapter(AGUIAdapter):
     def __post_init__(self) -> None:
         # Before anything reads `messages` (a cached property over run_input): our compaction markers,
         # assistant messages in the chat's history, become the activity pydantic-ai reads as a cut point.
-        self.run_input = markers_to_activities(self.run_input)
+        # A client's own tools would reach the model as frontend tools: a run's tools are the sandbox's.
+        self.run_input = markers_to_activities(self.run_input).model_copy(update={"tools": []})
 
     def build_event_stream(self) -> _EventStream:
         return _EventStream(self.run_input, accept=self.accept, ag_ui_version=self.ag_ui_version)
