@@ -258,7 +258,15 @@ def check_focus(r: Run, ids: dict[str, str]) -> None:
     assert r.row(b).bounding_box() == before, "the popover moved the rows"
     page.locator(".spe-note").click()
     expect(menus).to_have_count(0)
-    r.ok("menu: floats over the list; a click on empty sidebar space closes it")
+    expect(r.row(a).locator(".spe-row-menu")).to_be_focused()
+    r.ok("menu: floats over the list; a click on empty sidebar space closes it and focus is back on its ⋯")
+
+    r.row(a).locator(".spe-row-menu").click()
+    search = page.get_by_placeholder("Search")
+    search.click()
+    expect(menus).to_have_count(0)
+    expect(search).to_be_focused()
+    r.ok("menu: a click outside on a field closes it and leaves focus on that field")
 
     r.row(a).locator(".spe-row-menu").click()
     page.keyboard.press("Escape")
@@ -987,6 +995,24 @@ def check_compaction(r: Run) -> None:
     r.ok("compaction: divider in place live and after a reload, summary collapsed and shown as text, record keeps it")
 
 
+# Records each scroll of an element inside the chat (its scrollTop and how far it could go), from page load on.
+SCROLL_RECORDER = """
+window.__speScrolls = [];
+addEventListener("scroll", (e) => {
+  const t = e.target;
+  if (t instanceof Element && t.closest(".spe-chat") && t.scrollHeight > t.clientHeight + 100)
+    window.__speScrolls.push([t.scrollTop, t.scrollHeight - t.clientHeight]);
+}, true);
+"""
+
+
+def check_first_scroll(page: Page, what: str) -> None:
+    """The chat's first scroll since SCROLL_RECORDER's list was last emptied went at least halfway to the end."""
+    page.wait_for_function("() => window.__speScrolls.length > 0", timeout=5_000)
+    top, end = page.evaluate("() => window.__speScrolls[0]")
+    assert top >= end / 2, f"{what}: the first scroll went to {top} of {end}: an animated start, not the end at once"
+
+
 def check_compact_command(r: Run) -> None:
     """/compact with a focus (spec §15): the bubble is replaced by the divider, live and after a reload; the
     journal's run_start carries the command and no message. The slash menu offers /compact and sends a bare one;
@@ -1024,12 +1050,26 @@ def check_compact_command(r: Run) -> None:
     assert len(markers) == 1 and "keep the canary paths" in markers[0]["content"], rec
     if r.shots:
         (r.shots / "run_start.json").write_text(json.dumps(starts[-1], indent=2) + "\n")
+    # A reload, and a reopen from the sidebar, land on the newest content at once (§6 *Opening a session*): the
+    # chat's first scroll goes most of the way to the end, where CopilotKit's default smooth start moved a few
+    # per cent per frame from the top. A short viewport makes the history scroll.
+    page.add_init_script(SCROLL_RECORDER)
+    viewport = page.viewport_size
+    page.set_viewport_size({"width": viewport["width"], "height": 400})
     page.reload()
     expect(page.locator(".spe-compaction")).to_have_count(1, timeout=10_000)
     expect(page.get_by_text("/compact keep the canary paths", exact=True)).to_have_count(0)
-    # A reload does not scroll a restored session to its newest content, unlike a live send:
-    # bring the divider into view so the shot shows it, not an earlier turn.
-    page.locator(".spe-compaction").scroll_into_view_if_needed()
+    expect(page.locator(".spe-compaction")).to_be_in_viewport(timeout=2_000)
+    check_first_scroll(page, "reload")
+    title = page.locator(".spe-sidebar .spe-row-active .spe-row-title").inner_text()
+    page.get_by_role("button", name="New chat").click()
+    expect(page.locator(".spe-compaction")).to_have_count(0)
+    page.evaluate("() => { window.__speScrolls = []; }")
+    r.row(title).first.locator(".spe-row-open").click()
+    expect(page.locator(".spe-compaction")).to_have_count(1, timeout=10_000)
+    expect(page.locator(".spe-compaction")).to_be_in_viewport(timeout=2_000)
+    check_first_scroll(page, "sidebar reopen")
+    page.set_viewport_size(viewport)
     r.shot("compact-command-reload")
     # Turn numbering restarts after a compaction (see check_compaction), so this answer is "Turn 1" again, as the
     # first question's still on the page is: r.send would hit a strict-mode double match. Count the answers.
@@ -1049,7 +1089,7 @@ def check_compact_command(r: Run) -> None:
     r.wait_runs(sid, 5)
     starts = [x for x in read_journal((r.sessions / f"{sid}.jsonl").read_text()) if x["type"] == "run_start"]
     assert starts[-1]["command"] == {**starts[-1]["command"], "name": "compact", "focus": None}, starts[-1]
-    r.ok("compact-command: bubble gone, divider in place live and after a reload, run_start holds the command; "
+    r.ok("compact-command: bubble gone, divider in place live and after a reload, which (as a sidebar reopen) starts at the end at once; run_start holds the command; "
          "the slash menu offers /compact and sends it, the composer marks a command")
 
 
