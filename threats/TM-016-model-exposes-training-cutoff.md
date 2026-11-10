@@ -12,7 +12,7 @@ stride:
   - information-disclosure
 ---
 
-# TM-NNN: Short Name of the Threat
+# TM-016: Model exposes training cutoff when queried.
 
 ## Attack Scenarios
 
