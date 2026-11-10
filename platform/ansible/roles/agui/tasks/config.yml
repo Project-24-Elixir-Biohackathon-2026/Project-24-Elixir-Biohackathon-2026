@@ -30,6 +30,20 @@
             'summary_max_tokens': spe_agent_compaction_summary_max_tokens | int} }}
       title: >-
         {{ {'enabled': spe_agent_title_generation | bool} }}
+      # matcher and manifest keep their defaults: the paths compose mounts them at.
+      guard:
+        mode: "{{ spe_agent_guard_mode }}"
+        exempt_types: "{{ spe_agent_guard_exempt_types }}"
+        sensitive_names: "{{ spe_wes_masked_files | map('basename') | list }}"
+
+- name: Directory the hand-off writes the guard's manifest into
+  ansible.builtin.file:
+    path: "{{ spe_stack_dir }}/guard/manifest"
+    state: directory
+    owner: "{{ spe_ssh_user }}"
+    group: "{{ spe_ssh_user }}"
+    mode: "0755"
+  when: spe_agent_guard_mode != 'disabled'
 
 - name: agent.yaml
   ansible.builtin.copy:

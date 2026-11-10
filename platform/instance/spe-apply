@@ -64,7 +64,8 @@ build() {
     case $c in
       agent)
         echo "== build agent ($SPE_AGENT_IMAGE) from platform/agui/pydantic-ai-agent"
-        "${build_cmd[@]}" -t "$SPE_AGENT_IMAGE" "$agui_dir/pydantic-ai-agent" ;;
+        "${build_cmd[@]}" --build-context matcher="$SPE_REPO_DIR/platform/canary_check" \
+          -t "$SPE_AGENT_IMAGE" "$agui_dir/pydantic-ai-agent" ;;
       chat-ui)
         echo "== build chat-ui ($SPE_CHAT_UI_IMAGE) from platform/agui/copilotkit-chat"
         "${build_cmd[@]}" -t "$SPE_CHAT_UI_IMAGE" "$agui_dir/copilotkit-chat" ;;

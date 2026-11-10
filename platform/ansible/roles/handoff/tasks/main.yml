@@ -57,7 +57,7 @@
       {% endfor %}
     dest: "{{ spe_stack_dir }}/guard/manifest/canaries.manifest.sha256"
     mode: "0644"
-  when: spe_canary_guard | bool
+  when: spe_canary_guard | bool or spe_agent_guard_mode != 'disabled'
 
 - name: Encrypt canary record with age
   ansible.builtin.shell: >-

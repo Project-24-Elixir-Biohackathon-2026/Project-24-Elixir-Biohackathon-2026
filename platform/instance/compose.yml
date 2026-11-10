@@ -119,6 +119,10 @@ services:
       # The prompt: the directory, not the file, so an editor that replaces the file is seen.
       - ${SPE_REPO_DIR}/platform/ansible/roles/sandbox/files:/etc/spe-agent/sandbox:ro
       - ${SPE_REPO_DIR}/platform/agui/pydantic-ai-agent/src:/app/src:ro
+      # The guard: the shared canary matcher, and the hand-off's hash-only manifest (the
+      # directory, because the hand-off writes the file after the agent has started).
+      - ${SPE_REPO_DIR}/platform/canary_check:/app/matcher:ro
+      - ${SPE_GUARD_MANIFEST_DIR:-./guard-manifest}:/etc/spe-agent/canaries:ro
       - agent-runs:/var/lib/spe-agent
     networks: [ui, tools]
     read_only: true

@@ -12,6 +12,9 @@ RUN uv sync --frozen --no-dev --no-install-project
 # The project itself is not installed into the venv: it runs from /app/src (PYTHONPATH), so a
 # bind mount of the source over /app/src is what runs, with or without SPE_AGENT_RELOAD=1.
 COPY src ./src
+# The shared canary matcher (platform/canary_check) for the guard, a named build context that
+# spe-apply passes (--build-context matcher=...). The instance mounts the clone's copy over it.
+COPY --from=matcher canary_check.py ./matcher/canary_check.py
 
 FROM build AS test
 COPY tests ./tests
@@ -26,6 +29,7 @@ RUN useradd --uid 10001 --user-group --no-create-home --home-dir /nonexistent --
  && rm /tmp/tests-passed
 COPY --from=build /app/.venv /app/.venv
 COPY --from=build /app/src /app/src
+COPY --from=build /app/matcher /app/matcher
 WORKDIR /app
 ENV PATH=/app/.venv/bin:$PATH PYTHONPATH=/app/src PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
     PYDANTIC_AI_NO_BANNER=1 SPE_AGENT_CONFIG=/etc/spe-agent/agent.yaml

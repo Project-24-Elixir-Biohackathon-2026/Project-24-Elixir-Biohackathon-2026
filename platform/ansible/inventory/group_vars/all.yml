@@ -204,6 +204,8 @@ spe_local_vars:
   - spe_agent_compaction_trigger_ratio
   - spe_agent_compaction_summary_max_tokens
   - spe_agent_title_generation
+  - spe_agent_guard_mode
+  - spe_agent_guard_exempt_types
   - spe_webui_auth
 spe_local_vars_extra: []     # instance files add their own overrides here
 spe_frontend_webui_image: ghcr.io/open-webui/open-webui:v0.13.0
@@ -314,4 +316,10 @@ spe_agent_compaction_summary_max_tokens: 4096
 # a 2-4 word title from the first exchange, unless the session already has one (a rename or an
 # earlier title). Off: sessions keep the chat-UI default (untitled, or the first message).
 spe_agent_title_generation: true
+# The agent's guard (template/leak-controls): canaries and the masked files' names kept out of
+# tool calls, tool results (which go to the model), the answer and the run log. Same matcher
+# and hash manifest as the canary guard. disabled | observe (record only) | enforce.
+spe_agent_guard_mode: observe
+spe_agent_guard_exempt_types: "{{ spe_canary_guard_exempt }}"
+
 spe_agent_api_key: "{{ (spe_seed | string ~ ':agent-api') | hash('sha256') }}"
