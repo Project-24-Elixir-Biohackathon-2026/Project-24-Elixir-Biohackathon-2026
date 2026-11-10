@@ -70,6 +70,7 @@ services:
     - uwsgi
     - --ini
     - uwsgi_server/uwsgi.ini
+{% if not spe_canary_guard %}
     labels:
     - traefik.enable=true
     - traefik.http.routers.weskit_rest.rule=PathPrefix(`/ga4gh/wes`) || PathPrefix(`/weskit/v1`)
@@ -77,6 +78,7 @@ services:
     - traefik.http.routers.weskit_rest.tls=true
     - traefik.http.routers.weskit_rest.service=weskit_rest
     - traefik.http.services.weskit_rest.loadbalancer.server.port=5000
+{% endif %}
     restart: unless-stopped
   database:
     image: {{ spe_mongo_image }}
@@ -260,12 +262,14 @@ services:
 {% for f in wes_masks | default([]) %}
     - /dev/null:/drs-data/{{ f }}:ro
 {% endfor %}
+{% if not spe_canary_guard %}
     labels:
     - traefik.enable=true
     - traefik.http.routers.drs.rule=PathPrefix("/ga4gh/drs")
     - traefik.http.routers.drs.entrypoints=websecure
     - traefik.http.routers.drs.tls=true
     - traefik.http.services.drs.loadbalancer.server.port=8080
+{% endif %}
   trs-mongodb:
     image: {{ spe_filer_mongo_image }}
     restart: unless-stopped
@@ -284,10 +288,50 @@ services:
         - trs-filer.weskit.internal
     volumes:
     - ../config/trs_config.yaml:/app/trs_filer/config.yaml:ro
+{% if not spe_canary_guard %}
     labels:
     - traefik.enable=true
     - traefik.http.routers.trs.rule=PathPrefix("/ga4gh/trs")
     - traefik.http.routers.trs.entrypoints=websecure
     - traefik.http.routers.trs.tls=true
     - traefik.http.services.trs.loadbalancer.server.port=8080
+{% endif %}
+{% if spe_canary_guard %}
+  # TM-001 control: every WES/DRS/TRS response passes through canary-guard,
+  # which redacts canary tokens (matched by sha256 against the hand-off's
+  # hash-only manifest) before the SPE agent reads them. Traefik routes all
+  # three APIs here; the guard forwards to the services by compose name.
+  canary-guard:
+    build:
+      context: ../guard/src
+    image: spe-canary-guard:local
+    restart: unless-stopped
+    depends_on:
+    - rest
+    - drs-filer
+    - trs-filer
+    environment:
+      GUARD_MANIFEST: /guard/canaries.manifest.sha256
+      GUARD_MODE: "{{ spe_canary_guard_mode }}"
+      GUARD_EXEMPT_TYPES: "{{ spe_canary_guard_exempt | join(',') }}"
+    volumes:
+    - ../guard/manifest:/guard:ro
+    networks:
+    - weskit
+    labels:
+    - traefik.enable=true
+    - traefik.http.routers.weskit_rest.rule=PathPrefix(`/ga4gh/wes`) || PathPrefix(`/weskit/v1`)
+    - traefik.http.routers.weskit_rest.entrypoints=websecure
+    - traefik.http.routers.weskit_rest.tls=true
+    - traefik.http.routers.weskit_rest.service=canary_guard
+    - traefik.http.routers.drs.rule=PathPrefix(`/ga4gh/drs`)
+    - traefik.http.routers.drs.entrypoints=websecure
+    - traefik.http.routers.drs.tls=true
+    - traefik.http.routers.drs.service=canary_guard
+    - traefik.http.routers.trs.rule=PathPrefix(`/ga4gh/trs`)
+    - traefik.http.routers.trs.entrypoints=websecure
+    - traefik.http.routers.trs.tls=true
+    - traefik.http.routers.trs.service=canary_guard
+    - traefik.http.services.canary_guard.loadbalancer.server.port=8080
+{% endif %}
 name: workflow-stack

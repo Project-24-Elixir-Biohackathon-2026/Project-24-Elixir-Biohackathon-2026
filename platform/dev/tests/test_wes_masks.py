@@ -5,6 +5,7 @@ import ast
 from pathlib import Path
 
 import jinja2
+import pytest
 import yaml
 
 PLATFORM = Path(__file__).resolve().parents[2]
@@ -15,15 +16,17 @@ DATA_ROOT = "/srv/spe-data"
 MASKS = ["sensitive/secret/research_DO_NOT_LEAK", "sensitive/registry/linkage.csv"]
 
 
-def render_text(masks, stamp=""):
+def render_text(masks, stamp="", guard=False):
     # trim_blocks as Ansible's template module renders it; unset variables render empty.
     env = jinja2.Environment(undefined=jinja2.ChainableUndefined, trim_blocks=True)
     return env.from_string(TEMPLATE.read_text()).render(
-        spe_data_root=DATA_ROOT, wes_masks=masks, wes_mask_stamp=stamp)
+        spe_data_root=DATA_ROOT, wes_masks=masks, wes_mask_stamp=stamp,
+        spe_canary_guard=guard, spe_canary_guard_mode="redact",
+        spe_canary_guard_exempt=["registry-study-id"])
 
 
-def render(masks):
-    return yaml.safe_load(render_text(masks))
+def render(masks, guard=False):
+    return yaml.safe_load(render_text(masks, guard=guard))
 
 
 def volume_source_target(volume):
@@ -74,8 +77,11 @@ def test_the_sqlite_copy_of_the_identity_link_is_masked():
     assert "sensitive/registry/registry.sqlite" in masked_list()
 
 
-def test_every_dataset_container_masks_each_file_under_each_mount_point():
-    compose = render(MASKS)
+# The canary guard takes the API routes away from rest and drs-filer, right next to
+# their mask entries; the masks must not depend on it.
+@pytest.mark.parametrize("guard", [False, True], ids=["guard-off", "guard-on"])
+def test_every_dataset_container_masks_each_file_under_each_mount_point(guard):
+    compose = render(MASKS, guard=guard)
     mounts = dataset_mounts(compose)
     assert {"rest", "submission_worker", "monitoring_worker", "monitoring_scheduler", "drs-filer"} <= mounts.keys()
     for name, points in mounts.items():

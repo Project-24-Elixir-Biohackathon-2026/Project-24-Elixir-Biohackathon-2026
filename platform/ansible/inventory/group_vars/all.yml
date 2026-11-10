@@ -125,6 +125,16 @@ spe_wes_masked_files:
   - sensitive/registry/registry.sqlite
   - sensitive/secret/research_DO_NOT_LEAK
 
+# --- canary guard (TM-001 control; template/canary-guard) ----------------------
+# A reverse proxy between Traefik and WES/DRS/TRS that redacts canary tokens in
+# every API response before the SPE agent reads them, matched by sha256 against
+# the hand-off's hash-only manifest (copied to the VM; no plaintext canaries).
+# On in this branch so the template spe-canary-guard can be compared with the
+# baseline. For main: default false, exposed as a preset parameter.
+spe_canary_guard: true
+spe_canary_guard_mode: redact          # redact | monitor (log hits only) | off
+spe_canary_guard_exempt: [registry-study-id]   # study ids are part of the DRS file names the agent must use
+
 # --- workflows --------------------------------------------------------------
 spe_workflows: [wes-drs-smoke, gatk-hc-chr20]
 spe_run_smoke_test: true
@@ -178,6 +188,9 @@ spe_local_vars:
   - spe_canary_workflow_comments
   - spe_canary_service_info
   - spe_wes_masked_files
+  - spe_canary_guard
+  - spe_canary_guard_mode
+  - spe_canary_guard_exempt
   - spe_denbi_api_key
   - spe_agent_llm_key
   - spe_agui_ui_dev
