@@ -119,7 +119,8 @@ spe_canary_service_info: true      # tokens in WES/DRS/TRS service-info
 # On in this branch so the template spe-canary-guard can be compared with the
 # baseline. For main: default false, exposed as a preset parameter.
 spe_canary_guard: true
-spe_canary_guard_mode: redact          # redact | monitor (log hits only) | off
+spe_canary_guard_mode: "redact"        # redact | monitor (log hits only) | off. Keep the quotes:
+                                       # unquoted off/on are YAML booleans (the guard reads them as meant)
 spe_canary_guard_exempt: [registry-study-id]   # study ids are part of the DRS file names the agent must use
 
 # --- workflows --------------------------------------------------------------

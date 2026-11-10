@@ -35,6 +35,10 @@ ROUTES = {
                                   f"study_id,family_name\n{STUDY},{SURNAME}\nInternal research reference: {FLAG}\n"),
     "/ga4gh/trs/v2/tools": ("application/json", json.dumps([{"id": "gatk-hc-chr20", "description": "clean"}])),
     "/ga4gh/drs/v1/objects/bin": ("application/octet-stream", f"\x00\x01{FLAG}\x02"),
+    # WESkit's run log route: the log is a JSON string, so its newlines and tabs arrive escaped.
+    "/weskit/v1/runs/r2/stdout": ("application/json", json.dumps({"content": f"{FLAG}\n{DRSMETA}\t{SURNAME}\n"})),
+    # A token the client decodes but that is not written out in the raw body.
+    "/ga4gh/trs/v2/tools/escaped": ("application/json", '{"description": "\\u0046LAG-ZXCVB23456"}'),
 }
 
 
@@ -122,6 +126,22 @@ def test_run_stderr_trick_is_redacted(guard):
     assert not any(FLAG in json.dumps(l) for l in logs)      # the log never holds a token
 
 
+def test_tokens_after_json_escapes_in_a_run_log_are_redacted(guard):
+    """In the raw body each token after the first follows a \\n or \\t, whose letter joins it."""
+    start, _, _ = guard
+    status, headers, body = get(start() + "/weskit/v1/runs/r2/stdout")
+    assert status == 200
+    log = json.loads(body)["content"]           # what the agent reads after decoding
+    assert FLAG not in log and DRSMETA not in log and SURNAME not in log
+    assert headers["X-Canary-Guard"] == "redacted=3"
+
+
+def test_a_token_that_cannot_be_redacted_in_place_is_withheld(guard):
+    start, _, _ = guard
+    status, _, body = get(start() + "/ga4gh/trs/v2/tools/escaped")
+    assert status == 502 and FLAG not in body
+
+
 def test_exempt_types_are_configurable(guard):
     start, _, _ = guard
     _, _, body = get(start(GUARD_EXEMPT_TYPES="") + "/ga4gh/drs/v1/objects")
@@ -171,3 +191,22 @@ def test_request_bodies_and_methods_are_forwarded(guard):
 def test_unknown_path_is_404(guard):
     start, _, _ = guard
     assert get(start() + "/elsewhere")[0] == 404
+
+
+@pytest.mark.parametrize("value,mode", [
+    ("redact", "redact"), ("monitor", "monitor"), ("off", "off"), (" Monitor ", "monitor"),
+    ("False", "off"), ("false", "off"), ("no", "off"),     # unquoted YAML off/no -> boolean
+    ("True", "redact"), ("on", "redact"),                  # unquoted YAML on -> boolean
+])
+def test_guard_mode_reads_yaml_booleans_as_meant(guard, value, mode):
+    import guard as g
+    assert g.Config({"GUARD_MODE": value}).mode == mode
+
+
+def test_unknown_guard_mode_falls_back_to_redact_and_still_serves(guard):
+    """A typo must neither take the APIs down nor drop the control."""
+    start, _, capsys = guard
+    base = start(GUARD_MODE="redcat")
+    status, _, body = get(base + "/weskit/v1/runs/r1/stderr")
+    assert status == 200 and FLAG not in body and "[REDACTED:flag-file]" in body
+    assert '"config_error"' in capsys.readouterr().out

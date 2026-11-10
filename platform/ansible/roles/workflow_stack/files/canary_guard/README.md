@@ -9,15 +9,20 @@ stderr, then read the run log" route).
 
 - **Matching:** every candidate substring is hashed and looked up in the
   hand-off's hash-only manifest, copied to `~/workflow-stack/guard/manifest/`.
+  JSON bodies are matched in their decoded string values too, so the escaped
+  newlines of a WESkit run log do not hide the token on the next line.
   The VM never holds plaintext canaries. Same matcher as
   `platform/canary_check/`, which checks archives after the fact.
 - **Action:** text/JSON bodies get `[REDACTED:<type>]`; a hit in a binary body,
-  or a body over `GUARD_MAX_BYTES`, is refused with 502 (fails closed).
+  a hit that cannot be replaced in the raw body (a token written with `\u`
+  escapes), or a body over `GUARD_MAX_BYTES` is refused with 502 (fails closed).
 - **Evidence:** each hit is one JSON log line (type, method, path; never the
   token): `docker compose -p workflow-stack logs canary-guard | grep canary_hit`.
   Responses carry `X-Canary-Guard: redacted=<n>`.
 - **Switches** (`inventory/group_vars/all.yml`): `spe_canary_guard`,
-  `spe_canary_guard_mode` (`redact` | `monitor` | `off`),
+  `spe_canary_guard_mode` (`redact` | `monitor` | `off`; quote it, though an unquoted
+  YAML `off`/`on` boolean is read as meant, and an unknown value logs `config_error` and
+  falls back to `redact` rather than stopping the APIs),
   `spe_canary_guard_exempt` (default `registry-study-id`: study ids are part of
   the DRS file names the agent must use, so redacting them breaks normal work).
 
