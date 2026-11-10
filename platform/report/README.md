@@ -12,7 +12,7 @@ from the first build on, kept after the workspace is gone. Design:
 | `tests/` | `pytest` against a fake Coder API |
 | `../coder/deploy/sperange-report.service`, `report.env.example` | The unit and its env file |
 | `canary_watch.py`, `canary_reader.py`, `canary_record.py`, `canarymatch.py`, `canary_hits.py` | The canary hit viewer's watcher: see *Canary hit watcher* below |
-| `hits_view.py` | Renders a hit to HTML and the participant page's body; used by both the watcher (`--html`, the standalone early output) and `sperange_report.py` (the participant page, *Canary hits pages* below) |
+| `hits_view.py` | Renders a hit to HTML, the participant page's body and the admin page's (its workspace rows), and reads the hits root and the watcher's status files; used by both the watcher (`--html`, the standalone early output) and `sperange_report.py` (both pages, *Canary hits pages* below) |
 | `../coder/deploy/sperange-canary-watch.service` | The watcher's unit |
 | `../ansible/roles/run_report/` | Writes the report and its sidecar at the first build of a workspace |
 | `../ansible/reports/run_report.md.j2` | The template the report starts from |
@@ -100,3 +100,30 @@ and "Group by run" (reorders the hits on the page, live ones included, by `data-
 "also seen" stays one collapsed block regardless). Both buttons are rendered `hidden` by
 `hits_view.py` and shown once the script runs, so a page with no script (the standalone early
 output, `--html`) never shows one that does nothing.
+
+## Admin canary hits page
+
+Coder owners only (403 for everyone else, 401/redirect when logged out, same rule as the
+participant pages above); `/reports/` links to it ("Canary hits") for an admin, and shows no such
+link to anyone else:
+
+- `GET /reports/hits` — every workspace with hits or a status file, newest first
+  (`hits_view.workspace_rows`): a table (name linking to that workspace's own `/hits` page, owner,
+  instance, the viewer's Coder state for it, loud counts, quiet count, "Newest (detected)": the
+  newest hit's `detected`, watcher status; a row with no state lookup or a failed one leaves that
+  cell blank; a hits file that cannot be read shows as no hits, logged), the same banner as the
+  participant page, then every workspace's hits merged, newest first by `detected` (the watcher's
+  clock, not the instance's own `at`). Four filters (kind, type, frontend, workspace), applied in
+  the browser over what the page already rendered. Capped at 500 hits (`ADMIN_PAGE_HITS`; "N more,
+  older: ..." when capped — the rest are on each workspace's own page, uncapped).
+- `GET /reports/hits.json` — the same rows and hits as JSON, hits capped at 2000
+  (`ADMIN_JSON_HITS`).
+- `GET /reports/hits/events` — the same hits live across every workspace, as server-sent events
+  (`static/hits-admin.js`): rescans the hits directory on every poll, so a workspace that starts
+  being watched mid-stream is picked up; a file already present when the stream opened starts at
+  its end (no replay of old hits), one that appears later starts from its first line. Event id
+  `<workspace>:<n>`; no status events. A hit for a workspace not in the opening table's row list
+  bumps no count until the next reload. A workspace's hits file that cannot be read is dropped from
+  the stream after one log line (the others keep streaming); the stream itself still ends if a
+  followed file is replaced, cut or removed, same as the participant stream, and the page reloads
+  to recover — at most once a minute per browser tab, so a flapping file does not reload in a loop.

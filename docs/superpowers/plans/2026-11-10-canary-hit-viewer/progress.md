@@ -114,3 +114,35 @@ slice is the README's slices table; the handoffs say what each session did.
     Placing it by `at` live would mean re-sorting in the script against the one-renderer rule (ruling 8), for a
     cosmetic difference (PR #79's review, finding 3). *Cost if wrong:* a participant sees a hit change place after a
     reload.
+
+## Slice 4
+
+27. **`hits-admin.js` bumps counts from what the server rendered** (the count cells' `data-kind`, and a quiet cell),
+    not from a copy of `QUIET_LABELS`: one list of loud kinds, in Python. A live hit for a workspace not yet in
+    the table bumps nothing; its row comes with the next reload. *Cost if wrong:* a small script change.
+28. **`workspace_rows` and `admin_body` take one optional argument each** beyond Task 12's interface: `hits` (the
+    hits already read, so each file is read once per page) and `more` (the "N more" count). The loud counts are
+    flat row keys next to `quiet`. *Cost if wrong:* none; the briefed calls still work.
+29. **The admin stream sends no status events** (ruling 22 left it open): the status column is rendered with the
+    page. *Cost if wrong:* an admin reloads to see a workspace's watcher state change.
+30. **One unreadable hits file is dropped from the admin stream and logged once** (workspace id and error class);
+    the other workspaces' hits keep coming. A file replaced, cut or removed still ends the stream, as on the
+    participant's, and the page reloads, **at most once a minute** (`sessionStorage`), so a fault cannot loop it.
+    *Cost if wrong:* a workspace's live hits stop on the admin page until a reload after the fault is fixed.
+31. **The admin page and `hits.json` order by `detected`, then id**, not by `at` as the participant page does
+    (ruling 26): `at` comes from the instance, which the participant controls, and across workspaces it would
+    decide which hits fall inside the 500 and 2000 caps. *Cost if wrong:* an archive-scan hit sits by when it
+    was found, not when it happened.
+32. **`UUID_RE` and the status-file reader moved to `hits_view.py`**, one copy for the service and the page code;
+    `hits.css` gained a short admin section (the table and filters), a file Task 12 did not list. *Cost if
+    wrong:* none.
+33. **The screenshot ran on a hand-written fixture server** (`make_server` with a fake Coder, in the scratchpad),
+    two workspaces with fixture tokens, the frontend filter set to Open WebUI and one hit appended while the page
+    was open. *Cost if wrong:* none; it runs the code the tests run.
+34. **A deleted workspace's admin row keeps its UUID as its name** (no fallback to the instance name from its
+    status file): Coder no longer knows the workspace, and the UUID is what the hits file is named by. *Cost if
+    wrong:* an admin looks the UUID up; a small change in `workspace_rows`.
+35. **The logged-out check stays widened to `endswith("hits.json")` and the stream path**, so a logged-out fetch of
+    `hits.json` gets 401 like the stream, not a redirect to login a script cannot follow; the only difference left
+    is 401 versus redirect on paths that are no route. *Cost if wrong:* none worth a change (final review, left
+    alone).

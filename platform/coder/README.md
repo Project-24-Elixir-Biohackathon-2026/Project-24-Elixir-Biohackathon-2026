@@ -282,6 +282,7 @@ then the same with `<run>/openwebui-export.json <run>`.
 |---|---|
 | Logs | `journalctl -u coder`, `journalctl -u caddy`, `journalctl -u sperange-report`, `journalctl -u sperange-canary-watch`, build logs in the dashboard |
 | Reports | `https://<zone>/reports/` (any login), files in `/data-share/reports/` |
+| Canary hits, every workspace | `https://<zone>/reports/hits` (Coder owners only, linked from `/reports/`), files in `/data-share/canary-hits/` |
 | Instances | Dashboard, all users; OpenStack servers `cw-<user>-<workspace>-api` |
 | Archive without stopping | on the portal VM, in `platform/ansible`: `ansible-playbook playbooks/archive.yml -e spe_instance=cw-<user>-<ws>` |
 | Update Coder | install the release binary over `/usr/local/bin/coder`, `sudo systemctl restart coder` |

@@ -68,6 +68,20 @@ start reads this section; keep it short.
 - Canary hits pages: `static/hits.js` has no browser test (the screenshot harness covers it once); a Playwright
   test of a hit arriving, the counts and "Group by run" — from the canary hit viewer slice 3 final review; waits
   because what must not go wrong (escaping, the event payload, notification fields) is tested on the server.
+- Canary hits admin page: hits that arrive between the page's render and its event stream opening are missed
+  until the next reload (the stream starts at each file's end, as planned); embedding each workspace's line count
+  in the page and starting the stream from it would close the gap — from the canary hit viewer slice 4 final
+  review; waits because a reload shows them and the window is a fraction of a second.
+- Canary hits pages: both pages stop updating silently after a non-200 stream response (an expired session, or 503
+  past the stream cap), since EventSource does not reconnect then — from the canary hit viewer slice 4 final
+  review; waits because a reload recovers and neither case is common at hackathon scale.
+- Canary hits admin page: every load and every `hits.json` parses every hits file in full, and each admin stream
+  lists the hits directory and opens every file every 0.5 s; fine at hackathon volumes, not at ruling 9's worst
+  case (50 workspaces × 10 MB) — from the canary hit viewer slice 4 final review; waits because no event comes
+  close to that volume.
+- Canary hits admin page: the Coder state lookups run one row at a time (N × the 10 s timeout if Coder hangs); a
+  thread pool or one total deadline would bound it — from the canary hit viewer slice 4 final review; waits
+  because Coder runs on the same VM and answers fast.
 
 - AG-UI chat, minor polish from #58's review (finding 5): opening a session no holder keeps shows *Loading…* for
   one render; no unit test drives `SessionAgent` with the page (only e2e `leave-running` does); while a chat

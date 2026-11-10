@@ -4,6 +4,11 @@ whole, self-contained HTML document (hits.css inlined, no script) for the early 
 (`canary_watch.py --archive ... --html PAGE.html`) and for tests. The live service page (slice 3) adds
 its own script (notifications, the event stream) around the same body.
 
+The admin page (spec *Admin page*; decision 7): `workspace_rows` reads every workspace's hits and
+status file in the hits directory into one summary row each, and `admin_body` renders those rows,
+the filters and the hits of all workspaces as one list (each wrapped with the data the filters and
+static/hits-admin.js read).
+
 `status` is the watcher's status file (ruling 6: `state`, `since`, `last_poll`, `note`), read by the
 live service; `status_line` turns it into the header's clause ("running · watched 3 s ago"), and
 `empty_text` into the placeholder text for a hits list with none to show, shared with the live
@@ -21,15 +26,24 @@ Standard library only: the portal runs this from its repository checkout with th
 from __future__ import annotations
 
 import html
+import json
+import os
+import re
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+
+from canary_hits import HitsFile
 
 NOTICE = "Matching is literal: an encoded, split or paraphrased canary is not seen."
 NO_HITS = "No hits yet."
 NOT_WATCHED = "Not watched yet."
 CAPPED = "hits file full"
 ENCRYPTED_NOTICE = "The canary record is encrypted: the watcher cannot match this workspace."
+ADMIN_BANNER = "Hits are what each participant's own instance reported."
+# A workspace id, the stem of its hits and status files (and of its report sidecar).
+UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 # Loud kinds, in the headline's order (spec *Participant page* mockup); quiet kinds, and any hit whose
 # kind is unknown or missing, collapse into "also seen" (spec *Hits*).
@@ -243,6 +257,164 @@ def participant_body(meta: dict, hits: list[dict], status: dict | None) -> str:
         f'<header class="report-head card">{_header(meta, hits, status, now)}'
         f'<p class="notice muted">{_esc(NOTICE)}</p>{actions}</header>'
         f'<section class="card hit-list">{items}</section>'
+        '</main>'
+    )
+
+
+# --- the admin page (spec *Admin page*) -------------------------------------------------------------
+
+def read_status(path: str) -> dict | None:
+    """A watcher status file (ruling 6), or None: no file, or one that is not a JSON object (the
+    watcher could be mid-write; never raises on it)."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            status = json.load(f)
+    except (OSError, ValueError):
+        return None
+    return status if isinstance(status, dict) else None
+
+
+def scan_ids(hits_dir: str) -> list[str] | None:
+    """Every workspace the hits directory knows: a `<uuid>.jsonl` or a `<uuid>.status.json`; None
+    when the directory cannot be listed (the admin stream then tells a failed scan from an empty one)."""
+    try:
+        names = os.listdir(hits_dir)
+    except OSError:
+        return None
+    out = set()
+    for name in names:
+        for suffix in (".jsonl", ".status.json"):
+            if name.endswith(suffix) and UUID_RE.match(name[:-len(suffix)]):
+                out.add(name[:-len(suffix)])
+    return sorted(out)
+
+
+def workspace_ids(hits_dir: str) -> list[str]:
+    """`scan_ids`, with an unlistable directory read as an empty one."""
+    return scan_ids(hits_dir) or []
+
+
+def read_all(hits_dir: str) -> dict[str, list[dict]]:
+    """Every workspace's hits, by workspace id, each tagged with that id as `workspace` (the file's
+    name says whose hits they are, whatever a record says). A file that cannot be read (bad
+    permissions, a directory by that name) counts as no hits, logged with the workspace id and the
+    error's class only, so its row and every other workspace still render."""
+    out = {}
+    for wid in workspace_ids(hits_dir):
+        try:
+            hits = HitsFile(os.path.join(hits_dir, wid + ".jsonl")).read()
+        except OSError as e:
+            sys.stdout.write(f"hits read {wid}: {type(e).__name__}, shown as no hits\n")
+            sys.stdout.flush()
+            hits = []
+        out[wid] = [h | {"workspace": wid} for h in hits]
+    return out
+
+
+def newest_first(hits: list[dict]) -> list[dict]:
+    """The admin page's order across workspaces (its list, hits.json and their caps): newest first by
+    `detected`, then by id (a file's later line first). `detected` is the watcher's clock; `at` comes
+    from the instance's own journal, which a participant controls, so one workspace's far-future `at`
+    could otherwise top the list for good and push every other workspace past the caps."""
+    return sorted(hits, key=lambda h: (str(h.get("detected") or ""),
+                                       h.get("id") if isinstance(h.get("id"), int) else 0), reverse=True)
+
+
+def workspace_rows(hits_dir: str, metas: dict[str, dict | None],
+                   hits: dict[str, list[dict]] | None = None) -> list[dict]:
+    """One row per workspace in the hits directory: `workspace` (the id), `name`, `owner` and
+    `instance` (from its report sidecar in `metas`, else from its newest hit: a deleted workspace's
+    sidecar is gone but its hits stay), a count per loud kind, `quiet` (every other hit), `newest` (the
+    newest hit's `detected`) and `status` (the status line). Newest first; rows with no hit last.
+    `hits` is `read_all(hits_dir)` when the caller already has it."""
+    hits = read_all(hits_dir) if hits is None else hits
+    now = time.time()
+    rows = []
+    for wid in workspace_ids(hits_dir):
+        own = hits.get(wid, [])
+        meta = metas.get(wid) or {}
+        detected = [str(h["detected"]) for h in own if h.get("detected")]
+        latest = max(own, key=lambda h: str(h.get("detected") or ""), default={})
+        counts = _counts(own)
+        row = {"workspace": wid, "name": meta.get("workspace") or wid,
+               "owner": meta.get("owner") or latest.get("owner"),
+               "instance": meta.get("instance") or latest.get("instance")}
+        row.update({k: counts[k] for k in LOUD_KINDS})
+        row["quiet"] = len(own) - sum(counts[k] for k in LOUD_KINDS)
+        row["newest"] = max(detected) if detected else None
+        row["status"] = status_line(read_status(os.path.join(hits_dir, wid + ".status.json")), now)
+        rows.append(row)
+    rows.sort(key=lambda r: r["name"])
+    rows.sort(key=lambda r: r["newest"] or "", reverse=True)  # stable: no hit ("") last, by name
+    return rows
+
+
+def _filter(key: str, label: str, values: list[tuple[str, str]]) -> str:
+    options = "".join(f'<option value="{_esc(v)}">{_esc(text)}</option>' for v, text in values)
+    return (f'<label class="filter">{_esc(label)} <select data-filter="{_esc(key)}">'
+            f'<option value="">all</option>{options}</select></label>')
+
+
+def _hit_facets(hit: dict) -> dict[str, str]:
+    """What the filters match a hit on, as its wrapper's data-* carry it (hits-admin.js reads the
+    same four from a live hit's event)."""
+    canary = hit.get("canary") if isinstance(hit.get("canary"), dict) else {}
+    return {"kind": str(hit.get("kind") or ""), "type": str(canary.get("type") or ""),
+            "frontend": str(hit.get("frontend") or ""), "workspace": str(hit.get("workspace") or "")}
+
+
+def admin_body(rows: list[dict], hits: list[dict], states: dict[str, str | None], more: int = 0) -> str:
+    """The admin page's body (spec *Admin page*): the literal-matching notice (decision 11), the
+    workspace table (each name links to its participant page; `states` the Coder state per
+    workspace, blank when the lookup failed), the four filters built from the values present, then
+    `hits` (already newest first and capped, each with its `workspace`), and a line saying how many
+    `more` there are. Each hit is `hit_html` inside a `div.admin-hit` carrying its facets as data-*
+    and its workspace's name; each count cell carries the kind it counts (`data-kind`, or
+    `data-quiet`) so hits-admin.js bumps the right one from a live hit's kind without a list of its own."""
+    names = {r["workspace"]: r["name"] for r in rows}
+    trs = []
+    for r in rows:
+        wid = r["workspace"]
+        cells = "".join(f'<td class="count" data-kind="{_esc(k)}">{r[k]}</td>' for k in LOUD_KINDS)
+        trs.append(
+            f'<tr data-workspace="{_esc(wid)}"><td><a href="/reports/{_esc(wid)}/hits">{_esc(r["name"])}</a></td>'
+            f'<td>{_esc(r["owner"])}</td><td><code>{_esc(r["instance"])}</code></td>'
+            f'<td class="state">{_esc(states.get(wid))}</td>{cells}'
+            f'<td class="count" data-quiet="1">{r["quiet"]}</td>'
+            f'<td class="newest">{_esc(r["newest"])}</td><td class="status">{_esc(r["status"])}</td></tr>')
+    head = "".join(f"<th>{_esc(k)}</th>" for k in LOUD_KINDS)
+    table = ('<table class="workspaces"><thead><tr><th>Workspace</th><th>Owner</th><th>Instance</th>'
+             f'<th>State</th>{head}<th>also seen</th><th>Newest (detected)</th><th>Watcher</th></tr></thead>'
+             f'<tbody>{"".join(trs)}</tbody></table>'
+             if trs else f'<p class="muted">{_esc(NOT_WATCHED)}</p>')
+
+    facets = [_hit_facets(h) for h in hits]
+
+    def present(key: str) -> list[str]:
+        return sorted({f[key] for f in facets if f[key]})
+    filters = ('<div class="filters">'
+               + _filter("kind", "kind", [(v, v) for v in present("kind")])
+               + _filter("type", "canary type", [(v, v) for v in present("type")])
+               + _filter("frontend", "frontend", [(v, FRONTEND_LABELS.get(v, v)) for v in present("frontend")])
+               + _filter("workspace", "workspace", [(v, names.get(v, v)) for v in present("workspace")])
+               + '</div>')
+
+    items = []
+    for hit, facet in zip(hits, facets):
+        data = " ".join(f'data-{k}="{_esc(v)}"' for k, v in facet.items())
+        wid = facet["workspace"]
+        items.append(f'<div class="admin-hit" {data}><div class="hit-workspace">'
+                     f'<a href="/reports/{_esc(wid)}/hits">{_esc(names.get(wid, wid))}</a></div>'
+                     f'{hit_html(hit)}</div>')
+    listing = "".join(items) or f'<p class="muted placeholder">{_esc(NO_HITS)}</p>'
+    tail = f'<p class="more muted">{more} more, older: see each workspace\'s page.</p>' if more else ""
+    return (
+        '<main class="hits admin">'
+        '<header class="report-head card"><h1>Canary hits &middot; all workspaces</h1>'
+        f'<p class="notice muted">{_esc(NOTICE)}</p></header>'
+        f'<section class="card workspace-list">{table}</section>'
+        f'<p class="banner">{_esc(ADMIN_BANNER)}</p>{filters}'
+        f'<section class="card hit-list" id="admin-hits">{listing}</section>{tail}'
         '</main>'
     )
 

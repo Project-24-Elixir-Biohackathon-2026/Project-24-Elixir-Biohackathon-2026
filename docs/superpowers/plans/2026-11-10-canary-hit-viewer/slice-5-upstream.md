@@ -30,7 +30,9 @@ this port merged first), the handoff.
   `git checkout origin/main -- <paths>` and commit with `-s`.
 - [ ] **Step 2: Check the spec's upstream claims** on the branch: `platform/report/` imports nothing from
   `platform/promptfoo-evals/` (`grep -rn "promptfoo-evals\|import handoff\|import metrics" platform/report`:
-  nothing); the spec and READMEs link nothing fork-only (guide step 4's grep). Fix what either finds in a commit of
+  nothing); the spec and READMEs link nothing fork-only (guide step 4's grep); comments under `platform/` cite no
+  plan ruling or task (`grep -rnE "ruling [0-9]|Task [0-9]" platform/report platform/coder`: nothing, reworded to
+  the spec's decisions; PR #80's review, finding 3). Fix what either finds in a commit of
   its own on the branch and, if the fork has the same text, in this slice's PR.
 - [ ] **Step 3: Run** the fork-only check (`AGENTS.md`, *Contributing upstream*: `ok`), and the report suite
   (the only area with tests the package touches; `main.tf` gets `terraform fmt -check` where `terraform` is

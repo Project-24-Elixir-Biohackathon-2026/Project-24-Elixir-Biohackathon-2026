@@ -22,6 +22,11 @@ Routes (Caddy sends /reports* here):
     GET  /reports/<id>/hits/events the same hits live, as server-sent events (decision 6); resumes
                                     past Last-Event-ID (else ?after=<id>); ends after 30 minutes,
                                     503 past 200 open streams (ruling 7)
+    GET  /reports/hits             the admin page (spec *Admin page*): every workspace's row and the
+                                    newest 500 hits of all; Coder owners only, 403 for anyone else
+    GET  /reports/hits.json        the rows and the newest 2000 hits as JSON
+    GET  /reports/hits/events      every workspace's new hits live, ids <workspace id>:<line>; no
+                                    resume (the page reloads on reconnect); the same bounds
     GET  /reports/static/<file>    the page's CSS and script
     GET  /reports/healthz          200, no login
 
@@ -42,7 +47,6 @@ import hashlib
 import html
 import json
 import os
-import re
 import sys
 import threading
 import time
@@ -58,7 +62,9 @@ import markdown
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from canary_hits import HitsFile  # noqa: E402
-from hits_view import LOUD, empty_text, hit_html, participant_body, status_line  # noqa: E402
+from hits_view import (LOUD, UUID_RE, admin_body, empty_text, hit_html, newest_first,  # noqa: E402
+                       participant_body, read_all, read_status, scan_ids, status_line,
+                       workspace_rows)
 
 PREFIX = "/reports"
 COOKIE = "coder_session_token"
@@ -73,7 +79,8 @@ STREAM_READ = 1 << 20  # bytes of the hits file read per look at most (a catch-u
 STREAM_PING = 15  # seconds with nothing sent before a ": ping" comment (keeps proxies from closing it)
 STREAM_WRITE_TIMEOUT = 30  # seconds a write may block (a client that stops reading); then the stream ends
 STREAM_STATUS_REFRESH = 10  # seconds before an unchanged status is resent, so "watched N s ago" ages live
-UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+ADMIN_PAGE_HITS = 500  # hits the admin page renders (ruling 9); the rest are on each workspace's page
+ADMIN_JSON_HITS = 2000  # hits the admin hits.json returns; a workspace's full list is its own hits.json
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 STATIC_TYPES = {".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".woff2": "font/woff2"}
 # Scripts only from here, no inline script; inline styles are allowed because the editor
@@ -321,8 +328,11 @@ def list_page(rows: list[dict], user: dict) -> bytes:
     table = ("<table><thead><tr><th>Workspace</th><th>Owner</th><th>Instance</th><th>Created</th>"
              "<th>Last saved</th></tr></thead><tbody>" + "".join(trs) + "</tbody></table>"
              if trs else "<p class=\"muted\">No report yet. A report is created with each workspace.</p>")
+    admin_link = (f"<p class=\"admin-link\"><a href=\"{PREFIX}/hits\">Canary hits</a></p>"
+                  if is_admin(user) else "")
     body = ("<main class=\"list\"><h1>Run reports</h1><p class=\"lead\">One report per workspace, written by its "
             "owner while testing. Everyone logged in can read them.</p>"
+            f"{admin_link}"
             f"<section class=\"card\">{table}</section></main>")
     return page("Run reports", body, user)
 
@@ -365,6 +375,68 @@ def message_page(title: str, text: str, user: dict | None = None) -> bytes:
 
 
 # --- the server ---------------------------------------------------------------
+
+def log_stream_error(wid: str, error: OSError, what: str) -> None:
+    """One log line for a hits file a stream cannot read: the workspace id and the error's class
+    only (no path, no content)."""
+    sys.stdout.write(f"hits stream {wid}: {type(error).__name__}, {what}\n")
+    sys.stdout.flush()
+
+
+class Tail:
+    """One hits file followed by an event stream, read in bounded looks: `poll` returns the complete
+    lines past `start` (as line number, raw bytes) added since the last look. Line numbers are the
+    hits' ids. A start past the file's end is clamped to it (nothing replayed); `END` starts at
+    whatever end the file has when first read."""
+
+    END = sys.maxsize
+
+    def __init__(self, path: str, start: int):
+        self.path, self.start = path, start
+        self.lines, self.offset = 0, 0  # complete lines passed so far, and the byte offset after them
+        self.inode = None  # the file's, once seen: a file replaced or cut ends the stream
+        self.caught_up = False  # `start` reached, or clamped to the file's end once the end was read
+        self.in_long_line = False  # inside a line longer than one read, skipped (it still counts as a line)
+
+    def poll(self, read_size: int) -> list[tuple[int, bytes]] | None:
+        """The new lines, or None when the stream should end: the file was replaced, cut or removed
+        after it was read (a reconnect is clamped to the new end, so it cannot loop). A file that
+        cannot be read at all raises its OSError: the caller decides what that ends."""
+        data = b""
+        try:
+            with open(self.path, "rb") as f:
+                st = os.fstat(f.fileno())
+                if self.inode is not None and (st.st_ino != self.inode or st.st_size < self.offset):
+                    return None  # replaced or cut: the browser reconnects and is clamped afresh
+                self.inode = st.st_ino
+                f.seek(self.offset)
+                data = f.read(read_size)
+        except FileNotFoundError:
+            if self.inode is not None:
+                return None  # removed after it was read
+            self.caught_up = True  # no hits yet: nothing to skip, the first hit is id 1
+        at_end = len(data) < read_size
+        if self.in_long_line:
+            nl = data.find(b"\n")
+            self.offset += len(data) if nl < 0 else nl + 1
+            if nl >= 0:
+                self.lines, self.in_long_line = self.lines + 1, False
+            data = b"" if nl < 0 else data[nl + 1:]
+        # Only complete lines: a line still being written is read again on the next look.
+        complete = data[:data.rfind(b"\n") + 1]
+        if not complete and len(data) >= read_size:  # a whole read and no line end: too long
+            self.offset, self.in_long_line = self.offset + len(data), True
+        out = []
+        for raw in complete.split(b"\n")[:-1]:
+            self.lines += 1
+            self.offset += len(raw) + 1
+            if self.lines <= self.start and not self.caught_up:
+                continue
+            out.append((self.lines, raw))
+        if at_end:
+            self.caught_up = True  # a start past the end is clamped to it: nothing replayed, no error
+        return out
+
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "sperange-report/1"
@@ -451,14 +523,7 @@ class Handler(BaseHTTPRequestHandler):
         not valid JSON or not an object (never raises on it: untrusted only in the sense that the
         watcher could be mid-write, never the participant's)."""
         path = self._status_path(wid)
-        if not path:
-            return None
-        try:
-            with open(path, encoding="utf-8") as f:
-                status = json.load(f)
-        except (OSError, ValueError):
-            return None
-        return status if isinstance(status, dict) else None
+        return read_status(path) if path else None
 
     def hits_page(self, wid: str, user: dict) -> None:
         if not UUID_RE.match(wid):
@@ -494,14 +559,57 @@ class Handler(BaseHTTPRequestHandler):
         return self.send_json(HTTPStatus.OK, {"workspace": wid, "status": self.read_status(wid),
                                               "hits": self.read_hits(wid, after)})
 
+    # ---- the admin page (spec *Admin page*; decision 7): Coder owners only
+
+    def _admin_data(self) -> tuple[list[dict], list[dict]]:
+        """The workspace rows and every hit of every workspace, newest first."""
+        if not self.hits_dir:
+            return [], []
+        by_ws = read_all(self.hits_dir)
+        metas = {wid: self.store.meta(wid) for wid in by_ws}
+        rows = workspace_rows(self.hits_dir, metas, by_ws)
+        return rows, newest_first([h for hits in by_ws.values() for h in hits])
+
+    def admin_page(self, user: dict) -> None:
+        if not is_admin(user):
+            return self.send(HTTPStatus.FORBIDDEN, message_page(
+                "Forbidden", "Only Coder owners can see every workspace's canary hits.", user))
+        rows, hits = self._admin_data()
+        token = self.token()
+        # One lookup per row with the viewer's token; a failure leaves that row's state blank.
+        states = {r["workspace"]: self.coder.workspace_state(token, r["workspace"]) for r in rows}
+        shown = hits[:ADMIN_PAGE_HITS]
+        content = (f'<section id="admin-hits-page">'
+                   f'{admin_body(rows, shown, states, more=len(hits) - len(shown))}</section>')
+        return self.send(HTTPStatus.OK, page("Canary hits · all workspaces", content, user,
+                                             scripts=("hits-admin.js",), styles=("hits.css",)))
+
+    def admin_json(self, user: dict) -> None:
+        if not is_admin(user):
+            return self.send_json(HTTPStatus.FORBIDDEN, {"error": "forbidden"})
+        rows, hits = self._admin_data()
+        return self.send_json(HTTPStatus.OK, {"workspaces": rows, "hits": hits[:ADMIN_JSON_HITS]})
+
+    def admin_events(self, user: dict) -> None:
+        if not is_admin(user):
+            return self.send_json(HTTPStatus.FORBIDDEN, {"error": "forbidden"})
+        if not self.hits_dir:
+            return self.send_json(HTTPStatus.NOT_FOUND, {"error": "no hits directory"})
+        self._event_stream(self._stream_all)
+
     def hits_events(self, wid: str, user: dict) -> None:
-        """The event stream (spec *Participant page*; decision 6, ruling 7). Not sent through `send`: no
-        Content-Length, and each event is written as it is found. Its timings and cap are the server's
-        attributes (`make_server`), so tests can shorten them."""
+        """The event stream (spec *Participant page*; decision 6, ruling 7): resumes past
+        Last-Event-ID (else ?after=), and sends a status event whenever the watcher's status changes."""
         if not UUID_RE.match(wid):
             return self.send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
         if not self.can_see_hits(self.store.meta(wid), user):
             return self.send_json(HTTPStatus.FORBIDDEN, {"error": "forbidden"})
+        self._event_stream(lambda: self._stream(wid, self._stream_start()))
+
+    def _event_stream(self, run) -> None:
+        """Opens an event stream and runs `run` to write it (ruling 7: a bounded number open at once).
+        Not sent through `send`: no Content-Length, and each event is written as it is found. Its
+        timings and cap are the server's attributes (`make_server`), so tests can shorten them."""
         srv = self.server
         with srv.streams_lock:
             if srv.streams >= srv.stream_max:
@@ -526,7 +634,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.flush()
             if self.command != "HEAD":
-                self._stream(wid, self._stream_start())
+                run()
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, TimeoutError):
             pass  # the viewer went away, or stopped reading
         finally:
@@ -543,58 +651,44 @@ class Handler(BaseHTTPRequestHandler):
                 continue
         return 0
 
-    def _stream(self, wid: str, start: int) -> None:
+    def _pump(self, look) -> None:
+        """The stream's loop: every stream_poll seconds, `look()` returns the events to send (a list of
+        strings) or None to end the stream; a ping when nothing was sent for stream_ping seconds; ends
+        after stream_seconds."""
         srv = self.server
-        hits_path, status_path = self._hits_path(wid), self._status_path(wid)
-        lines, offset = 0, 0  # complete lines passed so far, and the byte offset after them
-        inode = None  # the hits file's, once seen: a file replaced or cut ends the stream
-        caught_up = False  # `start` reached, or clamped to the file's end once the end was read
-        in_long_line = False  # inside a line longer than one read, skipped (it still counts as a line)
-        status_seen = None  # the status file's (mtime, inode) last sent; None: never sent
-        status_sent = time.monotonic()  # when a status event was last sent; also refreshes it
         ends = time.monotonic() + srv.stream_seconds
         last_sent = time.monotonic()
         while time.monotonic() < ends:
+            out = look()
+            if out is None:
+                return
+            if not out and time.monotonic() - last_sent >= srv.stream_ping:
+                out.append(": ping\n\n")
+            if out:
+                self.wfile.write("".join(out).encode())
+                self.wfile.flush()
+                last_sent = time.monotonic()
+            time.sleep(srv.stream_poll)
+
+    def _stream(self, wid: str, start: int) -> None:
+        srv = self.server
+        tail = Tail(self._hits_path(wid), start) if self.hits_dir else None
+        status_path = self._status_path(wid)
+        status_seen = None  # the status file's (mtime, inode) last sent; None: never sent
+        status_sent = time.monotonic()  # when a status event was last sent; also refreshes it
+
+        def look():
+            nonlocal status_seen, status_sent
             out = []
-            data = b""
-            if hits_path:
+            if tail:
                 try:
-                    with open(hits_path, "rb") as f:
-                        st = os.fstat(f.fileno())
-                        if inode is not None and (st.st_ino != inode or st.st_size < offset):
-                            return  # replaced or cut: the browser reconnects and is clamped afresh
-                        inode = st.st_ino
-                        f.seek(offset)
-                        data = f.read(srv.stream_read)
-                except FileNotFoundError:
-                    if inode is not None:
-                        return  # removed after it was read
-                    caught_up = True  # no hits yet: nothing to skip, the first hit is id 1
-                except OSError as e:  # the class only: no path but the workspace id, no content
-                    sys.stdout.write(f"hits stream {wid}: {type(e).__name__}, ended\n")
-                    sys.stdout.flush()
-                    return
-            at_end = len(data) < srv.stream_read
-            if in_long_line:
-                nl = data.find(b"\n")
-                offset += len(data) if nl < 0 else nl + 1
-                if nl >= 0:
-                    lines, in_long_line = lines + 1, False
-                data = b"" if nl < 0 else data[nl + 1:]
-            # Only complete lines: a line still being written is read again on the next look.
-            complete = data[:data.rfind(b"\n") + 1]
-            if not complete and len(data) >= srv.stream_read:  # a whole read and no line end: too long
-                offset, in_long_line = offset + len(data), True
-            for raw in complete.split(b"\n")[:-1]:
-                lines += 1
-                offset += len(raw) + 1
-                if lines <= start and not caught_up:
-                    continue
-                event = self._hit_event(lines, raw)
-                if event:
-                    out.append(event)
-            if at_end:
-                caught_up = True  # a start past the end is clamped to it: nothing replayed, no error
+                    lines = tail.poll(srv.stream_read)
+                except OSError as e:
+                    log_stream_error(wid, e, "ended")
+                    return None
+                if lines is None:
+                    return None
+                out.extend(e for e in (self._hit_event(n, raw) for n, raw in lines) if e)
             if status_path:
                 try:
                     st = os.stat(status_path)
@@ -609,18 +703,50 @@ class Handler(BaseHTTPRequestHandler):
                     status = self.read_status(wid) or {}
                     line = status_line(status, time.time())
                     out.append("event: status\ndata: " + json.dumps({"line": line, "empty": empty_text(status)}) + "\n\n")
-            if not out and time.monotonic() - last_sent >= srv.stream_ping:
-                out.append(": ping\n\n")
-            if out:
-                self.wfile.write("".join(out).encode())
-                self.wfile.flush()
-                last_sent = time.monotonic()
-            time.sleep(srv.stream_poll)
+            return out
+        self._pump(look)
+
+    def _stream_all(self) -> None:
+        """The admin stream (spec *Admin page*): every workspace's hits file, rescanned on each look so
+        a new workspace's file joins. A file there when the stream opened is followed from its end (no
+        resume: the page reloads on reconnect); one that appears later, from its first line. Event ids
+        are `<workspace id>:<line number>`; no status events (the page's status column is rendered).
+        A file that cannot be read is dropped for the rest of this stream (logged once) and the others
+        go on: ending the stream would only make the page reload into the same unreadable file."""
+        srv = self.server
+        tails: dict[str, Tail] = {}
+        dropped: set[str] = set()
+        first = True
+
+        def look():
+            nonlocal first
+            out = []
+            wids = scan_ids(self.hits_dir)
+            if wids is None:
+                return []  # the directory could not be listed: try again, still the first scan
+            for wid in wids:
+                if wid in dropped:
+                    continue
+                if wid not in tails:
+                    tails[wid] = Tail(self._hits_path(wid), start=Tail.END if first else 0)
+                try:
+                    lines = tails[wid].poll(srv.stream_read)
+                except OSError as e:
+                    log_stream_error(wid, e, "dropped from the admin stream")
+                    dropped.add(wid)
+                    continue
+                if lines is None:
+                    return None  # one file replaced or cut: the page reconnects, and reloads
+                out.extend(e for e in (self._hit_event(n, raw, wid) for n, raw in lines) if e)
+            first = False
+            return out
+        self._pump(look)
 
     @staticmethod
-    def _hit_event(n: int, raw: bytes) -> str | None:
+    def _hit_event(n: int, raw: bytes, workspace: str | None = None) -> str | None:
         """Line `n` of the hits file as an event, its id the line number (the hit's id); None for a line
-        that does not parse (a crash's partial line), which still counts as a line."""
+        that does not parse (a crash's partial line), which still counts as a line. With `workspace`
+        (the admin stream), the data says whose hit it is and the event id is `<workspace>:<n>`."""
         try:
             hit = json.loads(raw.decode("utf-8", "replace"))
         except ValueError:
@@ -631,7 +757,10 @@ class Handler(BaseHTTPRequestHandler):
         kind = hit.get("kind")
         data = {"id": n, "kind": kind, "loud": kind in LOUD, "type": canary.get("type"),
                 "frontend": hit.get("frontend"), "html": hit_html(hit)}
-        return f"id: {n}\nevent: hit\ndata: {json.dumps(data)}\n\n"
+        if workspace is None:
+            return f"id: {n}\nevent: hit\ndata: {json.dumps(data)}\n\n"
+        data["workspace"] = workspace
+        return f"id: {workspace}:{n}\nevent: hit\ndata: {json.dumps(data)}\n\n"
 
     # ---- methods
     def do_HEAD(self):
@@ -650,11 +779,18 @@ class Handler(BaseHTTPRequestHandler):
         except (urllib.error.URLError, OSError, ValueError):
             return self.send(HTTPStatus.BAD_GATEWAY, message_page("Portal unavailable", "Coder did not answer; try again in a moment."))
         if user is None:
-            if rest.endswith(".md") or rest.endswith("/hits.json") or rest.endswith("/hits/events"):
+            if rest.endswith(".md") or rest.endswith("hits.json") or rest.endswith("hits/events"):
                 return self.send_json(HTTPStatus.UNAUTHORIZED, {"error": "not logged in"})
             return self.login_redirect(path)  # the page asked for, the hits page included
         if rest == "":
             return self.send(HTTPStatus.OK, list_page(self.store.listing(), user))
+        # The admin routes first: "hits" is not a workspace id, so the <id> routes below never see it.
+        if rest == "hits":
+            return self.admin_page(user)
+        if rest == "hits.json":
+            return self.admin_json(user)
+        if rest == "hits/events":
+            return self.admin_events(user)
         if rest.endswith("/hits/events"):
             return self.hits_events(rest[:-len("/hits/events")], user)
         if rest.endswith("/hits.json"):
