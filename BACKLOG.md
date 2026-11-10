@@ -40,6 +40,10 @@ start reads this section; keep it short.
   answer decides most of the matrix above L1. Also open there: whether L3's `touched` `registry-study-id
   (linkage.csv)` on direct rows is the DRS listing or the file, and which canaries L1 and L2's direct-row answers
   were (their reports are gone; a rerun of one level answers both).
+- A second de.NBI instance for parallel experiments tracks: de.NBI is one VM, `denbi-agui-01` (`spe_provision:
+  existing`), and every build rewrites its stack, so two tracks needing it would clobber each other; a new VM or a
+  second stack on the host (unverified) is a second instance, outside the standing OK — from the experiments
+  questions handoff (2026-11-10); waits on the user: an OK, and which of the two.
 
 ## Unscheduled
 
