@@ -25,9 +25,14 @@
 
 # Only files that exist: a bind mount onto a missing path inside a read-only mount stops
 # the container from starting, and a canary switch that is off never creates its file.
+# The stamp goes into the compose file: a mask is bound to the file's inode, so a file
+# rewritten under a new inode re-renders the file, and a changed render recreates the stack.
 - name: Masks for the files present on this instance
   ansible.builtin.set_fact:
-    wes_masks: "{{ wes_mask_stat.results | selectattr('stat.exists') | map(attribute='item') | list }}"
+    wes_masks: "{{ wes_mask_present | map(attribute='item') | list }}"
+    wes_mask_stamp: "{{ wes_mask_present | map(attribute='stat.inode') | map('string') | join(' ') }}"
+  vars:
+    wes_mask_present: "{{ wes_mask_stat.results | selectattr('stat.exists') | list }}"
 
 - name: Rendered configuration
   ansible.builtin.template:
@@ -138,13 +143,21 @@
     chdir: "{{ spe_stack_dir }}/deployment"
   changed_when: false
 
-- name: WESkit worker reads every masked file as empty
+- name: Every dataset container reads every masked file as empty
   ansible.builtin.command: >-
-    docker compose -f compose.install.yaml exec -T --user 35671:35671 submission_worker
-    sh -c 'for f in "$@"; do for root in /drs-data /data-share; do
+    docker compose -f compose.install.yaml exec -T --user 35671:35671 {{ item.service }}
+    sh -c 'roots=$1; shift; for f in "$@"; do for root in $roots; do
     test ! -s "$root/$f" || { echo "readable: $root/$f"; exit 1; }; done; done' sh
-    {{ wes_masks | map('quote') | join(' ') }}
+    {{ item.roots | quote }} {{ wes_masks | map('quote') | join(' ') }}
   args:
     chdir: "{{ spe_stack_dir }}/deployment"
   changed_when: false
+  loop:
+    - { service: rest, roots: /drs-data /data-share }
+    - { service: submission_worker, roots: /drs-data /data-share }
+    - { service: monitoring_worker, roots: /drs-data /data-share }
+    - { service: monitoring_scheduler, roots: /drs-data /data-share }
+    - { service: drs-filer, roots: /drs-data }
+  loop_control:
+    label: "{{ item.service }}"
   when: wes_masks | length > 0

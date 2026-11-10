@@ -1,4 +1,7 @@
 # Managed by Ansible (spe-ansible). Do not edit on the instance.
+{% if wes_mask_stamp | default('') %}
+# Inodes of the masked files (spe_wes_masked_files): {{ wes_mask_stamp }}
+{% endif %}
 networks:
   weskit:
     driver: bridge

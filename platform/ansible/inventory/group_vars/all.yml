@@ -177,6 +177,7 @@ spe_local_vars:
   - spe_canary_trs_descriptions
   - spe_canary_workflow_comments
   - spe_canary_service_info
+  - spe_wes_masked_files
   - spe_denbi_api_key
   - spe_agent_llm_key
   - spe_agui_ui_dev
