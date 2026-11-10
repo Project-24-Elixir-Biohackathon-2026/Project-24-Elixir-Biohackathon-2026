@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 from urllib.parse import quote
@@ -211,7 +212,9 @@ class SandboxClient:
         except SandboxUnavailable:
             return None
 
-    async def call(self, op: Operation, args: dict, *, session_id=None) -> str:
+    async def call(self, op: Operation, args: dict, *, session_id=None,
+                   screen: Callable[[str], str] | None = None) -> str:
+        """`screen` sees the sandbox's answer before anything wraps it (an error nests it in JSON once more)."""
         try:
             for name in op.parameters.get("required", []):
                 if name not in args or args[name] is None:
@@ -225,6 +228,8 @@ class SandboxClient:
             params = {k: args[k] for k in op.query_params if k in args and (k in op.required_query or args[k] not in (None, ""))}
             body = (args if op.has_body else {}) if op.method in {"POST", "PUT", "PATCH", "DELETE"} else None
             status, text = await self._request(op.method, path, params=params, body=body, session_id=session_id)
+            if screen is not None:
+                text = _ResponseText(screen(text), text.total_bytes)
             if status >= 300:
                 return json.dumps({"error": f"HTTP error {status}: {text}"})
             return text
@@ -240,8 +245,14 @@ def build_tools(client: SandboxClient, ops: list[Operation], max_output_bytes: i
 
     def bind(op):
         async def invoke(ctx, **args):
-            session = getattr(getattr(ctx, "deps", None), "session_id", None)
-            return truncate(await client.call(op, args, session_id=session), max_output_bytes)
+            deps = getattr(ctx, "deps", None)
+            session = getattr(deps, "session_id", None)
+            guard = getattr(deps, "guard", None)
+            refusal = guard.deny(args) if guard is not None else None
+            if refusal is not None:
+                return refusal
+            screen = guard.screen if guard is not None else None
+            return truncate(await client.call(op, args, session_id=session, screen=screen), max_output_bytes)
         description = op.description
         if op.name == "run_command" and cwd:
             description += f"\n\nThe current working directory is: {cwd}"

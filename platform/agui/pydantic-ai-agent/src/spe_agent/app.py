@@ -31,6 +31,7 @@ from .compaction import (
     summarise,
 )
 from .config import Config, ConfigError, Secrets
+from .guard import Guard, RunGuard
 from .runlog import RunLog, RunRecorder, redact
 from .sandbox import SandboxClient, SandboxUnavailable, build_tools, operations_from_openapi, select_operations
 from .title import TitleRequest, generate_title
@@ -139,6 +140,7 @@ class Service:
         self._probe_interval = probe_interval
         self._base_prompt = self._read_prompt(fail=True)
         self.runlog = RunLog(config.run_log, self._secrets)
+        self.guard = Guard(config.guard) if config.guard.mode != "disabled" else None
         self.ready: Ready | None = None
         self.reason = "starting"
         self.discovery_task: asyncio.Task | None = None
@@ -231,54 +233,63 @@ class Service:
             return
         run_input = adapter.run_input
         recorder = RunRecorder(run_input)
+        guard = self.guard.run(run_input.thread_id) if self.guard else None
 
         async def on_complete(result) -> None:
             recorder.usage(result.usage)
 
-        deps = RunDeps(session_id=run_input.thread_id)
+        deps = RunDeps(session_id=run_input.thread_id, guard=guard)
         stream = adapter.run_stream(deps=deps, usage_limits=self.config.limits.usage_limits(), on_complete=on_complete)
         status = "cancelled"  # unless a terminal event arrives: client gone or task cancelled
         try:
             async for event in stream:
+                outgoing = []
                 if event.type in _MARKER_BEFORE:
                     for summary in deps.compaction.take_pending():
-                        for marker in marker_events(summary):
-                            recorder.observe(marker)
-                            yield marker
+                        outgoing += marker_events(summary)
                 if isinstance(event, RunErrorEvent):
                     event = event.model_copy(update={"message": self.sanitize(event.message)})
                     status = "failed"
                 elif isinstance(event, RunFinishedEvent):
                     status = "completed"
-                recorder.observe(event)
-                yield event
+                for out in _gated(guard, [*outgoing, event]):
+                    recorder.observe(out)
+                    yield out
         finally:
             # Closing the adapter stream ends the agent run (and its model request) if it is
             # still going. Commands the sandbox started in the background keep running there.
             await stream.aclose()
             recorder.compactions(deps.compaction.records)
-            try:
-                self.runlog.write(recorder.finish(status))
-            except OSError:
-                log.exception("could not write the run log")
+            self._write(recorder.finish(status), guard)
+
+    def _write(self, record: dict, guard: RunGuard | None) -> None:
+        try:
+            self.runlog.write(guard.seal(record) if guard else record)
+        except OSError:
+            log.exception("could not write the run log")
 
     async def _command_events(self, adapter: _Adapter, command: dict) -> AsyncIterator[BaseEvent]:
         run_input = adapter.run_input
         recorder = RunRecorder(run_input)
+        guard = self.guard.run(run_input.thread_id) if self.guard else None
         focus = command.get("focus") if isinstance(command.get("focus"), str) else None
         focus = (focus or "").strip() or None
         status, records, usage = "cancelled", [], RunUsage()
 
-        def end(event: BaseEvent) -> BaseEvent:
-            recorder.observe(event)
-            return event
+        def end(*events: BaseEvent) -> list[BaseEvent]:
+            sent = _gated(guard, list(events))
+            for event in sent:
+                recorder.observe(event)
+            return sent
 
         try:
-            yield end(RunStartedEvent(thread_id=run_input.thread_id, run_id=run_input.run_id))
+            for e in end(RunStartedEvent(thread_id=run_input.thread_id, run_id=run_input.run_id)):
+                yield e
             if command.get("name") != "compact":
                 recorder.command_input(self.sanitize(f"/{command.get('name')}"))
                 status = "failed"
-                yield end(RunErrorEvent(message=UNKNOWN_COMMAND))
+                for e in end(RunErrorEvent(message=UNKNOWN_COMMAND)):
+                    yield e
                 return
             recorder.command_input("/compact" + (f" {focus}" if focus else ""))
             history = build_sent(adapter.messages)
@@ -287,29 +298,35 @@ class Service:
                      else NOTHING_TO_COMPACT if nothing_to_compact(adapter.messages) else None)
             if error is not None:
                 status = "failed"
-                yield end(RunErrorEvent(message=error))
+                for e in end(RunErrorEvent(message=error)):
+                    yield e
                 return
             try:
                 summary = await summarise(self._model, self.config.compaction, history, usage=usage,
                                           usage_limits=self.config.limits.usage_limits(), focus=focus, manual=True)
             except Exception as e:  # sanitized as every error is
                 status = "failed"
-                yield end(RunErrorEvent(message=self.sanitize(str(e))))
+                for out in end(RunErrorEvent(message=self.sanitize(str(e)))):
+                    yield out
                 return
             records.append(CompactionRecord(
                 trigger="manual", focus=focus, estimated_tokens=estimate_tokens(history, 0),
                 messages_cut=len(adapter.messages), summary=summary.text, usage=summary.usage))
-            for marker in marker_events(summary.text, manual=True):
-                yield end(marker)
             status = "completed"
-            yield end(RunFinishedEvent(thread_id=run_input.thread_id, run_id=run_input.run_id))
+            for e in end(*marker_events(summary.text, manual=True),
+                         RunFinishedEvent(thread_id=run_input.thread_id, run_id=run_input.run_id)):
+                yield e
         finally:
             recorder.usage(usage)
             recorder.compactions(records)
-            try:
-                self.runlog.write(recorder.finish(status))
-            except OSError:
-                log.exception("could not write the run log")
+            self._write(recorder.finish(status), guard)
+
+
+def _gated(guard: RunGuard | None, events: list[BaseEvent]) -> list[BaseEvent]:
+    """What the client receives for `events`: through the run's guard when there is one."""
+    if guard is None:
+        return events
+    return [out for event in events for out in guard.feed(event)]
 
 
 def create_app(config: Config, secrets: Secrets, model_override: Model | None = None,
@@ -335,7 +352,10 @@ def create_app(config: Config, secrets: Secrets, model_override: Model | None = 
     async def healthz():
         if service.ready is None:
             return JSONResponse({"status": "starting", "reason": service.reason}, status_code=503)
-        return {"status": "ok", "tools": service.ready.tool_count}
+        health = {"status": "ok", "tools": service.ready.tool_count}
+        if service.guard is not None:   # zero tokens: the manifest is missing, only names are guarded
+            health["guard"] = {"mode": service.guard.mode, "tokens": service.guard.tokens}
+        return health
 
     @app.post("/agent")
     async def agent_endpoint(request: Request):
@@ -364,10 +384,11 @@ def create_app(config: Config, secrets: Secrets, model_override: Model | None = 
                 if isinstance(e, ValidationError) else str(e)
             return JSONResponse({"detail": errors}, status_code=422)
         title, record = await generate_title(service._model, config.title, body)
-        try:
-            service.runlog.write(record)
-        except OSError:
-            log.exception("could not write the run log")
+        guard = service.guard.run(body.thread_id) if service.guard else None
+        if guard is not None and title is not None:
+            title = guard.title(title)
+            record["title"] = title
+        service._write(record, guard)
         if title is None:
             detail = service.sanitize(record["error"]) if record["error"] else "could not produce a title"
             return JSONResponse({"detail": detail}, status_code=422)

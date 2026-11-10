@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any
 
 from pydantic_ai import Agent, Tool
 from pydantic_ai.models import Model
@@ -14,10 +15,12 @@ from .config import CompactionCfg, ModelCfg
 @dataclass(frozen=True)
 class RunDeps:
     """Per-run dependencies. `session_id` (the AG-UI thread id) becomes the sandbox's X-Session-Id,
-    as Open WebUI sends its chat id. `compaction` collects the run's compactions (mutable inside)."""
+    as Open WebUI sends its chat id. `compaction` collects the run's compactions (mutable inside).
+    `guard` is the run's `guard.RunGuard`, None when the guard is disabled."""
 
     session_id: str | None = None
     compaction: CompactionRun = field(default_factory=CompactionRun)
+    guard: Any = None
 
 
 def compose_prompt(base: str, sandbox_prompt: str | None) -> str:

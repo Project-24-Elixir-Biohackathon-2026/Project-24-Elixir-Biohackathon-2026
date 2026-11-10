@@ -82,6 +82,28 @@ class TitleCfg(_Strict):
     max_tokens: PositiveInt = 1024
 
 
+class GuardCfg(_Strict):
+    # No bare `off`: YAML reads an unquoted off as false, and a mode must never turn into another.
+    mode: Literal["disabled", "observe", "enforce"] = "disabled"
+    # The shared canary matcher, loaded by path (platform/canary_check/canary_check.py; the image
+    # carries a copy at this path, and the instance mounts the clone's file over it).
+    matcher: Path = Path("/app/matcher/canary_check.py")
+    # The hand-off's hash-only manifest: digests and types, never a plaintext canary.
+    manifest: Path = Path("/etc/spe-agent/canaries/canaries.manifest.sha256")
+    # Study ids are part of the DRS file names the agent must use.
+    exempt_types: list[str] = ["registry-study-id"]
+    # File names no analysis needs (the instance's masked files): denied in a tool call,
+    # redacted in a tool result, recorded in the agent's own text.
+    sensitive_names: list[str] = []
+
+    @model_validator(mode="after")
+    def _check(self) -> "GuardCfg":
+        spaced = [n for n in self.sensitive_names if not n or any(c.isspace() for c in n)]
+        if spaced:
+            raise ValueError(f"guard.sensitive_names must be non-empty and hold no whitespace: {spaced}")
+        return self
+
+
 class Config(_Strict):
     model: ModelCfg
     prompt: PromptCfg
@@ -89,6 +111,7 @@ class Config(_Strict):
     limits: LimitsCfg = LimitsCfg()
     compaction: CompactionCfg = CompactionCfg()
     title: TitleCfg = TitleCfg()
+    guard: GuardCfg = GuardCfg()
     run_log: Path = Path("/var/lib/spe-agent/runs.jsonl")
 
 
