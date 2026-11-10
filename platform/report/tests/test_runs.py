@@ -212,6 +212,33 @@ def test_the_listing_is_cached_briefly(service, monkeypatch):
     assert len(sr.Runs(str(runs)).listing()) == 3
 
 
+# --- one workspace ----------------------------------------------------------------------------------------
+
+def test_a_workspace_lists_its_runs_with_chats_and_its_live_report(service):
+    base, _ = service
+    w = getj(base, f"/reports/api/workspaces/{WID}")
+    assert w["workspace_id"] == WID
+    assert w["live_report"]["workspace"] == "tm-test" and w["live_report"]["owner"] == "anna"
+    assert "owner_email" not in w["live_report"]
+    assert [r["id"] for r in w["runs"]] == [RUN]  # the archive whose sidecar names the workspace
+    assert [c["id"] for c in w["runs"][0]["chat_list"]] == ["01-available-data", "01-print-the-runbook"]
+
+
+def test_a_workspace_without_a_sidecar_match_falls_back_to_the_instance_name(service, tmp_path):
+    base, runs = service
+    # the live sidecar of another workspace names the old run's instance; the old archive has no workspace_id
+    other = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+    reports = tmp_path / "reports"
+    (reports / f"{other}.md").write_text("x")
+    (reports / f"{other}.json").write_text(json.dumps({"owner": "bob", "workspace": "old-run", "instance": "cw-bob-old-run"}))
+    w = getj(base, f"/reports/api/workspaces/{other}")
+    assert [r["id"] for r in w["runs"]] == [OLD] and w["live_report"]["workspace"] == "old-run"
+    unknown = getj(base, "/reports/api/workspaces/00000000-0000-4000-8000-000000000000")
+    assert unknown == {"workspace_id": "00000000-0000-4000-8000-000000000000", "live_report": None, "runs": []}
+    assert call(base, "/reports/api/workspaces/not-a-uuid", "tok-bob")[0] == 404
+    assert call(base, f"/reports/api/workspaces/{WID}")[0] == 401
+
+
 # --- one run ----------------------------------------------------------------------------------------------
 
 def test_one_run_carries_parameters_report_and_chats_of_both_frontends(service):
@@ -286,8 +313,12 @@ def test_split_turns_on_odd_input():
     assert sr.split_turns("") == ({}, [])
     facts, turns = sr.split_turns("# T\n\n- Created: now\n\nno heading at all\n")
     assert facts == {"Created": "now"} and turns == []
-    _, turns = sr.split_turns("## tool · 1\n\nx\n\n## Something (odd) here\n\ny")
-    assert [(t["role"], t["label"], t["model"]) for t in turns] == [("tool", "tool", ""), ("section", "Something (odd) here", "")]
+    _, turns = sr.split_turns("## tool · 1\n\nx\n\n## Something (odd) here\n\ny\n\n## Other branches\n\nz")
+    # a '##' the model wrote stays in the turn; write_run.py's own sections are turns
+    assert [(t["role"], t["label"], t["model"]) for t in turns] == [("tool", "tool", ""), ("section", "Other branches", "")]
+    assert "## Something (odd) here" in turns[0]["markdown"] and "<h2>Something (odd) here</h2>" in turns[0]["html"]
+    _, turns = sr.split_turns("## user · 1\n\n## TRS\n\ntext\n\n## assistant (m) · 2\n\nok")
+    assert [(t["role"], t["model"]) for t in turns] == [("user", ""), ("assistant", "m")] and "## TRS" in turns[0]["markdown"]
 
 
 # --- the page ---------------------------------------------------------------------------------------------
@@ -305,6 +336,7 @@ def test_the_runs_page_is_a_shell_with_the_api_and_the_scripts_and_the_csp(servi
         assert status == 200 and headers["Content-Type"].startswith(ctype)
     status, _, body = call(base, "/reports/", "tok-bob")
     assert 'href="/reports/runs">Runs</a>' in body.decode()
+    assert "written by its" not in body.decode()  # the list has no lead text
 
 
 def test_when_reads_seconds_and_milliseconds():

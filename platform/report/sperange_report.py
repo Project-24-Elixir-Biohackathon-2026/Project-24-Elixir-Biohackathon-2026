@@ -25,6 +25,7 @@ goes in the coder_session_token cookie or in a Coder-Session-Token header; witho
 one the answer is 401, never a redirect). Everyone logged in may read all of it:
     GET  /reports/api/reports                                   the live reports (the list above as JSON)
     GET  /reports/api/runs                                      every archived run under RUNS_DIR, newest first
+    GET  /reports/api/workspaces/<id>                           one workspace's runs with their chats, and its live report
     GET  /reports/api/runs/<run>                                one run: parameters, report, chats of both frontends
     GET  /reports/api/runs/<run>/report.md                      the archived report, text/markdown
     GET  /reports/api/runs/<run>/chats/<frontend>/<chat>        one chat as turns (role, time, sanitized HTML)
@@ -232,6 +233,9 @@ class Store:
 # agui/agui-journals/<session>.jsonl (raw). Read-only here; a listing is cached briefly.
 
 TURN_RE = re.compile(r"^## (?P<role>[^(·\n]+?)(?: \((?P<model>[^)]*)\))?(?: · (?P<rest>.*))?$")
+TURN_ROLES = ("user", "assistant", "system", "tool")
+# write_run.py's own '##' sections in an AG-UI chat; any other '##' line is the model's text.
+TURN_SECTIONS = ("Compacted", "Other branches", "sent by the client, not used")
 HIDDEN_RUN_KEYS = ("participant_email", "owner_email")
 
 
@@ -259,7 +263,8 @@ def public(d: dict) -> dict:
 def split_turns(md: str) -> tuple[dict, list[dict]]:
     """A chat as write_run.py renders it: a title, '- Key: value' facts, then one '## role · time'
     heading per turn (Open WebUI adds the model in parentheses; AG-UI has a few other '##' sections,
-    'Compacted', 'Other branches', which become turns of their own kind)."""
+    'Compacted', 'Other branches', which become turns of their own kind). A '##' line the model wrote
+    in its answer is not a turn: it stays in the body, like everything inside a code fence."""
     facts: dict[str, str] = {}
     turns: list[dict] = []
     current: dict | None = None
@@ -277,13 +282,13 @@ def split_turns(md: str) -> tuple[dict, list[dict]]:
         stripped = line.strip()
         if stripped.startswith("```") or stripped.startswith("~~~"):
             in_fence = not in_fence
-        if not in_fence and line.startswith("## "):
+        m = TURN_RE.match(line) if not in_fence and line.startswith("## ") else None
+        if m and (m.group("role").strip().lower() in TURN_ROLES and m.group("rest") is not None
+                  or m.group("role").strip() in TURN_SECTIONS):
             close()
-            m = TURN_RE.match(line)
-            role = (m.group("role") if m else line[3:]).strip()
-            current = {"role": role.lower() if role.lower() in ("user", "assistant", "system", "tool") else "section",
-                       "label": role, "model": (m.group("model") or "") if m else "",
-                       "at": (m.group("rest") or "") if m else ""}
+            role = m.group("role").strip()
+            current = {"role": role.lower() if role.lower() in TURN_ROLES else "section",
+                       "label": role, "model": m.group("model") or "", "at": m.group("rest") or ""}
             body = []
             continue
         if current is None:
@@ -411,6 +416,16 @@ class Runs:
         rows = [self.summary(rid) for rid in sorted(names, reverse=True) if self.exists(rid)]
         with self.lock:
             self._listing = (now + RUNS_CACHE_SECONDS, rows)
+        return rows
+
+    def for_workspace(self, wid: str, instance: str | None) -> list[dict]:
+        """The runs of one workspace: those whose archived report sidecar names it, or (archives
+        without a sidecar) whose instance is the one the workspace's live sidecar names."""
+        rows = []
+        for s in self.listing():
+            report = s.get("report") or {}
+            if report.get("workspace_id") == wid or (instance and s["instance"] == instance and not report.get("workspace_id")):
+                rows.append({**s, "chat_list": self.chats(s["id"])})
         return rows
 
     def detail(self, rid: str) -> dict:
@@ -568,9 +583,7 @@ def list_page(rows: list[dict], user: dict) -> bytes:
     table = ("<table><thead><tr><th>Workspace</th><th>Owner</th><th>Instance</th><th>Created</th>"
              "<th>Last saved</th></tr></thead><tbody>" + "".join(trs) + "</tbody></table>"
              if trs else "<p class=\"muted\">No report yet. A report is created with each workspace.</p>")
-    body = ("<main class=\"list\"><h1>Run reports</h1><p class=\"lead\">One report per workspace, written by its "
-            "owner while testing. Everyone logged in can read them.</p>"
-            f"<section class=\"card\">{table}</section></main>")
+    body = f"<main class=\"list\"><h1>Run reports</h1><section class=\"card\">{table}</section></main>"
     return page("Run reports", body, user)
 
 
@@ -727,6 +740,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(HTTPStatus.OK, {"reports": [public(r) for r in self.store.listing()]})
         if parts == ["runs"]:
             return self.send_json(HTTPStatus.OK, {"runs": self.runs.listing()})
+        if len(parts) == 2 and parts[0] == "workspaces" and UUID_RE.match(parts[1]):
+            wid = parts[1]
+            meta = self.store.meta(wid)
+            live = None
+            if meta is not None and os.path.isfile(self.store._md(wid)):
+                live = {**public(meta), "workspace_id": wid, "last_saved": self.store.last_saved(wid)}
+            runs = self.runs.for_workspace(wid, (meta or {}).get("instance"))
+            return self.send_json(HTTPStatus.OK, {"workspace_id": wid, "live_report": live, "runs": runs})
         if len(parts) < 2 or parts[0] != "runs" or not self.runs.exists(parts[1]):
             return self.send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
         rid, sub = parts[1], parts[2:]
