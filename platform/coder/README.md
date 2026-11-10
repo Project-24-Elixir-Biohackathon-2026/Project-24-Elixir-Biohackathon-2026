@@ -160,7 +160,7 @@ mid-conversation system message; `Qwen3-Coder-Next`, `gemma-4-31b` and
 from the checkout, on `127.0.0.1:7090`:
 
 ```bash
-sudo apt install -y python3-markdown
+sudo apt install -y python3-markdown python3-yaml
 sudo useradd --system --no-create-home --shell /usr/sbin/nologin sperange-report
 sudo install -d -m 2775 -o ubuntu -g sperange-report /data-share/reports   # setgid: the provisioner's new reports get the group
 sudo install -m 640 -o root -g sperange-report platform/coder/deploy/report.env.example /etc/sperange/report.env

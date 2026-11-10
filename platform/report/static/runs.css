@@ -1,0 +1,81 @@
+/* The runs browser, on top of report.css: summary tiles, a filter bar, the runs table,
+   one run's cards and a chat as turns. Same tokens as the landing page. */
+main.runs .lead { color: var(--muted); margin: 0 0 1.25rem; max-width: 44rem; }
+main.runs h1 { font-size: 1.9rem; letter-spacing: -0.02em; margin: 1.75rem 0 0.25rem; }
+main.runs h2 { font-size: 1.25rem; margin: 1.75rem 0 0.75rem; }
+main.runs .crumbs { margin: 1.5rem 0 0; font-size: 0.9rem; color: var(--muted); }
+main.runs .crumbs a { color: var(--muted); }
+main.runs .crumbs span { margin: 0 0.4rem; }
+
+/* Tiles */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 0.9rem; margin: 0 0 1.25rem; }
+.tile { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 0.9rem 1.1rem; }
+.tile .n { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+.tile .k { color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 0.2rem; }
+
+/* Filters */
+.filters { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; margin: 0 0 0.9rem; }
+.filters input, .filters select { font: inherit; font-size: 0.92rem; color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 0.4rem 0.9rem; }
+.filters input { min-width: 16rem; flex: 1 1 16rem; }
+.filters .count { color: var(--muted); font-size: 0.9rem; margin-left: auto; }
+
+/* Tables */
+.table-card { padding: 0.5rem 1rem; overflow-x: auto; }
+main.runs table { border-collapse: collapse; width: 100%; font-size: 0.93rem; }
+main.runs th, main.runs td { text-align: left; padding: 0.55rem 0.6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+main.runs th { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; white-space: nowrap; }
+main.runs th.sortable { cursor: pointer; user-select: none; }
+main.runs th.sortable:hover { color: var(--fg); }
+main.runs th[aria-sort="ascending"]::after { content: " ↑"; }
+main.runs th[aria-sort="descending"]::after { content: " ↓"; }
+main.runs tr:last-child td { border-bottom: 0; }
+main.runs td.num { text-align: right; font-variant-numeric: tabular-nums; }
+main.runs td time, main.runs td .when { white-space: nowrap; color: var(--muted); font-size: 0.88rem; }
+
+/* Chips */
+.chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.chip { display: inline-block; background: var(--chip); color: var(--chip-fg); border-radius: 999px; padding: 0.1rem 0.6rem; font-size: 0.78rem; white-space: nowrap; }
+.chip.ok { background: var(--status-mitigated, #d6f1df); color: var(--ok); }
+.chip.warn { background: var(--status-reproduced, #fde4c4); color: var(--warn); }
+.chip.agui { border: 1px solid var(--line); background: transparent; }
+
+/* One run */
+.run-head { margin-top: 1.25rem; padding: 1.25rem 1.75rem; }
+.run-head h1 { margin: 0 0 0.6rem; font-size: 1.6rem; }
+.run-head .facts { margin-top: 0.4rem; }
+.run-head .raw-links { margin-top: 0.9rem; font-size: 0.9rem; display: flex; flex-wrap: wrap; gap: 1rem; }
+.two { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 1.25rem; align-items: start; }
+@media (max-width: 900px) { .two { grid-template-columns: 1fr; } }
+.reading.run-report { margin-top: 0; max-width: none; }
+.reading.run-report .empty { color: var(--muted); font-style: italic; }
+.list-card { padding: 0.5rem 1rem; }
+.list-card h2 { margin: 0.6rem 0.25rem 0.4rem; font-size: 1.05rem; }
+
+/* A chat as turns */
+.chat-head { margin-top: 1.25rem; padding: 1.25rem 1.75rem; }
+.chat-head h1 { margin: 0 0 0.5rem; font-size: 1.45rem; }
+.turns { display: flex; flex-direction: column; gap: 0.9rem; margin-top: 1.25rem; max-width: 56rem; }
+.turn { border: 1px solid var(--line); border-radius: 16px; background: var(--card); padding: 0.9rem 1.25rem; }
+.turn.user { background: var(--chip); border-color: transparent; margin-left: 10%; }
+.turn.assistant { margin-right: 6%; }
+.turn.section { border-style: dashed; color: var(--muted); }
+.turn .meta { display: flex; gap: 0.6rem; align-items: baseline; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.4rem; }
+.turn .meta .role { font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg); }
+.turn.user .meta .role { color: var(--chip-fg); }
+.turn .body > :first-child { margin-top: 0; }
+.turn .body > :last-child { margin-bottom: 0; }
+.turn .body pre { background: var(--code); padding: 0.7rem 0.9rem; border-radius: 10px; overflow: auto; font-size: 0.86rem; }
+.turn .body pre code { background: none; padding: 0; }
+.turn .body details { margin: 0.5rem 0; border-left: 3px solid var(--line); padding-left: 0.8rem; }
+.turn .body summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
+.turn .body table { border-collapse: collapse; margin: 0.5rem 0; }
+.turn .body th, .turn .body td { border: 1px solid var(--line); padding: 0.25rem 0.6rem; }
+.turn .body blockquote { margin: 0; padding-left: 0.9rem; border-left: 3px solid var(--line); color: var(--muted); }
+.turn .body img { max-width: 100%; }
+
+.error-box { border: 1px solid var(--error); color: var(--error); border-radius: 12px; padding: 0.8rem 1rem; margin-top: 1rem; }
+@media (max-width: 700px) {
+  .run-head, .chat-head, .turn { padding: 0.9rem 1rem; border-radius: 12px; }
+  .turn.user { margin-left: 0; }
+  .turn.assistant { margin-right: 0; }
+}
