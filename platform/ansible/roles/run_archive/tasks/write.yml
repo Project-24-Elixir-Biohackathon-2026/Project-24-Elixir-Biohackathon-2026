@@ -74,21 +74,29 @@
       changed_when: true
 
 # AG-UI's part of the run lives in agui/ (journals, run log, rendered chats), apart
-# from Open WebUI's chats/ and index.md: both frontends run on one instance.
+# from Open WebUI's chats/ and index.md: both frontends run on one instance. World-
+# readable like the rest of the run: the portal's report service (its own user) serves
+# the archive to logged-in participants (platform/report, the runs browser).
 - name: AG-UI journals and the agent's run log, raw, in agui/ of the run directory
   when: agui_bundle.stat.exists
   block:
+    - name: AG-UI directory
+      ansible.builtin.file:
+        path: "{{ spe_run_dir }}/agui"
+        state: directory
+        mode: "0755"
+
     - name: Journals directory
       ansible.builtin.file:
         path: "{{ spe_run_dir }}/agui/agui-journals"
         state: directory
-        mode: "0700"
+        mode: "0755"
 
     - name: The journals, untouched (hidden and deleted sessions included; *.jsonl only, not other files there)
       ansible.builtin.copy:
         src: "{{ item }}"
         dest: "{{ spe_run_dir }}/agui/agui-journals/"
-        mode: "0600"
+        mode: "0644"
       loop: "{{ query('ansible.builtin.fileglob', spe_output_dir ~ '/archive-bundle-agui/agui-journals/*.jsonl') }}"
       loop_control:
         label: "{{ item | basename }}"
@@ -97,7 +105,7 @@
       ansible.builtin.copy:
         src: "{{ spe_output_dir }}/archive-bundle-agui/agent-runs.jsonl"
         dest: "{{ spe_run_dir }}/agui/agent-runs.jsonl"
-        mode: "0600"
+        mode: "0644"
       when: (spe_output_dir ~ '/archive-bundle-agui/agent-runs.jsonl') is file
 
 - name: AG-UI chats, rendered from the exported bundle as an Open WebUI run, in agui/
