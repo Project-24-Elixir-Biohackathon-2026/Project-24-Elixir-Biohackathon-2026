@@ -1,6 +1,6 @@
-// The canary hits participant page (spec *Participant page*; decisions 6, 10; plan ruling 8):
+// The canary hits participant page (spec *Participant page*; decisions 6, 10):
 // opens the event stream the service renders (GET /reports/<id>/hits/events), inserts each new
-// hit's server-rendered HTML (hits_view.hit_html, carried on the event: ruling 8 - one renderer,
+// hit's server-rendered HTML (hits_view.hit_html, carried on the event: one renderer,
 // so this script holds no template to drift from it), keeps the headline counts, the status line
 // and an empty placeholder's text live, and offers "Notify me" and "Group by run". No inline script (CSP: script-src
 // 'self'): everything here is this file, loaded with <script src>.
@@ -77,7 +77,7 @@
 
   function parseHtml(html) {
     var tmp = document.createElement("template");
-    tmp.innerHTML = html; // the one place this script trusts markup: the server's own (ruling 8)
+    tmp.innerHTML = html; // the one place this script trusts markup: the server's own (hits_view.hit_html)
     return tmp.content.firstElementChild;
   }
 

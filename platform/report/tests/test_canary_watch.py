@@ -934,7 +934,7 @@ def test_run_capped(tmp_path):
         canary_watch.run_capped([sys.executable, "-c", "import time; time.sleep(5)"], b"", 0.5, 1000)
 
 
-# --- --once: a hand check, no sidecar, no state or status file (ruling 5) ---
+# --- --once: a hand check, no sidecar, no state or status file ---
 
 def test_once_polls_and_appends_without_touching_the_hits_root(tmp_path, capsys):
     fake = Fake(tmp_path)
@@ -1034,7 +1034,7 @@ def test_nothing_on_the_instance_changes():
     assert touched == []
 
 
-# --- the local review round (#78): write failures, a stop missed across a rebuild, a rebuild between
+# --- write failures, a stop missed across a rebuild, a rebuild between
 # discoveries, a stop whose archive never finishes ---
 
 def _failing_append(monkeypatch, after: int) -> dict:

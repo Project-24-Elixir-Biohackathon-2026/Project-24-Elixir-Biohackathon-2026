@@ -1,6 +1,6 @@
 """The participant hits page and hits.json (spec *Participant page*, *Security*; decisions 6, 10,
 11): who may see a workspace's hits (`Handler.can_see_hits`), the page and its JSON twin served
-from the hits directory (slice 2's watcher), against a fake Coder API like test_report.py's.
+from the hits directory (the watcher's), against a fake Coder API like test_report.py's.
 Fixtures use made-up tokens only (FCANARY-TEST01, from fixtures/canary/canaries.json)."""
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ HOSTILE = "<img src=x onerror=alert(1)>"
 
 
 def _agui_hit() -> dict:
-    """One AG-UI journal hit (slice 1's fixtures.canary/agui-journals/s1.jsonl), kind touched:
+    """One AG-UI journal hit (fixtures/canary/agui-journals/s1.jsonl), kind touched:
     the flag file's content read back by a tool."""
     reader = canary_hits.JournalReader("s1")
     lines = [json.loads(line) for line in (FIXTURES / "agui-journals" / "s1.jsonl").read_text().splitlines()
@@ -53,7 +53,7 @@ def _agui_hit() -> dict:
 
 
 def _openwebui_hit() -> dict:
-    """One Open WebUI hit (slice 1's fixtures/canary/openwebui-export.json), kind touched."""
+    """One Open WebUI hit (fixtures/canary/openwebui-export.json), kind touched."""
     export = json.loads((FIXTURES / "openwebui-export.json").read_text())
     places = [p for chat in export["chats"] for p in canary_hits.openwebui_places(chat, "archive")]
     hits = [h for p in places for h in canary_hits.hits_for(p, CANARIES, API_HOST)]
@@ -284,7 +284,7 @@ def test_hits_json_status_null_without_a_status_file(service):
     assert data["status"] is None
 
 
-# --- Review Focus 1: hostile output ---------------------------------------------------------------
+# --- hostile output ------------------------------------------------------------------------------
 
 def test_page_escapes_titles_and_excerpts(service):
     base, hits_dir = service
@@ -314,7 +314,7 @@ def test_csp_and_no_inline_script(service):
         assert "src=" in tag
 
 
-# --- the event stream (decisions 6, 8, 10; ruling 7; Review Focus 5) ------------------------------
+# --- the event stream (decisions 6, 8, 10; its bounds; resuming) --------------------------
 
 import http.client  # noqa: E402
 import queue  # noqa: E402
@@ -629,7 +629,7 @@ def test_service_logs_no_token(service, streams, capfd):
 
 def test_latency_fake_instance(tmp_path, coder, streams):
     """Decision 8: a journal line on the (fake) instance reaches the participant's open stream within
-    10 s: the watcher (slice 2) ticking every second, the service reading the same hits directory."""
+    10 s: the watcher ticking every second, the service reading the same hits directory."""
     transport, output_root, reports_dir, runs_dir = make_fake_instance(tmp_path)
     hits_dir = tmp_path / "hits"
     watcher = canary_watch.Watcher(str(hits_dir), str(reports_dir), str(runs_dir), str(output_root), transport)
@@ -735,7 +735,7 @@ def test_unreadable_hits_file_ends_with_one_log_line(service, streams, capfd):
     assert str(hits_dir) not in out
 
 
-# --- Task 11: the page script and the Coder app -------------------------------------------------
+# --- the page script and the Coder app ----------------------------------------------------------
 
 def test_page_loads_hits_script(service):
     base, hits_dir = service
@@ -762,7 +762,7 @@ def test_coder_app_hits():
     assert "/reports/${data.coder_workspace.me.id}/hits" in text
 
 
-# --- Task 12: the admin page, its JSON and its stream (decisions 7, 10, 11; rulings 7, 9) ----------
+# --- the admin page, its JSON and its stream (decisions 7, 10, 11; its bounds and caps) ---
 
 def _sidecar(srv, wid: str, owner: str, name: str, instance: str) -> None:
     Path(srv.RequestHandlerClass.store.root, f"{wid}.json").write_text(

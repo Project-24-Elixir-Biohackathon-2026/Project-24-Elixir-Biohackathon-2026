@@ -27,7 +27,7 @@ With --html, every hit now in the hits file (not only those appended this run) i
 standalone participant page (hits_view.standalone), written with mode 0640 like the hits file itself:
 the early output (spec *Early output*).
 
-The third form (--once) is a hand check only (ruling 5): one poll of --output-dir's instance from
+The third form (--once) is a hand check only: one poll of --output-dir's instance from
 zero offsets, through the real SshTransport, appending new hits to --out. It writes nothing under
 the hits directory or /data-share (no state file, no status file): the daemon never scans without a
 report sidecar, and this never stands in for it.
@@ -239,7 +239,7 @@ def _api_host(given: str | None, instance: str | None) -> str | None:
 
 @dataclass
 class Ssh:
-    """How to reach the workspace's VM, informational only: Task 7's SshTransport reaches it with
+    """How to reach the workspace's VM, informational only: SshTransport reaches it with
     canary_record.vm_argv(output_dir) directly, which reads hosts.yml itself."""
     user: str | None
     host: str | None
@@ -400,7 +400,7 @@ def discover(reports_dir: str, output_root: str, runs_dir: str) -> list[Workspac
 
 
 def once_workspace(output_dir: str) -> Workspace:
-    """A Workspace for a hand check of one output directory (--once, ruling 5): no report
+    """A Workspace for a hand check of one output directory (--once, a hand check only): no report
     sidecar, so no owner and a fixed id of "once"; always `running` (there is no runs_dir to
     weigh it against: the caller polls exactly once regardless). Raises RecordError for the same
     reasons discover() would skip this instance: hosts.yml unreadable, or neither canaries.json
@@ -1063,7 +1063,7 @@ def _shown_reply(reply: dict) -> tuple[list[str], list[str], list[str]]:
 
 def once(output_dir: str, out: str, transport: Transport | None = None) -> int:
     """--once: one poll of output_dir's instance from zero offsets, appending new hits to `out`
-    (ruling 5: a hand check only; the daemon never scans without a report sidecar). Writes
+    (a hand check only; the daemon never scans without a report sidecar). Writes
     nothing under the hits directory or /data-share: no state file, no status file. Prints the
     sources the reader found, what is missing, any source errors, and the hit count per kind --
     never a token, excerpt or line of a source. `transport` defaults to the real SshTransport;

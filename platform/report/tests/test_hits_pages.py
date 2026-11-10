@@ -161,7 +161,7 @@ def test_hostile_fields_escaped_everywhere():
         assert "<mark>FCANARY-TEST01</mark>" in doc
 
 
-# --- hit_html, LOUD, status_line (slice 3: the event stream renders each hit as the page does) ---
+# --- hit_html, LOUD, status_line (the event stream renders each hit as the page does) ---
 
 import calendar  # noqa: E402
 import time  # noqa: E402

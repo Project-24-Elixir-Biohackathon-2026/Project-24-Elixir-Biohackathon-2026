@@ -1,6 +1,6 @@
 """Readers for the canary record and the hosts record of the hand-off directory
 (platform/ansible/output/<instance>/), standard library only, so the canary hit viewer's watcher can
-read them without importing platform/promptfoo-evals (slice 1, decision 2).
+read them without importing platform/promptfoo-evals (decision 2).
 
 A missing, malformed or mismatched record raises RecordError. hosts.yml is YAML, written by the
 handoff role with to_nice_yaml from a flat mapping of string and boolean values and one list of
@@ -8,9 +8,9 @@ strings (`frontends`). read_hosts parses exactly that subset (`key: value` lines
 double-quoted scalars, true/false/null; a key with no value followed by `- scalar` lines at column 0,
 or `[]`) and rejects anything nested rather than guessing.
 
-platform/promptfoo-evals/handoff.py imports RecordError (as its own ConfigError), _json, _scalar,
-load_canaries, read_hosts and vm_argv from here, so its own callers and `ManifestError(ConfigError)`
-are unchanged.
+Where platform/promptfoo-evals/handoff.py exists (the canary evaluation ladder), it imports
+RecordError (as its own ConfigError), _json, _scalar, load_canaries, read_hosts and vm_argv from
+here, so its own callers and `ManifestError(ConfigError)` are unchanged.
 """
 from __future__ import annotations
 

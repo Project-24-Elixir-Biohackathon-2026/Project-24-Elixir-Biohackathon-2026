@@ -1,7 +1,7 @@
 # Canary hit viewer
 
-**Status:** approved (#74). **Latest clarification:** 1.
-Read against this repository at `ab9537c`. Upstream already has what the core needs (the canary record and
+**Status:** approved. **Latest clarification:** 1.
+Read against this repository on 2026-11-10. Upstream already has what the core needs (the canary record and
 `hosts.yml` in the output directory, the run report service, the agent's run log, Open WebUI's chats, the archive); the parts that
 read the canary ladder's code (`metrics.py`, the test receiver, the L5 airlock) apply where that code exists.
 

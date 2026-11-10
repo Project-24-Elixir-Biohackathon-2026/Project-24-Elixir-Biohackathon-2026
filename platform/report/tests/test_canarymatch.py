@@ -43,7 +43,7 @@ def test_hosts():
 
 
 def test_is_file_canary():
-    # Take the type names from handoff.METADATA_TYPES as it is now (one is a metadata type, never
+    # Take the type names from the canary evaluation's METADATA_TYPES as it is now (one is a metadata type, never
     # a file canary; a drs-… type is a metadata type).
     assert canarymatch.is_file_canary({"type": "drs-object-metadata"}) is False
     assert canarymatch.is_file_canary({"type": "flag-file"}) is True
