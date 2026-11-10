@@ -206,8 +206,10 @@ is open (`docs/guides/contributing-upstream.md`, step 6).
   their controls, the L5 airlock). **Next: slice 10/10** `impl/canary-eval-ladder-10-agent-runs`, the agent runs
   at L0–L3; it runs once its key gate passes, and the key is in reach (`BACKLOG.md` *Next*). L4/L5 go to the L4 spec (`BACKLOG.md`). Handoff:
   `docs/superpowers/plans/2026-10-22-canary-eval-ladder/handoffs/2026-11-09T1602Z-slice-9-done.md`.
-- **Canary hit viewer** (`docs/specs/2026-11-10-canary-hit-viewer.md`): spec merged (#74). **Next:** the plan,
-  `plan/canary-hit-viewer`. Handoff: `docs/handoffs/2026-11-10T0104Z-spec-canary-hit-viewer-merged.md`.
+- **Canary hit viewer** (`docs/specs/2026-11-10-canary-hit-viewer.md`): spec merged (#74), plan merged (#75,
+  `docs/superpowers/plans/2026-11-10-canary-hit-viewer/`, 5 slices). **Next: slice 1/5**
+  `impl/canary-hit-viewer-1-match-archive` (matching, the archive scan, the early output). Handoff:
+  `docs/superpowers/plans/2026-11-10-canary-hit-viewer/handoffs/2026-11-10T0123Z-plan-done.md`.
 - **Upstream PR kraatz #28** (`contrib/agui-archive-markdown`): archive Markdown wording, autolinks, refusal
   reason, bad timestamps; waits on upstream's review.
 - **Upstream PR kraatz #29** (`contrib/agui-chat-ui-polish`): reopened sessions land on their end, menu focus;
