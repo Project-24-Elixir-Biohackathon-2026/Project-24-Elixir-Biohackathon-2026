@@ -50,6 +50,14 @@ start reads this section; keep it short.
 - Canary hits as an Open WebUI toast (a filter function) — deferred by the same spec; only if its participant page
   proves not enough.
 
+- Canary watch: the offsets go to the reader as one argv element; past about 2,700 journals the remote `sh -c`'s
+  `MAX_ARG_STRLEN` (128 KiB) is hit and the workspace stays `unreachable`. Fix: send the JSON line before the reader
+  source on stdin and run `python3 -c 'import sys; sys.argv=["-", sys.stdin.readline()]; exec(compile(sys.stdin.read(),"reader","exec"))'`
+  — from the canary hit viewer slice 2 final review (progress ruling 9); waits because no workspace comes close.
+- Canary watch: the systemd unit has no hardening; add `ProtectSystem=strict` with
+  `ReadWritePaths=/data-share/canary-hits %h/.ssh`, never `NoNewPrivileges` (it breaks a local controller's sudo)
+  — from the canary hit viewer slice 2 final review (progress ruling 12); waits for a check on the portal VM.
+
 - AG-UI chat, minor polish from #58's review (finding 5): opening a session no holder keeps shows *Loading…* for
   one render; no unit test drives `SessionAgent` with the page (only e2e `leave-running` does); while a chat
   reopened mid-run streams, the whole chat re-renders per message change (`page.tsx`, `midRun`); a ms race between

@@ -24,6 +24,9 @@ from canarymatch import found, hosts, is_file_canary, received, spans, texts
 
 EXCERPT = 400  # characters, for every excerpt and the prompt
 COMPACTION_PREFIX = "spe-compaction-"  # the agent's compaction marker messages: not the answer
+RUN_PIECES_MAX = 1 << 20  # characters of argument and text pieces an open run buffers (untrusted journals)
+OPEN_RUNS_MAX = 64  # open runs a journal keeps; past it the oldest is dropped
+ENDED_RUNS_KEPT = 1024  # ended run ids remembered, so a late event cannot re-open one
 
 
 @dataclass
@@ -63,19 +66,45 @@ class JournalReader:
     """One session's journal, fed one parsed line at a time. Keeps the title (`meta` lines) and, per
     open run, its prompt and the pieces of its tool calls and text messages, and emits a place when
     a value is whole: arguments at TOOL_CALL_END, a result at TOOL_CALL_RESULT, a message's text at
-    TEXT_MESSAGE_END, and whatever is still open at run_end. REASONING_* events are ignored."""
+    TEXT_MESSAGE_END, and whatever is still open at run_end. REASONING_* events are ignored.
+
+    The journal is the participant's (root on the instance), so what it can make the reader hold is
+    bounded: an open run buffers at most RUN_PIECES_MAX characters of pieces (later ones are dropped),
+    at most OPEN_RUNS_MAX runs stay open (the oldest is dropped), and an event for a run already ended
+    is ignored rather than opening it again; only its run_start does that."""
 
     def __init__(self, session_id: str):
         self.session_id = session_id
         self.title: str | None = None
         self.runs: dict[str, dict] = {}
+        self.ended: dict[str, None] = {}  # an ordered set, the newest ENDED_RUNS_KEPT ids
 
-    def _run(self, run_id: str) -> dict:
-        return self.runs.setdefault(run_id, {"prompt": None, "calls": {}, "texts": {}})
+    def _open(self, run_id: str, prompt: str | None) -> dict:
+        self.ended.pop(run_id, None)
+        self.runs.pop(run_id, None)
+        while len(self.runs) >= OPEN_RUNS_MAX:
+            del self.runs[next(iter(self.runs))]
+        run = self.runs[run_id] = {"prompt": prompt, "calls": {}, "texts": {}, "size": 0}
+        return run
+
+    def _run(self, run_id: str) -> dict | None:
+        """The open run, opened by its first event when its run_start was never read (a journal read
+        from the middle); None for a run already ended."""
+        if run_id in self.runs:
+            return self.runs[run_id]
+        return None if run_id in self.ended else self._open(run_id, None)
+
+    @staticmethod
+    def _keep(run: dict, piece: str) -> bool:
+        """Whether the run may buffer one more piece (counted against RUN_PIECES_MAX)."""
+        if run["size"] + len(piece) > RUN_PIECES_MAX:
+            return False
+        run["size"] += len(piece)
+        return True
 
     def _place(self, line: dict, run_id: str, place: str, value: object, tool: dict | None = None) -> Place:
         return Place(frontend="agui", source="agui-journal", session={"id": self.session_id, "title": self.title},
-                     run=run_id, at=line.get("at"), prompt=self._run(run_id)["prompt"], place=place, tool=tool,
+                     run=run_id, at=line.get("at"), prompt=(self.runs.get(run_id) or {}).get("prompt"), place=place, tool=tool,
                      value=value)
 
     def _args_place(self, line: dict, run_id: str, call_id: str, call: dict) -> Place:
@@ -102,7 +131,7 @@ class JournalReader:
                 return []
             users = [m for m in messages if isinstance(m, dict) and m.get("role") == "user"]
             prompt = "\n".join(_text(m.get("content")) for m in users) if users else None
-            self.runs[run_id] = {"prompt": prompt, "calls": {}, "texts": {}}
+            self._open(run_id, prompt)
             return [self._place(line, run_id, "prompt", prompt)] if prompt else []
         if kind == "run_end":
             run = self.runs.get(run_id)
@@ -111,6 +140,9 @@ class JournalReader:
                 out += [self._args_place(line, run_id, cid, c) for cid, c in run["calls"].items() if not c["args_done"]]
                 out += [self._place(line, run_id, "answer", "".join(t)) for t in run["texts"].values()]
                 del self.runs[run_id]
+            self.ended[run_id] = None
+            while len(self.ended) > ENDED_RUNS_KEPT:
+                del self.ended[next(iter(self.ended))]
             return out
         event = line.get("event")
         if kind != "event" or not isinstance(event, dict):
@@ -122,10 +154,14 @@ class JournalReader:
         if not isinstance(call_id, (str, type(None))) or not isinstance(message_id, (str, type(None))):
             return []  # ids are dict keys: anything but a string is a hostile record
         run, kind = self._run(run_id), event.get("type")
+        if run is None:
+            return []
         if kind == "TOOL_CALL_START" and isinstance(call_id, str):
-            run["calls"][call_id] = {"name": event.get("toolCallName"), "args": [], "args_done": False}
+            if call_id in run["calls"] or self._keep(run, call_id):
+                run["calls"][call_id] = {"name": event.get("toolCallName"), "args": [], "args_done": False}
         elif kind == "TOOL_CALL_ARGS" and call_id in run["calls"] and isinstance(event.get("delta"), str):
-            run["calls"][call_id]["args"].append(event["delta"])
+            if self._keep(run, event["delta"]):
+                run["calls"][call_id]["args"].append(event["delta"])
         elif kind == "TOOL_CALL_END" and call_id in run["calls"]:
             if not run["calls"][call_id]["args_done"]:
                 return [self._args_place(line, run_id, call_id, run["calls"][call_id])]
@@ -136,10 +172,10 @@ class JournalReader:
                     "result": event.get("content")}
             return out + [self._place(line, run_id, "tool_result", event.get("content"), tool)]
         elif kind == "TEXT_MESSAGE_START" and isinstance(message_id, str):
-            if not message_id.startswith(COMPACTION_PREFIX):
+            if not message_id.startswith(COMPACTION_PREFIX) and (message_id in run["texts"] or self._keep(run, message_id)):
                 run["texts"].setdefault(message_id, [])
         elif kind == "TEXT_MESSAGE_CONTENT" and isinstance(message_id, str) and isinstance(event.get("delta"), str):
-            if not message_id.startswith(COMPACTION_PREFIX):
+            if not message_id.startswith(COMPACTION_PREFIX) and self._keep(run, message_id + event["delta"]):
                 run["texts"].setdefault(message_id, []).append(event["delta"])
         elif kind == "TEXT_MESSAGE_END" and message_id in run["texts"]:
             return [self._place(line, run_id, "answer", "".join(run["texts"].pop(message_id)))]
@@ -150,15 +186,18 @@ class JournalReader:
 
 def agent_run_places(record: dict, titles: dict[str, str]) -> list[Place]:
     """One record of the agent's run log. Title records ({"type": "title", ...}) give no places:
-    the caller collects them into `titles`, by thread id."""
+    the caller collects them into `titles`, by thread id. The record is untrusted: a thread id that is
+    not a string is no session id (never a dict key), and `tool_calls` that is not a list is absent."""
     if not isinstance(record, dict) or record.get("type") == "title" or not isinstance(record.get("run_id"), str):
         return []
-    thread = record.get("thread_id")
+    thread = record.get("thread_id") if isinstance(record.get("thread_id"), str) else None
     prompt = record.get("input") if isinstance(record.get("input"), str) else None
-    common = dict(frontend="agui", source="agent-runs", session={"id": thread, "title": titles.get(thread)},
+    common = dict(frontend="agui", source="agent-runs",
+                  session={"id": thread, "title": titles.get(thread) if thread is not None else None},
                   run=record["run_id"], at=_iso(record.get("started")), prompt=prompt)
     out = [Place(**common, place="prompt", tool=None, value=prompt)] if prompt else []
-    for call in record.get("tool_calls") or []:
+    calls = record.get("tool_calls")
+    for call in calls if isinstance(calls, list) else []:
         if not isinstance(call, dict):
             continue
         tool = {"name": call.get("name"), "call_id": call.get("id"), "args": call.get("args"),
@@ -208,7 +247,7 @@ def openwebui_places(chat: dict, source: str) -> list[Place]:
     if isinstance(body, str):
         try:
             body = json.loads(body)
-        except ValueError:
+        except (ValueError, RecursionError):
             return []
     if not isinstance(body, dict):
         return []
@@ -357,18 +396,23 @@ LONE_SURROGATE = re.compile("[\ud800-\udfff]")
 class HitsFile:
     """One hits file: a hit per JSON line, its `id` the line number from 1, so an id carries nothing of
     the canary. Created with mode 0640 (portal-only). Past `max_bytes` nothing more is written: `append`
-    returns None and `full` is true, which the pages say."""
+    returns None and `full` is true, which the pages say.
+
+    One writer per file (the watcher, one process; a scan by hand writes its own file). A crash mid-append
+    can leave a partial last line: it counts as a line (ids stay line numbers), the next append first ends
+    it with a newline, and `read` skips it as a line that does not parse."""
 
     def __init__(self, path: str, max_bytes: int = HITS_FILE_MAX):
         self.path, self.max_bytes = path, max_bytes
-        self.count, self.size, self.full = 0, 0, False
+        self.count, self.size, self.full, self.partial = 0, 0, False, False
         try:
             with open(path, "rb") as f:
                 data = f.read()
         except FileNotFoundError:
             return
         self.size = len(data)
-        self.count = data.count(b"\n")
+        self.partial = bool(data) and not data.endswith(b"\n")
+        self.count = data.count(b"\n") + self.partial
         self.full = self.size >= max_bytes
 
     def append(self, hit: dict) -> int | None:
@@ -376,6 +420,8 @@ class HitsFile:
             return None
         hit["id"] = self.count + 1
         line = (LONE_SURROGATE.sub("\ufffd", json.dumps(hit, ensure_ascii=False)) + "\n").encode()
+        if self.partial:
+            line = b"\n" + line
         if self.size + len(line) > self.max_bytes:
             del hit["id"]
             self.full = True
@@ -387,7 +433,7 @@ class HitsFile:
             os.write(fd, line)
         finally:
             os.close(fd)
-        self.count, self.size = self.count + 1, self.size + len(line)
+        self.count, self.size, self.partial = self.count + 1, self.size + len(line), False
         return hit["id"]
 
     def read(self, after: int = 0) -> list[dict]:

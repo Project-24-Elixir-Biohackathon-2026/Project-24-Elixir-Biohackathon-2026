@@ -366,3 +366,54 @@ def test_journal_hostile_lines_skipped(bad):
     lines = first[:3] + [bad] + first[3:] + [bad] + second
     found = hits([p for line in lines for p in reader.feed(line)])
     assert [(h["kind"], h["run"]) for h in found] == [("answer", "r1"), ("answer", "r2")]
+
+
+def test_unclosed_run_is_bounded():
+    """A run that never ends keeps at most 1 MiB of pieces; an event for a run already ended is ignored
+    (not a re-created run that then grows)."""
+    reader = canary_hits.JournalReader("s")
+    reader.feed({"type": "run_start", "run_id": "r", "messages": []})
+    reader.feed({"type": "event", "run_id": "r", "event": {"type": "TOOL_CALL_START", "toolCallId": "c"}})
+    delta = "x" * 4096
+    for n in range(600):  # ~2.4 MiB of arguments and text, never ended
+        reader.feed({"type": "event", "run_id": "r", "event": {"type": "TOOL_CALL_ARGS", "toolCallId": "c",
+                                                               "delta": delta}})
+        reader.feed({"type": "event", "run_id": "r", "event": {"type": "TEXT_MESSAGE_CONTENT",
+                                                               "messageId": f"m{n % 3}", "delta": delta}})
+    run = reader.runs["r"]
+    buffered = sum(len(d) for c in run["calls"].values() for d in c["args"])
+    buffered += sum(len(d) for t in run["texts"].values() for d in t)
+    assert 0 < buffered <= canary_hits.RUN_PIECES_MAX
+    reader.feed({"type": "run_end", "run_id": "r"})
+    assert reader.runs == {}
+    reader.feed({"type": "event", "run_id": "r", "event": {"type": "TEXT_MESSAGE_CONTENT", "messageId": "m",
+                                                           "delta": "late"}})
+    assert reader.runs == {}
+    # A new run_start for the id starts it again (a journal re-read from the run's start after a restart).
+    assert reader.feed({"type": "run_start", "run_id": "r", "messages": [{"role": "user", "content": "hi"}]})
+    assert "r" in reader.runs
+
+
+def test_unclosed_runs_are_bounded_in_number():
+    reader = canary_hits.JournalReader("s")
+    for n in range(canary_hits.OPEN_RUNS_MAX + 50):
+        reader.feed({"type": "run_start", "run_id": f"r{n}", "messages": []})
+    assert len(reader.runs) == canary_hits.OPEN_RUNS_MAX
+    assert f"r{canary_hits.OPEN_RUNS_MAX + 49}" in reader.runs and "r0" not in reader.runs
+
+
+@pytest.mark.parametrize("cut", ["between", "mid-character"])
+def test_partial_last_line_after_crash(tmp_path, cut):
+    """A crash mid-append leaves a partial last line: the next append ends it first, ids stay line numbers,
+    and read skips it."""
+    path = tmp_path / "hits.jsonl"
+    whole = json.dumps({"id": 1, "excerpt": "été"}, ensure_ascii=False).encode() + b"\n"
+    second = json.dumps({"id": 2, "excerpt": "é"}, ensure_ascii=False).encode()
+    partial = second[:5] if cut == "between" else second[:second.index(b"\xc3") + 1]
+    path.write_bytes(whole + partial)
+    hits_file = canary_hits.HitsFile(str(path))
+    assert hits_file.append({"kind": "answer"}) == 3
+    lines = path.read_bytes().split(b"\n")
+    assert lines[-1] == b"" and lines[1] == partial and json.loads(lines[2])["id"] == 3
+    assert [h["id"] for h in canary_hits.HitsFile(str(path)).read()] == [1, 3]
+    assert canary_hits.HitsFile(str(path)).append({"kind": "answer"}) == 4

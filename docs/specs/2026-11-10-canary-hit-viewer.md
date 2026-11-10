@@ -85,7 +85,7 @@ offset of that workspace starts again from 0.
 
 **How it pulls.** Every 3 seconds per running workspace, over one persistent SSH connection per instance
 (`ControlMaster`), with the user, address and key the output directory's `hosts.yml` and `ssh_key` give, as the
-archive playbook connects. It runs the reader: `ssh <target> sudo python3 - <offsets>` with the reader's source
+archive playbook connects. It runs the reader: `ssh <target> sudo -n python3 - <offsets>` with the reader's source
 on stdin. The reader opens each source read-only, returns the complete lines past the byte offsets it was
 given, at most 1 MiB per poll, and each file's current size (a file shorter than its offset was replaced: read
 from 0). A partial last line (no newline yet) is left for the next poll. Offsets, and for each journal the
@@ -105,8 +105,11 @@ instance reported; the admin page says so above the list.
 **On stop.** The archive playbook copies the journals, `agent-runs.jsonl`, Open WebUI's chats
 (`openwebui-export.json`) and the canary record to `/data-share/runs/<time>_<instance>/` before the instance
 goes away. When the watcher sees a new run directory
-whose `report.json` names a workspace it scans, it scans that directory once, from the offsets it had reached,
-so journal and run-log lines written between the last poll and the stop are not lost; Open WebUI's chats are
+whose `report.json` names a workspace it scans, it scans that directory once, as soon as its `index.md` (which
+the archive writes last) is there, over the whole directory with the workspace's dedup keys, so journal and
+run-log lines written between the last poll and the stop are not lost and what polling found is not repeated. A
+directory still without `index.md` 10 minutes after its last change is scanned as it is, and the workspace shows
+as stopped with the note "archive incomplete". Open WebUI's chats are
 read from the run directory's own `openwebui-export.json`, never from `agui/openwebui-export.json`, which is the
 AG-UI journals reshaped and would repeat their hits under Open WebUI's ids. Two limits stand: the
 test receiver's log is not archived, so its last 3 seconds can be lost; and the run log caps each field at
@@ -293,6 +296,11 @@ redacts nothing. Neither imports the other; where the airlock exists, a test ass
    their tool calls in each assistant message's `output`, with none in `agent-runs.jsonl`. The user asked for Open
    WebUI sessions to be covered (relayed by the session `elixir-biohackathon-2026-test-b6`, 2026-11-10; the user's own words were not passed on). *Amends:* decisions 3, 5, 6; *Sources*,
    *Watcher* (*On stop*), *Hits*, *Participant page*, *Admin page*, Glossary. *Status:* folded.
+2. **The on-stop scan reads the whole run directory once its `index.md` is there, or after 10 minutes without
+   it** (2026-11-10; implementation PR #78). *Reason:* the dedup keys hold no source, so a whole-directory scan
+   with the workspace's keys drops what polling found, which is simpler than carrying offsets into the archive;
+   `index.md` is written last, so its presence means the copy is complete, and an archive that never writes it
+   would otherwise leave the workspace running forever. *Amends:* *Watcher* (*On stop*). *Status:* folded.
 
 ## Inputs for the plan
 

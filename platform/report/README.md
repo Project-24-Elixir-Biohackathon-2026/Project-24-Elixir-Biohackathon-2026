@@ -11,6 +11,8 @@ from the first build on, kept after the workspace is gone. Design:
 | `static/` | The page's stylesheet and script (no inline script: the pages carry a CSP), plus the vendored editor: EasyMDE 2.21.0 (`easymde.min.js`, `easymde.min.css`, from the npm package `easymde`) and Font Awesome 4.7.0 for its toolbar (`font-awesome.min.css` with its `@font-face` cut down to `fontawesome-webfont.woff2`, from the npm package `font-awesome`) |
 | `tests/` | `pytest` against a fake Coder API |
 | `../coder/deploy/sperange-report.service`, `report.env.example` | The unit and its env file |
+| `canary_watch.py`, `canary_reader.py`, `canary_record.py`, `canarymatch.py`, `canary_hits.py`, `hits_view.py` | The canary hit viewer's watcher: see *Canary hit watcher* below |
+| `../coder/deploy/sperange-canary-watch.service` | The watcher's unit |
 | `../ansible/roles/run_report/` | Writes the report and its sidecar at the first build of a workspace |
 | `../ansible/reports/run_report.md.j2` | The template the report starts from |
 
@@ -37,3 +39,32 @@ python3 -m venv .venv && .venv/bin/pip install pytest markdown && .venv/bin/pyth
 
 Run it by hand: `REPORTS_DIR=/tmp/reports CODER_URL=http://127.0.0.1:7080 python3 sperange_report.py`,
 then `curl -I http://127.0.0.1:7090/reports/healthz`.
+
+## Canary hit watcher
+
+`canary_watch.py` is a separate unit (`../coder/deploy/sperange-canary-watch.service`,
+`sperange-canary-watch`), not part of the report service: a daemon that polls every running Coder
+workspace's instance over SSH (the reader, `canary_reader.py`, sent on stdin and run read-only) and
+scans each stopped run's archive once, matching against the workspace's canary record
+(`canary_record.py`, `canarymatch.py`) and writing hits, state and status under `<hits
+dir>`, default `/data-share/canary-hits` (design: `docs/specs/2026-11-10-canary-hit-viewer.md`).
+It reads: each workspace's report sidecar (`/data-share/reports/<id>.json`, to learn its
+instance), that instance's output directory (`hosts.yml`, `canaries.json`), and each archived run
+directory (`/data-share/runs/*_<instance>/`). It writes only under `<hits dir>`: a hits file
+(`<id>.jsonl`, mode 0640), a state file (`<id>.state.json`, mode 0600) and a status file
+(`<id>.status.json`, mode 0640) per workspace, never anything on the instance (decision 1,
+*Nothing on the instance changes*) or in the run archive.
+
+Three forms:
+
+- **The daemon** (`canary_watch.py`, no flags needed beyond the defaults): `Watcher.run_forever()`,
+  as the unit runs it.
+- **`--archive RUN_DIR --out HITS.jsonl`**: scans one already-archived run directory into a hits
+  file by hand (also used by tests and re-renders), optionally `--html PAGE.html` for a standalone
+  participant page.
+- **`--once --output-dir DIR --out HITS.jsonl`**: a hand check only, never run by the unit (the
+  daemon never scans an instance without a report sidecar). One poll of `DIR`'s instance from zero
+  offsets, through the real SSH transport,
+  appending new hits to `--out`; no report sidecar, no state or status file, nothing written under
+  `<hits dir>`. Prints the sources the reader found, what is missing, any source errors and the hit
+  count per kind to stdout — never a token, an excerpt or a line of a source.
