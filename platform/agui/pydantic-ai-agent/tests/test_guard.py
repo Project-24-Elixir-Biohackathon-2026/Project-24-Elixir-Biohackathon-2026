@@ -25,7 +25,8 @@ from test_app import (
 TOKEN = "HPCANARY-TEST23"
 OTHER = "VCANARY-GUARD99"
 STUDY = "STUDY-0007"
-TYPES = {TOKEN: "honeypot-test", OTHER: "vcf-test", STUDY: "registry-study-id"}
+LONG = "PLACEHOLDER_" + "A1b2C3d4" * 4     # longer than its redaction
+TYPES = {TOKEN: "honeypot-test", OTHER: "vcf-test", STUDY: "registry-study-id", LONG: "aws-key-test"}
 NAME = "linkage.csv"
 
 
@@ -90,6 +91,25 @@ class Printing(FakeSandbox):
         return super().__call__(request)
 
 
+class Chunked(FakeSandbox):
+    """A sandbox answering as open-terminal does: one output entry per PTY read, cut wherever the read ended."""
+
+    def __init__(self, *chunks: str):
+        super().__init__()
+        self.chunks = chunks
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/execute":
+            self.calls.append(request)
+            return httpx.Response(200, json={"id": "p1", "status": "done",
+                                             "output": [{"type": "output", "data": c} for c in self.chunks]})
+        return super().__call__(request)
+
+
+def to_model(seen) -> str:
+    return json.dumps([str(p.content) for m in seen for p in m[-1].parts if isinstance(p, ToolReturnPart)])
+
+
 def answer(evs) -> str:
     return "".join(e["delta"] for e in evs if e["type"] == "TEXT_MESSAGE_CONTENT")
 
@@ -151,9 +171,9 @@ async def test_a_canary_in_a_tool_result_is_redacted_before_the_model_and_the_cl
     seen: list = []
     sandbox = Printing(f"first line\n{TOKEN}\n{OTHER}\n")    # JSON escapes the newlines
     evs, _ = await run(tmp_path, calling("cat results.txt", seen), sandbox=sandbox)
-    to_model = json.dumps([str(p.content) for m in seen for p in m[-1].parts if isinstance(p, ToolReturnPart)])
-    assert TOKEN not in to_model and OTHER not in to_model
-    assert "[REDACTED:honeypot-test]" in to_model and "[REDACTED:vcf-test]" in to_model
+    sent = to_model(seen)
+    assert TOKEN not in sent and OTHER not in sent
+    assert "[REDACTED:honeypot-test]" in sent and "[REDACTED:vcf-test]" in sent
     assert TOKEN not in everything_sent(evs) and OTHER not in everything_sent(evs)
     assert terminal(evs) == ["RUN_FINISHED"] and tool_call_violations(evs) == []
 
@@ -161,8 +181,67 @@ async def test_a_canary_in_a_tool_result_is_redacted_before_the_model_and_the_cl
 async def test_a_protected_file_name_in_a_tool_result_is_redacted(tmp_path):
     seen: list = []
     evs, _ = await run(tmp_path, calling("ls registry", seen), sandbox=Printing(f"phenotypes.tsv\n{NAME}\n"))
-    to_model = json.dumps([str(p.content) for m in seen for p in m[-1].parts if isinstance(p, ToolReturnPart)])
-    assert NAME not in to_model and "phenotypes.tsv" in to_model
+    sent = to_model(seen)
+    assert NAME not in sent and "phenotypes.tsv" in sent
+
+
+async def test_a_redacted_tool_result_is_not_marked_truncated(tmp_path):
+    seen: list = []
+    await run(tmp_path, calling("cat keys.txt", seen), sandbox=Printing(f"key {LONG}\n"))
+    sent = to_model(seen)
+    assert LONG not in sent and "[REDACTED:aws-key-test]" in sent
+    assert "[truncated:" not in sent
+
+
+async def test_a_canary_cut_across_two_output_entries_is_withheld(tmp_path):
+    seen: list = []
+    sandbox = Chunked("x" * 4000 + " HPCANARY-", "TEST23 and the rest")
+    evs, _ = await run(tmp_path, calling("cat big.log", seen), sandbox=sandbox)
+    sent = to_model(seen)
+    assert "HPCANARY" not in sent and "Withheld by the SPE guard" in sent and "[truncated:" not in sent
+    assert "HPCANARY" not in everything_sent(evs)
+    assert "HPCANARY" not in (tmp_path / "log" / "runs.jsonl").read_text()
+    (rec,) = log_records(tmp_path)
+    assert {"where": "tool_result", "kind": "canary", "type": "honeypot-test", "action": "redacted"} in rec["guard"]
+
+
+async def test_a_canary_cut_across_entries_of_an_answer_past_the_size_cap_is_withheld(tmp_path):
+    """Past the 1 MiB cap the answer is cut and no longer parses as JSON: the entry seams are found as text."""
+    seen: list = []
+    sandbox = Chunked("x" * 4000 + " HPCANARY-", "TEST23 " + "y" * 1_100_000)
+    await run(tmp_path, calling("cat big.log", seen), sandbox=sandbox)
+    sent = to_model(seen)
+    assert "HPCANARY" not in sent and "Withheld by the SPE guard" in sent
+
+
+async def test_observe_mode_records_a_canary_cut_across_entries_and_changes_nothing(tmp_path):
+    seen: list = []
+    sandbox = Chunked("first HPCANARY-", "TEST23 rest")
+    await run(tmp_path, calling("cat big.log", seen), sandbox=sandbox, mode="observe")
+    assert "HPCANARY-" in to_model(seen) and "Withheld" not in to_model(seen)
+    (rec,) = log_records(tmp_path)
+    assert {"where": "tool_result", "kind": "canary", "type": "honeypot-test", "action": "observed"} in rec["guard"]
+
+
+# Compact, ASCII-only JSON as Flask or json.dumps(ensure_ascii=True) writes it: an escaped astral character
+# right after a URL decodes to a lone surrogate inside the URL candidate.
+ASTRAL = '{"url":"https://x.org","icon":"\\ud83e\\uddec"}'
+
+
+def test_an_escaped_astral_character_after_a_url_does_not_break_the_matcher(tmp_path):
+    from spe_agent.config import GuardCfg
+
+    g = guard_module.Guard(GuardCfg(mode="observe", matcher=matcher_path(), manifest=manifest(tmp_path)))
+    assert g.find(ASTRAL) == {} and g.find(json.dumps({"output": ASTRAL})) == {}
+
+
+@pytest.mark.parametrize("mode", ["observe", "enforce"])
+async def test_a_tool_result_with_an_escaped_astral_character_reaches_the_model_unchanged(tmp_path, mode):
+    seen: list = []
+    evs, _ = await run(tmp_path, calling("cat icons.json", seen), sandbox=Printing(ASTRAL), mode=mode)
+    sent = to_model(seen)
+    assert "x.org" in sent and "Sandbox request failed" not in sent
+    assert terminal(evs) == ["RUN_FINISHED"]
 
 
 async def test_a_command_naming_a_protected_file_never_reaches_the_sandbox(tmp_path):

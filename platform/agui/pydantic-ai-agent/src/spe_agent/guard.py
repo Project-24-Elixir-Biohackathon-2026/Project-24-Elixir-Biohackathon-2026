@@ -5,7 +5,10 @@ It acts at three points of a run:
     refused, and the sandbox never sees it (`RunGuard.deny`);
   - on the sandbox's answer, before the model or the tool card see it: canaries and protected
     file names are redacted (`RunGuard.screen`). The model runs off the VM, so this is also
-    what keeps them away from the model endpoint;
+    what keeps them away from the model endpoint. The sandbox cuts a command's output into
+    entries wherever a terminal read ended; a value cut across two entries is found in the joined
+    output and withholds the answer. A value cut across two polls of the same process is not
+    joined (a known gap);
   - on every AG-UI event the client receives: canaries are redacted (`RunGuard.feed`). Text that
     arrives in deltas is held back until the next whitespace, so a token split across deltas is
     checked whole and never leaves in part. Protected file names in the agent's own text are
@@ -74,6 +77,8 @@ _SKIP_FIELDS = {"type", "timestamp"}
 _ESCAPE = re.compile(r"\\(u[0-9a-fA-F]{4}|.)", re.DOTALL)
 _SIMPLE_ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "b": "\b", "f": "\f"}
 _WHITESPACE = re.compile(r"\s")
+# Between two output entries of a sandbox answer, for a body cut at the size cap that no longer parses.
+_SEAM = re.compile(r'"\s*}\s*,\s*{\s*"type"\s*:\s*"[a-z]+"\s*,\s*"data"\s*:\s*"')
 
 
 def _unescape(text: str) -> str:
@@ -81,6 +86,18 @@ def _unescape(text: str) -> str:
         e = m.group(1)
         return chr(int(e[1:], 16)) if len(e) == 5 else _SIMPLE_ESCAPES.get(e, e)
     return _ESCAPE.sub(one, text)
+
+
+def _joined_output(text: str) -> str | None:
+    """A sandbox answer's output entries joined, as the tool card shows them; None when there is no seam."""
+    try:
+        answer = json.loads(text)
+    except ValueError:
+        return _SEAM.sub("", text) if _SEAM.search(text) else None
+    entries = answer.get("output") if isinstance(answer, dict) else None
+    if not isinstance(entries, list) or len(entries) < 2:
+        return None
+    return "".join(e["data"] for e in entries if isinstance(e, dict) and isinstance(e.get("data"), str))
 
 
 def views(text: str) -> list[str]:
@@ -158,7 +175,8 @@ class Guard:
         for view in views(text):
             if hashes:
                 for c in self._matcher.candidates(view):
-                    t = hashes.get(hashlib.sha256(c.encode()).hexdigest())
+                    # a decoded escape can leave a lone surrogate; no canary holds one
+                    t = hashes.get(hashlib.sha256(c.encode("utf-8", "surrogatepass")).hexdigest())
                     if t and t not in self._exempt:
                         hits[c] = ("canary", t)
             if self._names:
@@ -229,14 +247,18 @@ class RunGuard:
         return DENIED if self.enforcing else None
 
     def screen(self, text: str) -> str:
-        """A sandbox answer as the model may see it: canaries and protected names redacted."""
-        out, hits, clean = self.guard.redact(text, ("canary", "name"))
-        if not hits:
+        """A sandbox answer as the model may see it: canaries and protected names redacted. A value cut
+        across two output entries cannot be replaced in place: that answer is withheld."""
+        kinds = ("canary", "name")
+        out, hits, clean = self.guard.redact(text, kinds)
+        joined = _joined_output(out)
+        cut = [h for h in self.guard.find(joined).values() if h[0] in kinds] if joined else []
+        if not hits and not cut:
             return text
-        self._act("tool_result", hits, ("canary", "name"))
+        self._act("tool_result", hits + cut, kinds)
         if not self.enforcing:
             return text
-        return out if clean else WITHHELD_RESULT
+        return out if clean and not cut else WITHHELD_RESULT
 
     def title(self, title: str) -> str:
         """A chat title the model wrote, as the client may show it."""

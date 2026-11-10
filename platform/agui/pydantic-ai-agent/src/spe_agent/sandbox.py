@@ -229,7 +229,10 @@ class SandboxClient:
             body = (args if op.has_body else {}) if op.method in {"POST", "PUT", "PATCH", "DELETE"} else None
             status, text = await self._request(op.method, path, params=params, body=body, session_id=session_id)
             if screen is not None:
-                text = _ResponseText(screen(text), text.total_bytes)
+                screened = screen(text)
+                if screened is not text:    # truncate measures what is left, unless the body was cut at the cap
+                    cut = text.total_bytes > MAX_RESPONSE_BYTES
+                    text = _ResponseText(screened, text.total_bytes) if cut else screened
             if status >= 300:
                 return json.dumps({"error": f"HTTP error {status}: {text}"})
             return text
