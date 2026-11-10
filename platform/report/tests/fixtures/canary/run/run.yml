@@ -1,0 +1,17 @@
+instance: fixture
+archived_at: '2026-11-10T14:30:00Z'
+participant: alice
+participant_email: alice@example.test
+coder_workspace: alice-ws
+seed: made-up
+flavor: small
+samples: 1
+tiers:
+- public
+workflows: []
+canaries:
+  flag: true
+  drs_metadata: true
+frontends:
+- agui
+- openwebui

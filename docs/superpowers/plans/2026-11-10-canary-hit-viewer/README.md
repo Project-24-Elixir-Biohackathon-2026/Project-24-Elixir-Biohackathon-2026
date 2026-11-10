@@ -127,7 +127,7 @@ Every task's requirements include these.
 
 | n/N | Branch | Tasks | Delivers | Est. LOC | Reviewer checks | File | Status |
 |---|---|---|---|---|---|---|---|
-| 1/5 | `impl/canary-hit-viewer-1-match-archive` | 1–4 | `canarymatch` (metrics on it), hits from every source, `--archive`, the early output on a real run | ~750 | tests; counts in `evidence/slice-1/counts.md`; the HTML on the portal | [slice-1-match-archive.md](slice-1-match-archive.md) | planned |
+| 1/5 | `impl/canary-hit-viewer-1-match-archive` | 1–4 | `canarymatch` (metrics on it), hits from every source, `--archive`, the early output on a real run | ~750 | tests; counts in `evidence/slice-1/counts.md`; the HTML on the portal | [slice-1-match-archive.md](slice-1-match-archive.md) | done (#77) |
 | 2/5 | `impl/canary-hit-viewer-2-watcher` | 5–8 | the reader, discovery, polling with state and generations, on-stop scan, unit | ~700 | fake-instance tests; `--once` against our de.NBI instance | [slice-2-watcher.md](slice-2-watcher.md) | planned |
 | 3/5 | `impl/canary-hit-viewer-3-participant-page` | 9–11 | participant page, `hits.json`, event stream, notifications, Coder app | ~600 | service tests incl. 10 s latency; screenshot | [slice-3-participant-page.md](slice-3-participant-page.md) | planned |
 | 4/5 | `impl/canary-hit-viewer-4-admin-page` | 12–13 | admin page, its stream and filters; docs | ~400 | service tests; screenshot | [slice-4-admin-page.md](slice-4-admin-page.md) | planned |

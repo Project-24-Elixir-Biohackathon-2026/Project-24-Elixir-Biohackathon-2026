@@ -106,6 +106,13 @@ def test_module_source_never_names_the_record():
         assert word not in source, word
 
 
+def test_airlock_does_not_import_canarymatch():
+    # The airlock never reads the canary record (spec decision 12); canarymatch and the airlock
+    # share no code, so a change to one never risks the other (spec, *Matching*).
+    source = Path(airlock.__file__).read_text()
+    assert "canarymatch" not in source
+
+
 # --- the switch and the CLI the `airlock` probe calls ----------------------------------------
 
 @pytest.mark.parametrize("env,expected", [

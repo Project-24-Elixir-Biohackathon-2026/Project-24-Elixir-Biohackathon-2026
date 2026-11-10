@@ -30,6 +30,10 @@ def setup(tmp_path):
     work.mkdir(parents=True)
     for f in ("run.sh", "controls_asserts.py", "handoff.py", "injections_schema.py"):  # handoff imports the schema
         shutil.copy(HERE / f, work / f)
+    report = repo / "platform" / "report"  # handoff.py imports canarymatch and canary_record from here
+    report.mkdir(parents=True)
+    for f in ("canarymatch.py", "canary_record.py"):
+        shutil.copy(HERE.parent / "report" / f, report / f)
     write_payloads(repo)
     (repo / handoff.FIXTURES).write_text(json.dumps(
         {"fixtures": [{"id": i, "canary_file": e[2]} for i, e in ENTRY_SHAPE.items()]}))

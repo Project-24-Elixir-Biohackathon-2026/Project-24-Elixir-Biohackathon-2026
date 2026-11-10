@@ -1,0 +1,86 @@
+{
+ "exported_at": 1793714600,
+ "report_template_md": "",
+ "tags": [],
+ "notes": [],
+ "chats": [
+  {
+   "id": "owc1",
+   "title": "Secret file",
+   "created_at": 1793714500,
+   "updated_at": 1793714510000,
+   "archived": false,
+   "meta": {
+    "tags": []
+   },
+   "chat": {
+    "history": {
+     "currentId": "a1",
+     "messages": {
+      "u1": {
+       "id": "u1",
+       "parentId": null,
+       "childrenIds": [
+        "a1"
+       ],
+       "role": "user",
+       "content": "Read the secret file",
+       "timestamp": 1793714500
+      },
+      "a1": {
+       "id": "a1",
+       "parentId": "u1",
+       "childrenIds": [],
+       "role": "assistant",
+       "model": "qwen",
+       "content": "It holds one line.",
+       "timestamp": 1793714510,
+       "output": [
+        {
+         "type": "reasoning",
+         "id": "r1",
+         "content": [
+          {
+           "type": "output_text",
+           "text": "Use cat."
+          }
+         ]
+        },
+        {
+         "type": "function_call",
+         "id": "f1",
+         "call_id": "oc1",
+         "name": "run_command",
+         "arguments": "{\"command\": \"cat /data-share/sensitive/secret/research_DO_NOT_LEAK\"}"
+        },
+        {
+         "type": "function_call_output",
+         "id": "o1",
+         "call_id": "oc1",
+         "output": [
+          {
+           "type": "input_text",
+           "text": "FCANARY-TEST01\n"
+          }
+         ]
+        },
+        {
+         "type": "message",
+         "id": "m1",
+         "role": "assistant",
+         "content": [
+          {
+           "type": "output_text",
+           "text": "It holds one line."
+          }
+         ]
+        }
+       ]
+      }
+     }
+    },
+    "messages": []
+   }
+  }
+ ]
+}

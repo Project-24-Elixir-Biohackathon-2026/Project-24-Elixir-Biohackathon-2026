@@ -113,6 +113,18 @@ Decisions 1, 3, 10; *Watcher* (*How it pulls*, *Reader output is untrusted*, *On
     `state` `stopped`), and writes state and status. `run_forever()` calls `tick` every second.
   - Untrusted output: a line that is not JSON is dropped; at most 200 hits per workspace per poll; `HitsFile`
     at 10 MB stops writing (`state` `capped`); a reader reply that is not the expected shape is a failed poll.
+- Carried from slice 1 (its review and rulings):
+  - `JournalReader` keeps an open run's pieces until its `run_end`; a run that never ends grows forever. Bound it:
+    drop a run's pieces past 1 MiB of buffered text, and ignore events for a run already ended (slice 1's
+    reader re-creates it) (`test_unclosed_run_is_bounded`).
+  - `HitsFile` assumes one writer: the daemon is the only one per workspace (the unit runs one process; `--archive`
+    and `--once` write elsewhere or hold `fcntl.flock` on the file while appending). After a crash mid-write the
+    file can end in a partial line: `append` first ends it with a newline, and `read` skips a line that is not
+    JSON (`test_partial_last_line_after_crash`, cut both between lines and mid-character).
+  - A source file the watcher cannot read (`OSError`, e.g. `PermissionError` in `canary_hits._jsonl`) is skipped
+    and logged with its workspace id, never a traceback that ends the daemon (`test_unreadable_source_skipped`).
+  - Receiver hits share one dedup key per canary per generation (the spec's key, *Sources*): one `delivered` hit
+    per canary, not one per request. Slice 3 revisits it if the page should list each request.
 - Logging: `logging` to stderr with workspace id, counts, errors; never a token, an excerpt, a line or a path
   under `sensitive/`.
 

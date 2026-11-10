@@ -23,7 +23,8 @@ start reads this section; keep it short.
   isolation, controls, injections, agent suite), then one port per hardening level as slices 6–9 merge. Before it:
   a short `docs/specs/` version of the spec (the design lives fork-only in `docs/superpowers/specs/`), and the
   L1–L3 switches checked off by default (the portal follows upstream `main`) — from the user, 2026-11-09; due: at
-  slice 5's merge.
+  slice 5's merge. The port now also needs `platform/report/canarymatch.py` and `canary_record.py` (canary hit
+  viewer slice 1, this track's upstream port, or carried itself), since `metrics.py` and `handoff.py` import them.
 - Canary ladder: is a study id inside a listed DRS object name a disclosure (spec part 04, *Authorisation
   boundary*)? 20 of the 36 DRS object names on de.NBI carry a `registry-study-id` canary, so a utility row that
   lists DRS objects fails `canary.answer` at every level, and with it the row's utility pass rate (`matrix._tests`

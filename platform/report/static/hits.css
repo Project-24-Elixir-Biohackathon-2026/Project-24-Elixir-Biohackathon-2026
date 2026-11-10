@@ -1,0 +1,106 @@
+/* The canary hits pages (participant and, later, admin): same tokens, top bar and cards as
+   platform/report/static/report.css, so a served page can load both, and the same file inlined
+   stands alone for the early output (hits_view.standalone), which has no report.css and no script. */
+:root {
+  color-scheme: light dark;
+  --bg: #f7f7f8;
+  --fg: #15171a;
+  --muted: #5d6470;
+  --line: #e1e4ea;
+  --card: #ffffff;
+  --accent: #1d5bd6;
+  --accent-fg: #ffffff;
+  --chip: #eceff4;
+  --chip-fg: #2b3240;
+  --code: #eef0f4;
+  --ok: #0d5a2b;
+  --warn: #7a3e00;
+  --error: #a4262c;
+  --mark-bg: #ffe08a;
+  --mark-fg: #15171a;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115;
+    --fg: #e8eaed;
+    --muted: #9aa1ab;
+    --line: #2a2f39;
+    --card: #171a20;
+    --accent: #7fa8ff;
+    --accent-fg: #0b1020;
+    --chip: #232832;
+    --chip-fg: #d5d9e0;
+    --code: #1f242d;
+    --ok: #9fe3b8;
+    --warn: #ffd089;
+    --error: #ff9b9b;
+    --mark-bg: #8a6d1d;
+    --mark-fg: #fff6e0;
+  }
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code { font: 0.92em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--code); padding: 0.1em 0.35em; border-radius: 4px; }
+.wrap { max-width: 72rem; margin: 0 auto; padding: 0 1rem 2.5rem; }
+.muted { color: var(--muted); }
+mark { background: var(--mark-bg); color: var(--mark-fg); border-radius: 3px; padding: 0 0.1em; }
+
+/* Top bar, shared with report.css's pages when both are loaded */
+.top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 0; border-bottom: 1px solid var(--line); }
+.brand { font-weight: 700; letter-spacing: 0.02em; color: var(--fg); font-size: 1.1rem; }
+.top nav { display: flex; gap: 1.25rem; font-size: 0.95rem; align-items: center; }
+.top nav a { color: var(--muted); }
+.top nav .who { color: var(--fg); font-weight: 600; padding-left: 0.5rem; border-left: 1px solid var(--line); }
+
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 1.5rem 1.75rem; }
+
+/* The hits header: title, status, headline counts, the literal-matching notice */
+.report-head { margin-top: 1.75rem; padding: 1.25rem 1.75rem; }
+.report-head h1 { margin: 0 0 0.5rem; font-size: 1.6rem; letter-spacing: -0.02em; }
+.owner { margin: 0 0 0.75rem; font-size: 0.9rem; }
+.headline { display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; font-size: 0.95rem; margin: 0.75rem 0; }
+.headline .leaks { font-weight: 700; font-size: 1.15rem; }
+.headline .per-kind { color: var(--muted); }
+.headline .also-seen { margin-left: auto; color: var(--muted); }
+.notice { margin: 0.75rem 0 0; font-size: 0.85rem; }
+
+/* The hit list */
+.hit-list { margin-top: 1.25rem; padding: 0.5rem 0; }
+.hit { border-bottom: 1px solid var(--line); padding: 0.6rem 1.25rem; }
+.hit:last-child { border-bottom: 0; }
+.hit summary { cursor: pointer; list-style: none; display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+.hit summary::-webkit-details-marker { display: none; }
+.hit summary::before { content: "\25B8"; color: var(--muted); }
+.hit[open] summary::before { content: "\25BE"; }
+.hit .time { color: var(--muted); font-size: 0.85rem; min-width: 5.5rem; }
+.kind { font-weight: 600; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.04em; padding: 0.1rem 0.55rem; border-radius: 999px; background: var(--chip); color: var(--chip-fg); }
+.hit.loud .kind { background: var(--warn); color: var(--bg); }
+.canary-type { font-size: 0.85rem; color: var(--muted); }
+.canary-file { font-size: 0.85rem; color: var(--muted); }
+.hit .trace { margin: 0.6rem 0 0.2rem 1.6rem; display: grid; gap: 0.35rem; font-size: 0.92rem; }
+.hit .trace .k { color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; margin-right: 0.3rem; }
+.hit .trace .args, .hit .trace code { word-break: break-all; }
+
+/* Quiet hits (seen, args, prompt, unknown kinds), collapsed under one "also seen (N)" */
+.also-seen > summary { cursor: pointer; list-style: none; padding: 0.6rem 1.25rem; color: var(--muted); font-size: 0.9rem; }
+.also-seen > summary::-webkit-details-marker { display: none; }
+.also-seen > summary::before { content: "\25B8"; margin-right: 0.6rem; }
+.also-seen[open] > summary::before { content: "\25BE"; }
+.also-seen .hit { padding-left: 2rem; }
+
+@media (max-width: 700px) {
+  .card, .report-head { padding: 1rem; border-radius: 12px; }
+  .hit { padding: 0.6rem 0.25rem; }
+  .hit .trace { margin-left: 0.8rem; }
+  .also-seen > summary { padding: 0.6rem 0.25rem; }
+  .also-seen .hit { padding-left: 0.75rem; }
+}

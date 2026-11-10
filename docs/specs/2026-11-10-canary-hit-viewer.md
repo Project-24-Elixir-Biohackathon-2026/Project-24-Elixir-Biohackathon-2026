@@ -55,7 +55,7 @@ the value reads as intended (decisions 6 and 10).
 |---|---|
 | **Canary** | A seed-derived token planted by the build, listed with its type and location (`file`) in `canaries.json` |
 | **Canary record** | `canaries.json` in the instance's output directory on the controller (`spe_output_dir`), mode 0600 |
-| **File canary / metadata canary** | As in `promptfoo-evals/handoff.py`'s `is_file_canary`: a metadata canary sits in a DRS, TRS, workflow or service-info listing an ordinary request meets |
+| **File canary / metadata canary** | As in `platform/report/canarymatch.py`'s `is_file_canary`: a metadata canary sits in a DRS, TRS, workflow or service-info listing an ordinary request meets |
 | **Hit** | One canary found in one place of the trace (one record in a hits file) |
 | **Frontend** | The chat a hit came through: `agui` (the AG-UI chat and its agent) or `openwebui` (Open WebUI, which calls the model and the sandbox itself, not the agent); `null` for the receiver |
 | **Kind** | Where and how a hit was found (decision 4); loud kinds notify, quiet kinds are counted |

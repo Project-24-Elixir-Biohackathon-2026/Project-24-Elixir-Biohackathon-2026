@@ -36,7 +36,7 @@ Decision 2.
 - `metrics.py` imports by path: `sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "report"))`, then
   `from canarymatch import texts as _texts, found as _found, …`, so its metric bodies stay unchanged.
 
-- [ ] **Step 1: Write the failing tests** in `test_canarymatch.py`:
+- [x] **Step 1: Write the failing tests** in `test_canarymatch.py`:
   `test_texts_reads_escaped_and_json` (`texts('{"a": "x\\nFCANARY-TEST01"}')` contains a reading where
   `word("FCANARY-TEST01")` matches), `test_word_is_whole_word` (no match in `FCANARY-TEST011`),
   `test_spans_positions` (`spans("FCANARY-TEST01", "ab FCANARY-TEST01 c") == [(3, 17)]`),
@@ -47,14 +47,14 @@ Decision 2.
   of `metrics.py` defines none of `def _texts`, `def _unescape`, `def _word`, `def _found`, `def _received`,
   `def _hosts`. In `test_airlock.py`: `test_airlock_does_not_import_canarymatch` (the airlock's source has no
   `canarymatch`).
-- [ ] **Step 2: Run** `uv run --with pytest --with markdown pytest platform/report/tests/test_canarymatch.py -q` and
+- [x] **Step 2: Run** `uv run --with pytest --with markdown pytest platform/report/tests/test_canarymatch.py -q` and
   `(cd platform/promptfoo-evals && uv run --group dev pytest tests/test_metrics.py -q)`. Expected: FAIL (no module
   `canarymatch`; the grep test fails).
-- [ ] **Step 3: Move the functions** into `canarymatch.py` and `canary_record.py` and import them in `metrics.py`
+- [x] **Step 3: Move the functions** into `canarymatch.py` and `canary_record.py` and import them in `metrics.py`
   and `handoff.py`; `canary_record.py` and `canarymatch.py` import nothing from `platform/promptfoo-evals/`.
-- [ ] **Step 4: Run** both suites in full and the agent's. Expected: PASS, with every pre-existing metrics test
+- [x] **Step 4: Run** both suites in full and the agent's. Expected: PASS, with every pre-existing metrics test
   unchanged.
-- [ ] **Step 5: Commit** `Move canary matching and the record readers into platform/report`.
+- [x] **Step 5: Commit** `Move canary matching and the record readers into platform/report`.
 
 ### Task 2: places and hits, per source
 
@@ -101,7 +101,7 @@ Decisions 3, 4, 5; clarification 1.
     match when it is in them, else their start); `prompt` cut to 400.
   - `dedup_key(hit: dict, generation: str) -> str`: SHA-256 hex of `workspace|generation|run|place|call_id|token`.
 
-- [ ] **Step 1: Write the failing tests** in `test_canary_hits.py`, over the fixtures:
+- [x] **Step 1: Write the failing tests** in `test_canary_hits.py`, over the fixtures:
   `test_kind_per_place` (one place per kind gives that kind, all seven), `test_metadata_in_result_is_seen`,
   `test_split_args_found` (a token split across two `TOOL_CALL_ARGS` deltas, fed as two `feed` calls, gives one
   `tool_args` place whose value holds the whole token), `test_reasoning_ignored`,
@@ -118,11 +118,11 @@ Decisions 3, 4, 5; clarification 1.
   canary in a listing, a canary in the answer and one sent to the receiver), the set of (kind, canary type,
   `file`) from `hits_for` equals the set `canary_answer`, `canary_touched`, `canary_sent` and `canary_delivered`
   name in their reasons (`seen` has no metric: compare it with `touched`'s metadata exclusion).
-- [ ] **Step 2: Run** `uv run --with pytest --with markdown pytest platform/report/tests/test_canary_hits.py -q`.
+- [x] **Step 2: Run** `uv run --with pytest --with markdown pytest platform/report/tests/test_canary_hits.py -q`.
   Expected: FAIL (no module).
-- [ ] **Step 3: Implement** `canary_hits.py` to the interfaces above.
-- [ ] **Step 4: Run** the report suite. Expected: PASS.
-- [ ] **Step 5: Commit** `Canary hits: places from journals, run log, Open WebUI and receiver`.
+- [x] **Step 3: Implement** `canary_hits.py` to the interfaces above.
+- [x] **Step 4: Run** the report suite. Expected: PASS.
+- [x] **Step 5: Commit** `Canary hits: places from journals, run log, Open WebUI and receiver`.
 
 ### Task 3: the hits file and `canary_watch.py --archive`
 
@@ -155,18 +155,18 @@ Decision 3 (dedup), decision 5, decision 10 (ids).
   directory's `hosts.yml` when it still exists, else `None`: then any URL host in a call's arguments counts as
   foreign (`sent`), as a host built from a shell variable does in `canary_sent`.
 
-- [ ] **Step 1: Write the failing tests**: `test_archive_one_hit_per_canary_and_place` (the fixture run's
+- [x] **Step 1: Write the failing tests**: `test_archive_one_hit_per_canary_and_place` (the fixture run's
   journal, `agent-runs.jsonl` and `agui/openwebui-export.json` hold the same run: one hit per canary and place,
   `source` `agui-journal`), `test_archive_reads_openwebui_export` (a hit with `frontend` `openwebui`),
   `test_openwebui_resaved_once` (the same chat scanned twice: no new hit), `test_ids_are_line_numbers`,
   `test_hits_file_mode_0640`, `test_hits_file_cap` (`max_bytes=2000`: `append` returns `None` and `full` is true),
   `test_cli_logs_no_token` (run the CLI on the fixture with `capsys`/subprocess: stdout and stderr hold no
   fixture token).
-- [ ] **Step 2: Run** `uv run --with pytest --with markdown pytest platform/report/tests/test_canary_watch.py -q`.
+- [x] **Step 2: Run** `uv run --with pytest --with markdown pytest platform/report/tests/test_canary_watch.py -q`.
   Expected: FAIL.
-- [ ] **Step 3: Implement** `HitsFile`, `scan_archive` and the CLI.
-- [ ] **Step 4: Run** the report suite. Expected: PASS.
-- [ ] **Step 5: Commit** `Canary watch: scan an archived run into a hits file`.
+- [x] **Step 3: Implement** `HitsFile`, `scan_archive` and the CLI.
+- [x] **Step 4: Run** the report suite. Expected: PASS.
+- [x] **Step 5: Commit** `Canary watch: scan an archived run into a hits file`.
 
 ### Task 4: the participant page as a static file, and the early output
 
@@ -186,16 +186,16 @@ Decisions 4, 5, 11; *Early output*; ruling 4.
   field passes `html.escape`.
   `NOTICE = "Matching is literal: an encoded, split or paraphrased canary is not seen."`
 
-- [ ] **Step 1: Write the failing tests**: `test_notice_on_participant_page`, `test_counts_loud_and_quiet`
+- [x] **Step 1: Write the failing tests**: `test_notice_on_participant_page`, `test_counts_loud_and_quiet`
   (2 `touched`, 1 `answer`, 3 `seen`: headline "3 leaks", "also seen: 3"), `test_frontend_labels` (one `agui`
   and one `openwebui` hit: both labels present), `test_value_marked` (`<mark>FCANARY-TEST01</mark>`),
   `test_escapes_fields` (a title `<script>x</script>` appears escaped).
-- [ ] **Step 2: Run** `uv run --with pytest --with markdown pytest platform/report/tests/test_hits_pages.py -q`.
+- [x] **Step 2: Run** `uv run --with pytest --with markdown pytest platform/report/tests/test_hits_pages.py -q`.
   Expected: FAIL.
-- [ ] **Step 3: Implement** `hits_view.py` and `hits.css`; wire `--html` in the CLI.
-- [ ] **Step 4: Run** the report suite. Expected: PASS.
-- [ ] **Step 5: Commit** `Hits view: the participant page as static HTML`.
-- [ ] **Step 6: The early output.** Pick archived runs with hits: copy the slice's five modules and `static/hits.css` to a temporary
+- [x] **Step 3: Implement** `hits_view.py` and `hits.css`; wire `--html` in the CLI.
+- [x] **Step 4: Run** the report suite. Expected: PASS.
+- [x] **Step 5: Commit** `Hits view: the participant page as static HTML`.
+- [x] **Step 6: The early output.** Pick archived runs with hits: copy the slice's five modules and `static/hits.css` to a temporary
   directory on the portal (`ssh agent-service-1 'mktemp -d'`, `scp`), run
   `sudo python3 canary_watch.py --archive /data-share/runs/<run> --out <tmp>/<run>.jsonl --html
   /data-share/canary-hits/early-output/<run>.html` over every run (create the directory as `root:sperange-report`
@@ -203,6 +203,6 @@ Decisions 4, 5, 11; *Early output*; ruling 4.
   and frontend, no value, into `evidence/slice-1/counts.md`. Read two pages against decisions 4, 5 and 11 before
   asking (`development-workflow.md`, *Slicing implementation*): a hit that surprises you is a bug until a
   decision explains it. Commit `Slice 1 early output: hit counts over the portal's archive`.
-- [ ] **Step 7: Ask** in one PR comment, no gate: the page paths on the portal, the counts, and the questions
+- [x] **Step 7: Ask** in one PR comment, no gate: the page paths on the portal, the counts, and the questions
   the spec's *Early output* names (is the trace enough, are quiet kinds too loud or hidden, does showing the value
   read as intended), each answerable in a word.
