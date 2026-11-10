@@ -48,7 +48,8 @@ Decisions 6, 10, 11; ruling 6.
     "not reachable since 14:02", "hits file full", from `state`, `last_poll`, `since`, `note`.
   - The status file's per-kind `hits` counts are cumulative over every generation and run in the hits file (slice
     2's final review): where the page shows counts, it either says so or recounts from this generation's hits.
-- A participant who is logged out gets the login redirect (as `/reports/<id>`), `hits.json` a 401.
+- A participant who is logged out gets the login redirect, returning to the hits page itself
+  (`/reports/<id>/hits`); `hits.json` a 401.
 
 - [ ] **Step 1: Write the failing tests** in `test_hits_service.py`, with a fixture like `test_report.py`'s
   `service` plus a hits dir holding `<WID>.jsonl` (one `agui` and one `openwebui` hit built by

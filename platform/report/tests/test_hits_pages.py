@@ -130,6 +130,19 @@ def test_status_text_escaped_once():
     assert "&amp;amp;" not in body
 
 
+def test_placeholder_class_on_no_hits_and_not_watched_only():
+    # NO_HITS: hits.js removes this on the first live hit (p.placeholder).
+    archived = participant_body(META, [], None)
+    assert 'class="muted placeholder"' in archived
+    # NOT_WATCHED: a dict status with no state yet.
+    not_watched = participant_body(META, [], {})
+    assert 'class="muted placeholder"' in not_watched
+    # The encrypted notice is never removed by a live hit, so it stays plain "muted".
+    encrypted = participant_body(META, [], {"state": "encrypted"})
+    assert 'class="muted placeholder"' not in encrypted
+    assert 'class="muted">' in encrypted
+
+
 HOSTILE = "<img src=x onerror=alert(1)>"
 
 
@@ -146,3 +159,61 @@ def test_hostile_fields_escaped_everywhere():
         assert "&lt;img src=x onerror=alert(1)&gt;" in doc
         assert doc.count("&lt;img") >= 6  # excerpt x2, prompt, args, result, file
         assert "<mark>FCANARY-TEST01</mark>" in doc
+
+
+# --- hit_html, LOUD, status_line (slice 3: the event stream renders each hit as the page does) ---
+
+import calendar  # noqa: E402
+import time  # noqa: E402
+
+import pytest  # noqa: E402
+
+
+def test_loud_kinds():
+    assert hits_view.LOUD == {"answer", "sent", "delivered", "touched"}
+
+
+def test_hit_html_data_attributes_escaped():
+    h = hit("touched", "tool_result", id=7, session={"id": 's"1<', "title": "t"}, run='r"&1')
+    out = hits_view.hit_html(h)
+    assert out.startswith('<details class="hit loud" data-id="7" data-kind="touched" '
+                          'data-session="s&quot;1&lt;" data-run="r&quot;&amp;1">')
+    assert hits_view.hit_html(hit("seen", "tool_result")).startswith('<details class="hit quiet"')
+
+
+def test_participant_body_uses_hit_html():
+    hits = [hit("touched", "tool_result", id=1), hit("seen", "tool_result", id=2, at="2026-11-10T14:03:01Z")]
+    body = participant_body(META, hits, {})
+    for h in hits:
+        assert hits_view.hit_html(h) in body
+
+
+NOW = calendar.timegm(time.strptime("2026-11-10T14:03:10Z", "%Y-%m-%dT%H:%M:%SZ"))
+
+
+@pytest.mark.parametrize("status, line", [
+    ({"state": "running", "last_poll": "2026-11-10T14:03:07Z"}, "running · watched 3 s ago"),
+    ({"state": "running"}, "running"),
+    ({"state": "unreachable", "since": "2026-11-10T14:02:00Z"}, "not reachable since 14:02"),
+    ({"state": "unreachable"}, "not reachable"),
+    ({"state": "capped"}, "hits file full"),
+    ({"state": "capped", "note": "10 MB"}, "hits file full · 10 MB"),
+    ({"state": "capped", "note": "hits file full"}, "hits file full"),  # the watcher's own note
+    ({"state": "stopped", "note": "archive incomplete"}, "stopped · archive incomplete"),
+    ({"state": "encrypted"}, "canary record is encrypted"),
+    ({}, "not watched yet"),
+    (None, "not watched yet"),
+])
+def test_status_line(status, line):
+    assert hits_view.status_line(status, NOW) == line
+
+
+@pytest.mark.parametrize("status, text", [
+    ({"state": "encrypted"}, hits_view.ENCRYPTED_NOTICE),
+    ({"state": "running"}, hits_view.NO_HITS),
+    ({"state": "stopped", "note": "archive incomplete"}, hits_view.NO_HITS),
+    ({}, hits_view.NOT_WATCHED),  # discovered but never polled
+    (None, hits_view.NO_HITS),  # the early output: an archived run, never live
+])
+def test_empty_text(status, text):
+    assert hits_view.empty_text(status) == text

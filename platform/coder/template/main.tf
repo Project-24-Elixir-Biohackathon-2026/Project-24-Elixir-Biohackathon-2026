@@ -282,6 +282,20 @@ resource "coder_app" "report" {
   open_in      = "tab"
 }
 
+# Canary hits: the canary hit viewer's participant page (docs/specs/2026-11-10-canary-hit-viewer.md),
+# also served by the portal, so it too works while the workspace is stopped. Narrower than the
+# report: only this workspace's owner and portal admins may open it (decision 10), everyone else
+# gets 403.
+resource "coder_app" "hits" {
+  agent_id     = coder_agent.main.id
+  slug         = "hits"
+  display_name = "Canary hits"
+  icon         = "/emojis/1f6a8.png"
+  url          = "${data.coder_workspace.me.access_url}/reports/${data.coder_workspace.me.id}/hits"
+  external     = true
+  open_in      = "tab"
+}
+
 # Rebuild: applies the clone to the running frontend (spe-apply: build the images
 # that changed, recreate the containers, wait for health) in a web terminal.
 # Edits to the runbook, the prompt and the agent's source are live without it;

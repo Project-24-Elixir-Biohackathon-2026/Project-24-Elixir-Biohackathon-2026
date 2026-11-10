@@ -253,6 +253,10 @@ the portal VM at the workspace's first build into `/data-share/reports/<workspac
 and edited behind the "Report" button (`../report/`); a restart never overwrites it.
 Keep the seed out of it: every portal user can read every report.
 
+Beside "Report" is "Canary hits" (`coder_app.hits`, `main.tf`): the canary hit viewer's
+participant page, also served by the portal, but narrower — only the workspace's owner and
+portal admins may open it; everyone else gets 403 (`../report/README.md`, *Canary hits pages*).
+
 ## The run archive
 
 `/data-share/runs/<UTC time>_<instance>/`:

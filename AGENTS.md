@@ -203,9 +203,9 @@ Each unit's PR updates its track's line; the last slice removes it. An open upst
 is open (`docs/guides/contributing-upstream.md`, step 6).
 
 - **Canary hit viewer** (`docs/specs/2026-11-10-canary-hit-viewer.md`): spec merged (#74), plan merged (#75,
-  `docs/superpowers/plans/2026-11-10-canary-hit-viewer/`, 5 slices); slices 1 (#77) and 2 (#78, the watcher)
-  merged. **Next: slice 3/5** `impl/canary-hit-viewer-3-participant-page` (participant page, `hits.json`, event
-  stream, notifications, Coder app). Handoff: `docs/superpowers/plans/2026-11-10-canary-hit-viewer/handoffs/`
+  `docs/superpowers/plans/2026-11-10-canary-hit-viewer/`, 5 slices); slices 1 (#77), 2 (#78, the watcher) and 3
+  (#79, the participant page) merged. **Next: slice 4/5** `impl/canary-hit-viewer-4-admin-page` (admin page, its
+  stream and filters; docs). Handoff: `docs/superpowers/plans/2026-11-10-canary-hit-viewer/handoffs/`
   (newest).
 - **Upstream PR kraatz #28** (`contrib/agui-archive-markdown`): archive Markdown wording, autolinks, refusal
   reason, bad timestamps; waits on upstream's review.

@@ -19,12 +19,13 @@ import canary_hits  # noqa: E402
 import canary_record  # noqa: E402
 import canary_watch  # noqa: E402
 from canary_hits import HitsFile  # noqa: E402
+from conftest import (  # noqa: E402
+    FIXTURES, SESSION, WORKSPACE, layout, make_fake_instance, output_dir, sidecar)
 
 HERE = Path(__file__).resolve().parent
 RUN = HERE / "fixtures" / "canary" / "run"
 WATCH = HERE.parent / "canary_watch.py"
 API_HOST = "api.spe.test"
-WORKSPACE = "6f1c2a9e-3b7d-4e1a-9c2f-0a1b2c3d4e5f"
 META = {"workspace": WORKSPACE, "instance": "fixture", "owner": "alice"}
 TOKENS = [t["token"] for t in canary_record.load_canaries(RUN)]
 
@@ -213,59 +214,19 @@ WS1 = "11111111-1111-1111-1111-111111111111"
 WS2 = "22222222-2222-2222-2222-222222222222"
 
 
-def _hosts_yml(path: Path, api_host: str = "api.spe.test", ssh_target: str = "localhost") -> None:
-    path.write_text(
-        "instance: " + path.parent.name + "\n"
-        "api_host: " + api_host + "\n"
-        "ssh_user: ubuntu\n"
-        "provision: existing\n"
-        "ssh_target: " + ssh_target + "\n"
-    )
-
-
-def _sidecar(reports_dir: Path, workspace_id: str, instance: str, owner: str = "alice") -> Path:
-    path = reports_dir / f"{workspace_id}.json"
-    path.write_text(json.dumps({"owner": owner, "workspace": f"{owner}-ws", "instance": instance,
-                                "created": "2026-11-10 14:00 UTC", "parameters": {}}))
-    return path
-
-
-def _output_dir(output_root: Path, instance: str, encrypted: bool = False, no_record: bool = False) -> Path:
-    directory = output_root / instance
-    directory.mkdir(parents=True)
-    _hosts_yml(directory / "hosts.yml")
-    if no_record:
-        pass
-    elif encrypted:
-        (directory / "canaries.json.age").write_text("age-encrypted-stub")
-    else:
-        (directory / "canaries.json").write_text(json.dumps(
-            {"tokens": [{"token": "FCANARY-TEST01", "type": "file", "file": "flag.txt"}]}))
-    return directory
-
-
-def _layout(tmp_path: Path) -> tuple[Path, Path, Path]:
-    reports = tmp_path / "reports"
-    reports.mkdir()
-    output_root = tmp_path / "output"
-    runs = tmp_path / "runs"
-    runs.mkdir()
-    return reports, output_root, runs
-
-
 def test_no_sidecar_never_scanned(tmp_path):
     """An output directory with canaries.json and hosts.yml but no sidecar is not in discover."""
-    reports, output_root, runs = _layout(tmp_path)
-    _output_dir(output_root, "ws1")
+    reports, output_root, runs = layout(tmp_path)
+    output_dir(output_root, "ws1")
     assert canary_watch.discover(str(reports), str(output_root), str(runs)) == []
 
 
 def test_newest_sidecar_wins(tmp_path):
     """Two sidecars naming one instance (deleted and recreated under the same name): the newer only."""
-    reports, output_root, runs = _layout(tmp_path)
-    _output_dir(output_root, "ws1")
-    old = _sidecar(reports, WS1, "ws1", owner="old-owner")
-    new = _sidecar(reports, WS2, "ws1", owner="new-owner")
+    reports, output_root, runs = layout(tmp_path)
+    output_dir(output_root, "ws1")
+    old = sidecar(reports, WS1, "ws1", owner="old-owner")
+    new = sidecar(reports, WS2, "ws1", owner="new-owner")
     now = time.time()
     os.utime(old, (now - 100, now - 100))
     os.utime(new, (now, now))
@@ -278,9 +239,9 @@ def test_running_until_archived(tmp_path):
     """running while hosts.yml is newer than every runs_dir/*_<instance> directory; an archive dir
     newer than hosts.yml makes it not running. A run dir for a different instance does not match
     (exact suffix, not a prefix of it: ws1 must not match x_ws10)."""
-    reports, output_root, runs = _layout(tmp_path)
-    directory = _output_dir(output_root, "ws1")
-    _sidecar(reports, WS1, "ws1")
+    reports, output_root, runs = layout(tmp_path)
+    directory = output_dir(output_root, "ws1")
+    sidecar(reports, WS1, "ws1")
     [w] = canary_watch.discover(str(reports), str(output_root), str(runs))
     assert w.running is True
     assert w.instance == "ws1"
@@ -304,27 +265,27 @@ def test_running_until_archived(tmp_path):
 
 def test_encrypted_record(tmp_path):
     """A workspace whose record is only canaries.json.age is still returned, flagged encrypted."""
-    reports, output_root, runs = _layout(tmp_path)
-    _output_dir(output_root, "ws1", encrypted=True)
-    _sidecar(reports, WS1, "ws1")
+    reports, output_root, runs = layout(tmp_path)
+    output_dir(output_root, "ws1", encrypted=True)
+    sidecar(reports, WS1, "ws1")
     [w] = canary_watch.discover(str(reports), str(output_root), str(runs))
     assert w.encrypted is True
 
 
 def test_neither_record_file_is_skipped(tmp_path):
     """Neither canaries.json nor canaries.json.age: the workspace is skipped entirely."""
-    reports, output_root, runs = _layout(tmp_path)
-    _output_dir(output_root, "ws1", no_record=True)
-    _sidecar(reports, WS1, "ws1")
+    reports, output_root, runs = layout(tmp_path)
+    output_dir(output_root, "ws1", no_record=True)
+    sidecar(reports, WS1, "ws1")
     assert canary_watch.discover(str(reports), str(output_root), str(runs)) == []
 
 
 def test_generation_changes_with_hosts_yml(tmp_path):
     """generation is a SHA-256 of hosts.yml's bytes and mtime: a rewrite with the same bytes but a
     later mtime, and a rewrite with different bytes, both start a new generation."""
-    reports, output_root, runs = _layout(tmp_path)
-    directory = _output_dir(output_root, "ws1")
-    _sidecar(reports, WS1, "ws1")
+    reports, output_root, runs = layout(tmp_path)
+    directory = output_dir(output_root, "ws1")
+    sidecar(reports, WS1, "ws1")
     hosts_path = directory / "hosts.yml"
 
     [w1] = canary_watch.discover(str(reports), str(output_root), str(runs))
@@ -345,9 +306,9 @@ def test_bad_or_unmatched_sidecars_are_skipped(tmp_path):
     """A sidecar that is not valid JSON, lacks `instance`, or whose filename is not a UUID: never
     raises out of discover, just skipped. A sidecar naming an instance with no hosts.yml at all is
     skipped too."""
-    reports, output_root, runs = _layout(tmp_path)
-    _output_dir(output_root, "ws1")
-    _sidecar(reports, WS1, "ws1")
+    reports, output_root, runs = layout(tmp_path)
+    output_dir(output_root, "ws1")
+    sidecar(reports, WS1, "ws1")
     (reports / "not-a-uuid.json").write_text(json.dumps({"instance": "ws1", "owner": "mallory"}))
     (reports / f"{WS2}.json").write_text("{not json")
     third = reports / "33333333-3333-3333-3333-333333333333.json"
@@ -363,28 +324,28 @@ def test_once_workspace_has_no_sidecar_and_is_always_running(tmp_path):
     running True (there is no runs_dir to weigh it against), encrypted/generation as discover
     computes them from the same directory."""
     output_root = tmp_path / "output"
-    directory = _output_dir(output_root, "ws1")
+    directory = output_dir(output_root, "ws1")
     w = canary_watch.once_workspace(str(directory))
     assert w.id == "once" and w.owner is None and w.instance == "ws1"
     assert w.output_dir == str(directory) and w.running is True and w.encrypted is False
     assert w.api_host == "api.spe.test" and w.ssh.user == "ubuntu" and w.ssh.host == "localhost"
     # Matches discover()'s own generation for the same hosts.yml.
-    reports, _, runs = _layout(tmp_path)
-    _sidecar(reports, WS1, "ws1")
+    reports, _, runs = layout(tmp_path)
+    sidecar(reports, WS1, "ws1")
     [discovered] = canary_watch.discover(str(reports), str(output_root), str(runs))
     assert w.generation == discovered.generation
 
 
 def test_once_workspace_encrypted_record(tmp_path):
     output_root = tmp_path / "output"
-    directory = _output_dir(output_root, "ws1", encrypted=True)
+    directory = output_dir(output_root, "ws1", encrypted=True)
     w = canary_watch.once_workspace(str(directory))
     assert w.encrypted is True
 
 
 def test_once_workspace_no_record_raises(tmp_path):
     output_root = tmp_path / "output"
-    directory = _output_dir(output_root, "ws1", no_record=True)
+    directory = output_dir(output_root, "ws1", no_record=True)
     with pytest.raises(canary_record.RecordError):
         canary_watch.once_workspace(str(directory))
 
@@ -403,8 +364,6 @@ import logging  # noqa: E402
 import shlex  # noqa: E402
 import sqlite3  # noqa: E402
 
-FIXTURES = HERE / "fixtures" / "canary"
-SESSION = "aaaaaaaa-1111-4222-8333-444444444444"
 JOURNAL = (FIXTURES / "agui-journals" / "s1.jsonl").read_text().splitlines(keepends=True)
 JOURNAL_LINES = [line.rstrip("\n") for line in JOURNAL]
 CHAT = json.loads((FIXTURES / "openwebui-export.json").read_text())["chats"][0]
@@ -460,25 +419,15 @@ class Fake:
     """A fake instance on tmp_path (its four sources, read by LocalTransport) and the portal's directories."""
 
     def __init__(self, tmp_path: Path, encrypted: bool = False):
-        self.reports, self.output_root, self.runs = _layout(tmp_path)
+        local, self.output_root, self.reports, self.runs = make_fake_instance(tmp_path, encrypted)
         self.out = self.output_root / "fixture"
-        self.out.mkdir(parents=True)
-        shutil.copy(FIXTURES / "hosts.yml", self.out / "hosts.yml")
-        if encrypted:
-            (self.out / "canaries.json.age").write_text("age-encrypted-stub")
-        else:
-            shutil.copy(FIXTURES / "canaries.json", self.out / "canaries.json")
-        _sidecar(self.reports, WORKSPACE, "fixture")
-        self.instance = tmp_path / "instance"
-        (self.instance / "sessions").mkdir(parents=True)
-        self.journal = self.instance / "sessions" / f"{SESSION}.jsonl"
-        self.agent_runs = self.instance / "runs.jsonl"
-        self.receiver = self.instance / "requests.jsonl"
-        self.db = self.instance / "webui.db"
+        self.paths = local.paths
+        self.journal = Path(self.paths["sessions"]) / f"{SESSION}.jsonl"
+        self.agent_runs = Path(self.paths["agent_runs"])
+        self.receiver = Path(self.paths["receiver"])
+        self.db = Path(self.paths["webui_db"])
         self.hits_dir = tmp_path / "hits"
-        self.paths = {"sessions": str(self.instance / "sessions"), "agent_runs": str(self.agent_runs),
-                      "receiver": str(self.receiver), "webui_db": str(self.db)}
-        self.transport = Counting(canary_watch.LocalTransport(self.paths))
+        self.transport = Counting(local)
 
     def watcher(self, transport=None, **kwargs) -> "canary_watch.Watcher":
         return canary_watch.Watcher(str(self.hits_dir), str(self.reports), str(self.runs), str(self.output_root),
@@ -1050,7 +999,7 @@ def test_once_prints_only_known_names(tmp_path, capsys):
 
 def test_once_no_record_fails_without_a_token(tmp_path, capsys):
     output_root = tmp_path / "output"
-    directory = _output_dir(output_root, "ws1", no_record=True)
+    directory = output_dir(output_root, "ws1", no_record=True)
     out = tmp_path / "hits.jsonl"
     rc = canary_watch.once(str(directory), str(out))
     assert rc == 1

@@ -57,6 +57,17 @@ start reads this section; keep it short.
 - Canary watch: the systemd unit has no hardening; add `ProtectSystem=strict` with
   `ReadWritePaths=/data-share/canary-hits %h/.ssh`, never `NoNewPrivileges` (it breaks a local controller's sudo)
   — from the canary hit viewer slice 2 final review (progress ruling 12); waits for a check on the portal VM.
+- Canary hits pages: `HitsFile.read` catches only `FileNotFoundError`, so a permissions mistake on the hits root
+  gives the page and `hits.json` a 500 where the event stream handles it; and an unexpected error in a request
+  logs socketserver's traceback (code lines and the message, no canary value seen so far) — a `handle_error` that
+  logs the class only would make decision 10 strict — from the canary hit viewer slice 3 final review; waits
+  because the setup steps set the permissions and the journal is admin-only.
+- Canary hits: `test_status_event` (`platform/report/tests/test_hits_service.py`) flakes about 1 run in 15; the
+  stream's status-change check (`os.stat` mtime and inode) may see an unchanged file as changed on virtiofs —
+  from PR #79's review round; waits because it is rare and the page is unaffected (a resent status is harmless).
+- Canary hits pages: `static/hits.js` has no browser test (the screenshot harness covers it once); a Playwright
+  test of a hit arriving, the counts and "Group by run" — from the canary hit viewer slice 3 final review; waits
+  because what must not go wrong (escaping, the event payload, notification fields) is tested on the server.
 
 - AG-UI chat, minor polish from #58's review (finding 5): opening a session no holder keeps shows *Loading…* for
   one render; no unit test drives `SessionAgent` with the page (only e2e `leave-running` does); while a chat

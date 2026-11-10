@@ -73,10 +73,32 @@ mark { background: var(--mark-bg); color: var(--mark-fg); border-radius: 3px; pa
 .headline .also-seen { margin-left: auto; color: var(--muted); }
 .notice { margin: 0.75rem 0 0; font-size: 0.85rem; }
 
+/* The live page's buttons (hits.js, slice 3): rendered `hidden`, shown once the script runs,
+   so a page with no script (the standalone early output) never shows a button that does nothing. */
+.hits-actions { display: flex; gap: 0.6rem; margin: 0.75rem 0 0; }
+.hits-actions .btn {
+  font: inherit; font-size: 0.85rem; padding: 0.3rem 0.75rem; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--chip); color: var(--chip-fg); cursor: pointer;
+}
+.hits-actions .btn:hover { border-color: var(--accent); }
+.hits-actions .btn:disabled { cursor: default; opacity: 0.7; }
+
 /* The hit list */
 .hit-list { margin-top: 1.25rem; padding: 0.5rem 0; }
 .hit { border-bottom: 1px solid var(--line); padding: 0.6rem 1.25rem; }
 .hit:last-child { border-bottom: 0; }
+/* A hit the script just inserted (hits.js): a highlight that fades on its own, not reapplied
+   on reconnect (seenIds skips anything already in the list). */
+.hit.new { animation: hit-new 3s ease-out 1; }
+@keyframes hit-new {
+  from { background: var(--mark-bg); }
+  to { background: transparent; }
+}
+/* A "Group by run" heading (hits.js builds these, not the server: no hit for them in hits_view.py) */
+.hit-group-heading {
+  padding: 0.5rem 1.25rem 0.1rem; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--muted);
+}
 .hit summary { cursor: pointer; list-style: none; display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
 .hit summary::-webkit-details-marker { display: none; }
 .hit summary::before { content: "\25B8"; color: var(--muted); }
