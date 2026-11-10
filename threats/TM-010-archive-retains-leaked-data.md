@@ -1,5 +1,5 @@
 ---
-id: TM-010
+id: TM-017
 name: Central Archive Retains Leaked Data After an Instance Is Gone
 description: >
   Destroying or restarting a workspace is the responsive control for a live leak, but it is not a clean slate: stopping or deleting an instance first archives its chats and canary record to a central store, so any sensitive value that reached a transcript or run log survives the instance that produced it. The archive also aggregates across every participant and workspace, so one store concentrates the personal data and canaries of the whole event. A restart replants the same canaries (the seed is kept), so a canary that leaked once stays live in the rebuilt instance, and nothing in the live SPE constrains who can later read the archive or whether that read is attributed; run reports, where participants record leaks, are readable by every portal user. The harm is confidentiality and non-repudiation at rest, after and around the agent, rather than in the agent's own tool calls.
@@ -16,7 +16,7 @@ stride:
   - repudiation
 ---
 
-# TM-010: Central Archive Retains Leaked Data After an Instance Is Gone
+# TM-017: Central Archive Retains Leaked Data After an Instance Is Gone
 
 ## Attack Scenarios
 
