@@ -8,8 +8,7 @@ Checks per entry (threats/TM-*.md):
   - no duplicate IDs across the catalog
   - `status` is one vocabulary.yaml value; `entry-points`, `assets` and
     `stride` are non-empty lists of vocabulary.yaml values
-  - the body has exactly the headings of the template, in order,
-    optionally followed by a single '## Evidence' section
+  - the body has exactly the headings of the template, in order
 
 Usage:
     python validate.py [--threats-dir threats] [--vocab vocabulary.yaml]
@@ -60,10 +59,6 @@ BODY_HEADINGS = [
     (3, "Detective"),
     (3, "Responsive"),
 ]
-
-# Optional: an entry that is no longer `hypothesised` may end with a single
-# '## Evidence' section recording where it was reproduced or blocked.
-OPTIONAL_TRAILING_HEADING = (2, "Evidence")
 
 
 @dataclass
@@ -169,10 +164,7 @@ def check_body(content: str, entry_id: str, name: str) -> list[str]:
     errors = []
     if headings[0][1] != expected_h1:
         errors.append(f"H1 is '{headings[0][1]}', expected '{expected_h1}'")
-    body_headings = headings[1:]
-    if body_headings and body_headings[-1] == OPTIONAL_TRAILING_HEADING:
-        body_headings = body_headings[:-1]  # drop the optional '## Evidence'
-    if body_headings != BODY_HEADINGS:
+    if headings[1:] != BODY_HEADINGS:
         expected = ", ".join(f"{'#' * lvl} {t}" for lvl, t in BODY_HEADINGS)
         found = ", ".join(f"{'#' * lvl} {t}" for lvl, t in headings[1:])
         errors.append(
