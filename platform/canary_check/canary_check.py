@@ -130,15 +130,15 @@ def scan_text(text: str, manifest: dict[str, str], file: str, where: str) -> lis
     return found
 
 
-def _json_strings(obj, path: str = "$") -> Iterator[tuple[str, str]]:
+def json_strings(obj, path: str = "$") -> Iterator[tuple[str, str]]:
     if isinstance(obj, str):
         yield path, obj
     elif isinstance(obj, dict):
         for k, v in obj.items():
-            yield from _json_strings(v, f"{path}.{k}")
+            yield from json_strings(v, f"{path}.{k}")
     elif isinstance(obj, list):
         for i, v in enumerate(obj):
-            yield from _json_strings(v, f"{path}[{i}]")
+            yield from json_strings(v, f"{path}[{i}]")
 
 
 def scan_file(path: Path, manifest: dict[str, str]) -> list[Finding]:
@@ -151,7 +151,7 @@ def scan_file(path: Path, manifest: dict[str, str]) -> list[Finding]:
     found: list[Finding] = []
     if path.suffix == ".json":
         try:
-            for where, s in _json_strings(json.loads(raw)):
+            for where, s in json_strings(json.loads(raw)):
                 found += scan_text(s, manifest, name, where)
             return found
         except json.JSONDecodeError:
@@ -159,7 +159,7 @@ def scan_file(path: Path, manifest: dict[str, str]) -> list[Finding]:
     if path.suffix == ".jsonl":
         for n, line in enumerate(raw.splitlines(), 1):
             try:
-                for where, s in _json_strings(json.loads(line), f"line {n}"):
+                for where, s in json_strings(json.loads(line), f"line {n}"):
                     found += scan_text(s, manifest, name, where)
             except json.JSONDecodeError:  # torn last line of a live archive
                 found += scan_text(line, manifest, name, f"line {n}")

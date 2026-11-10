@@ -24,8 +24,10 @@ Every hit is logged to stdout as one JSON line with the canary type, method
 and path, never the token, so `docker compose logs canary-guard` is safe to
 share. Responses carry `X-Canary-Guard: redacted=<n>`.
 
-Body handling: text and JSON bodies are redacted in place. A hit in any other
-content type (it could not be redacted without corrupting it) blocks the
+Body handling: text and JSON bodies are redacted in place. JSON bodies are also
+matched in their decoded string values, the form the client reads (WESkit
+returns run logs as JSON strings, with escaped newlines). A hit in any other
+content type, or one that cannot be replaced in the raw body, blocks the
 response with 502. Request bodies are forwarded unchanged.
 
 Standard library only.
@@ -45,7 +47,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 sys.path.insert(0, str(Path(__file__).parent))
-from canary_check import candidates, load_manifest  # noqa: E402
+from canary_check import candidates, json_strings, load_manifest  # noqa: E402
 
 DEFAULT_UPSTREAMS = [
     ["/ga4gh/wes", "http://rest:5000"],
@@ -94,17 +96,40 @@ class Manifest:
             return self._hashes
 
 
-def redact(text: str, hashes: dict[str, str], exempt: set[str]) -> tuple[str, list[str]]:
-    """Replace every manifest token in `text`; return the new text and the hit types."""
+def readable_views(text: str, ctype: str) -> list[str]:
+    """The body as written and as the client reads it. JSON string values are decoded, so an
+    escape such as the \\n in a WESkit run log does not join the token after it."""
+    views = [text]
+    if "json" in ctype:
+        try:
+            views += [s for _, s in json_strings(json.loads(text))]
+        except ValueError:
+            pass
+    return views
+
+
+def find_hits(views: list[str], hashes: dict[str, str], exempt: set[str]) -> dict[str, str]:
     hits: dict[str, str] = {}
-    for c in candidates(text):
-        t = hashes.get(hashlib.sha256(c.encode()).hexdigest())
-        if t and t not in exempt:
-            hits[c] = t
+    for view in views:
+        for c in candidates(view):
+            t = hashes.get(hashlib.sha256(c.encode()).hexdigest())
+            if t and t not in exempt:
+                hits[c] = t
+    return hits
+
+
+def redact(text: str, ctype: str, hashes: dict[str, str], exempt: set[str]) -> tuple[str, list[str], bool]:
+    """Replace every manifest token in `text`; return the new text, the hit types, and whether
+    the result reads clean. A token the client would decode from a form that is not written out
+    in the raw body (a \\u escape) cannot be replaced in place: the caller withholds the body."""
+    hits = find_hits(readable_views(text, ctype), hashes, exempt)
+    if not hits:
+        return text, [], True
     # Longest first, so a token that contains another is replaced whole.
     for token in sorted(hits, key=len, reverse=True):
         text = text.replace(token, f"[REDACTED:{hits[token]}]")
-    return text, [hits[t] for t in hits]
+    clean = not find_hits(readable_views(text, ctype), hashes, exempt)
+    return text, list(hits.values()), clean
 
 
 class Config:
@@ -184,7 +209,7 @@ def make_handler(cfg: Config):
             if "charset=" in ctype:
                 charset = ctype.split("charset=", 1)[1].split(";")[0].strip() or "utf-8"
             text = body.decode(charset, errors="replace")
-            new_text, types = redact(text, hashes, cfg.exempt)
+            new_text, types, clean = redact(text, ctype, hashes, cfg.exempt)
             if not types:
                 return self._send(status, headers, body)
 
@@ -193,7 +218,7 @@ def make_handler(cfg: Config):
                      mode=cfg.mode, content_type=ctype or "none")
             if cfg.mode == "monitor":
                 return self._send(status, headers + [("X-Canary-Guard", f"seen={len(types)}")], body)
-            if not textual:
+            if not textual or not clean:
                 return self._error(502, "response withheld: contains canary data and cannot be redacted")
             return self._send(status, headers + [("X-Canary-Guard", f"redacted={len(types)}")],
                               new_text.encode(charset, errors="replace"))

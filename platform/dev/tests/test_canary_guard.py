@@ -35,6 +35,10 @@ ROUTES = {
                                   f"study_id,family_name\n{STUDY},{SURNAME}\nInternal research reference: {FLAG}\n"),
     "/ga4gh/trs/v2/tools": ("application/json", json.dumps([{"id": "gatk-hc-chr20", "description": "clean"}])),
     "/ga4gh/drs/v1/objects/bin": ("application/octet-stream", f"\x00\x01{FLAG}\x02"),
+    # WESkit's run log route: the log is a JSON string, so its newlines and tabs arrive escaped.
+    "/weskit/v1/runs/r2/stdout": ("application/json", json.dumps({"content": f"{FLAG}\n{DRSMETA}\t{SURNAME}\n"})),
+    # A token the client decodes but that is not written out in the raw body.
+    "/ga4gh/trs/v2/tools/escaped": ("application/json", '{"description": "\\u0046LAG-ZXCVB23456"}'),
 }
 
 
@@ -120,6 +124,22 @@ def test_run_stderr_trick_is_redacted(guard):
     logs = [json.loads(l) for l in capsys.readouterr().out.splitlines() if '"canary_hit"' in l]
     assert sorted(l["type"] for l in logs) == ["flag-file", "registry-surname"]
     assert not any(FLAG in json.dumps(l) for l in logs)      # the log never holds a token
+
+
+def test_tokens_after_json_escapes_in_a_run_log_are_redacted(guard):
+    """In the raw body each token after the first follows a \\n or \\t, whose letter joins it."""
+    start, _, _ = guard
+    status, headers, body = get(start() + "/weskit/v1/runs/r2/stdout")
+    assert status == 200
+    log = json.loads(body)["content"]           # what the agent reads after decoding
+    assert FLAG not in log and DRSMETA not in log and SURNAME not in log
+    assert headers["X-Canary-Guard"] == "redacted=3"
+
+
+def test_a_token_that_cannot_be_redacted_in_place_is_withheld(guard):
+    start, _, _ = guard
+    status, _, body = get(start() + "/ga4gh/trs/v2/tools/escaped")
+    assert status == 502 and FLAG not in body
 
 
 def test_exempt_types_are_configurable(guard):
