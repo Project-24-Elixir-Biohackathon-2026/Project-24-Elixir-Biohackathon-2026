@@ -233,6 +233,9 @@ class Store:
 # agui/agui-journals/<session>.jsonl (raw). Read-only here; a listing is cached briefly.
 
 TURN_RE = re.compile(r"^## (?P<role>[^(·\n]+?)(?: \((?P<model>[^)]*)\))?(?: · (?P<rest>.*))?$")
+TURN_ROLES = ("user", "assistant", "system", "tool")
+# write_run.py's own '##' sections in an AG-UI chat; any other '##' line is the model's text.
+TURN_SECTIONS = ("Compacted", "Other branches", "sent by the client, not used")
 HIDDEN_RUN_KEYS = ("participant_email", "owner_email")
 
 
@@ -260,7 +263,8 @@ def public(d: dict) -> dict:
 def split_turns(md: str) -> tuple[dict, list[dict]]:
     """A chat as write_run.py renders it: a title, '- Key: value' facts, then one '## role · time'
     heading per turn (Open WebUI adds the model in parentheses; AG-UI has a few other '##' sections,
-    'Compacted', 'Other branches', which become turns of their own kind)."""
+    'Compacted', 'Other branches', which become turns of their own kind). A '##' line the model wrote
+    in its answer is not a turn: it stays in the body, like everything inside a code fence."""
     facts: dict[str, str] = {}
     turns: list[dict] = []
     current: dict | None = None
@@ -278,13 +282,13 @@ def split_turns(md: str) -> tuple[dict, list[dict]]:
         stripped = line.strip()
         if stripped.startswith("```") or stripped.startswith("~~~"):
             in_fence = not in_fence
-        if not in_fence and line.startswith("## "):
+        m = TURN_RE.match(line) if not in_fence and line.startswith("## ") else None
+        if m and (m.group("role").strip().lower() in TURN_ROLES and m.group("rest") is not None
+                  or m.group("role").strip() in TURN_SECTIONS):
             close()
-            m = TURN_RE.match(line)
-            role = (m.group("role") if m else line[3:]).strip()
-            current = {"role": role.lower() if role.lower() in ("user", "assistant", "system", "tool") else "section",
-                       "label": role, "model": (m.group("model") or "") if m else "",
-                       "at": (m.group("rest") or "") if m else ""}
+            role = m.group("role").strip()
+            current = {"role": role.lower() if role.lower() in TURN_ROLES else "section",
+                       "label": role, "model": m.group("model") or "", "at": m.group("rest") or ""}
             body = []
             continue
         if current is None:

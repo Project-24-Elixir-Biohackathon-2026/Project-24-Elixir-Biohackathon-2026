@@ -313,8 +313,12 @@ def test_split_turns_on_odd_input():
     assert sr.split_turns("") == ({}, [])
     facts, turns = sr.split_turns("# T\n\n- Created: now\n\nno heading at all\n")
     assert facts == {"Created": "now"} and turns == []
-    _, turns = sr.split_turns("## tool · 1\n\nx\n\n## Something (odd) here\n\ny")
-    assert [(t["role"], t["label"], t["model"]) for t in turns] == [("tool", "tool", ""), ("section", "Something (odd) here", "")]
+    _, turns = sr.split_turns("## tool · 1\n\nx\n\n## Something (odd) here\n\ny\n\n## Other branches\n\nz")
+    # a '##' the model wrote stays in the turn; write_run.py's own sections are turns
+    assert [(t["role"], t["label"], t["model"]) for t in turns] == [("tool", "tool", ""), ("section", "Other branches", "")]
+    assert "## Something (odd) here" in turns[0]["markdown"] and "<h2>Something (odd) here</h2>" in turns[0]["html"]
+    _, turns = sr.split_turns("## user · 1\n\n## TRS\n\ntext\n\n## assistant (m) · 2\n\nok")
+    assert [(t["role"], t["model"]) for t in turns] == [("user", ""), ("assistant", "m")] and "## TRS" in turns[0]["markdown"]
 
 
 # --- the page ---------------------------------------------------------------------------------------------
