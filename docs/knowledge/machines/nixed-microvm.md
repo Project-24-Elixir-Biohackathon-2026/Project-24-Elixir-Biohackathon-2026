@@ -27,6 +27,18 @@ the commands, but micromamba is installed:
 
 The lasting alternative is adding them to nixed's guest packages (a switch by the user).
 
+## `tofu` (OpenTofu) on PATH
+
+Planning a Coder template locally (`docs/knowledge/opentofu-coder-template-test.md`, from the experiments track's
+slice 2) needs `tofu`; `nix shell nixpkgs#opentofu` fails here (read-only `/nix/store`). The home directory is a
+virtiofs share that outlives the guest, so the release binary there stays installed (2026-11-10, v1.10.7):
+
+    curl -sSL -o t.zip https://github.com/opentofu/opentofu/releases/download/v1.10.7/tofu_1.10.7_linux_amd64.zip
+    unzip -oq t.zip tofu && install -m 0755 tofu ~/.local/bin/tofu
+
+With it, `SPE_TOFU` can be `tofu`. The lasting alternative is the `opentofu` package in nixed's guest packages
+(a switch by the user, in that repository).
+
 ## SSH to de.NBI through the host's `~/.ssh` share
 
 The host's `~/.ssh` is shared at `/mnt/host-ssh`, and `/etc/ssh/ssh_config` includes `/mnt/host-ssh/config`.
