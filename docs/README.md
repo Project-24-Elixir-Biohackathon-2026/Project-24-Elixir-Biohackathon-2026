@@ -12,6 +12,7 @@ One line per document: what it covers and who reads it. Open the document only w
 | `knowledge/README.md` | as-you-go gotchas, one line each | before non-trivial work in an area |
 | `specs/`, `plans/` | upstream's design specs and plans (the AG-UI frontend, the run report service), shared with upstream | when working on what they built |
 | `specs/2026-10-15-agui-frontend-design/` | spec: the living AG-UI spec: agent, chat UI and sessions, Ansible, the conversation record (§13, approved, #19) and its archive (§14); shared with upstream | you change or plan anything in the AG-UI stack |
+| `specs/2026-11-10-canary-hit-viewer.md` | spec: the canary hit viewer: a portal-VM watcher matching each workspace's trace against its canary record, the participant's live hits page and the admin page; written for upstream (its ladder parts apply where the ladder exists) | you plan or build canary hit detection for workspaces, or change `canarymatch.py` |
 | `superpowers/specs/`, `superpowers/plans/` | our fork's specs and plans (fork-only, `AGENTS.md`, *Contributing upstream*) | when your unit names one |
 | `getting-started.md` | deploying and using an instance by hand (upstream's) | before deploying |
 | `investigations/` | one file per answered question (`sessions-and-context.md`, *Investigations and audits*) | when the question comes up again |

@@ -1,4 +1,5 @@
-**Status:** *proposed*: the input for a spec (`spec/canary-hit-viewer`), not yet written.
+**Status:** *specified*: superseded by `docs/specs/2026-11-10-canary-hit-viewer.md` (PR #74), which settles the
+open questions below in its *Rulings on the open questions*.
 
 # Canary hits, visible: a live detector for participants and a global view for the portal owner
 

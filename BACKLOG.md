@@ -39,9 +39,11 @@ start reads this section; keep it short.
 
 <!-- - <item> — from <PR #n / review thread / spec Inputs for>, waits because <reason>. -->
 
-- Canary hits, visible: a live canary detector for participants (hits with trace metadata) and an admin view of all
-  workspaces' hits on the portal — from the user, 2026-11-10; proposal `docs/proposals/2026-11-10-canary-hit-viewer.md`;
-  its spec is being written on `spec/canary-hit-viewer`.
+- Canary hits inline in the AG-UI chat: chips on the tool group and answer, the leaked span highlighted, a session
+  tally, "Add to report" — deferred by the canary hit viewer spec (`docs/specs/2026-11-10-canary-hit-viewer.md`,
+  *Out of scope*), for a later spec once its participant page has been used.
+- Canary hits as an Open WebUI toast (a filter function) — deferred by the same spec; only if its participant page
+  proves not enough.
 
 - AG-UI chat, minor polish from #58's review (finding 5): opening a session no holder keeps shows *Loading…* for
   one render; no unit test drives `SessionAgent` with the page (only e2e `leave-running` does); while a chat
