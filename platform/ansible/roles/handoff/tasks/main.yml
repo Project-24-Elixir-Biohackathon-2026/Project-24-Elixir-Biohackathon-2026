@@ -46,6 +46,19 @@
   delegate_to: localhost
   no_log: true
 
+- name: Hash-only manifest for the canary guard (on the VM)
+  # Digests only, the same content as canaries.manifest.sha256: the guard can
+  # match tokens but the VM never holds their plaintext. The guard reloads the
+  # file when it changes.
+  ansible.builtin.copy:
+    content: |-
+      {% for t in spe_canary_record.tokens %}
+      {{ t.token | hash('sha256') }}	{{ t.type }}
+      {% endfor %}
+    dest: "{{ spe_stack_dir }}/guard/manifest/canaries.manifest.sha256"
+    mode: "0644"
+  when: spe_canary_guard | bool
+
 - name: Encrypt canary record with age
   ansible.builtin.shell: >-
     age -r '{{ spe_age_recipient }}' -o canaries.json.age canaries.json && rm -f canaries.json
