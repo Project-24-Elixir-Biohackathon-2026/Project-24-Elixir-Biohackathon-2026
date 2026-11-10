@@ -1,6 +1,6 @@
 """canarymatch.py (whether and where a canary token is in a text) and canary_record.py (the
-canaries.json / hosts.yml readers), moved out of platform/promptfoo-evals so the canary hit viewer's
-watcher can use them without importing it (decision 2). No real canaries.json is ever read: every
+canaries.json / hosts.yml readers), standard library only, so the canary hit viewer's watcher can
+use them without importing platform/promptfoo-evals (decision 2). No real canaries.json is ever read: every
 token here is a made-up fixture value."""
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ def test_hosts():
 
 
 def test_is_file_canary():
-    # Take the type names from the canary evaluation's METADATA_TYPES as it is now (one is a metadata type, never
+    # Take the type names from canarymatch.METADATA_TYPES as it is now (one is a metadata type, never
     # a file canary; a drs-… type is a metadata type).
     assert canarymatch.is_file_canary({"type": "drs-object-metadata"}) is False
     assert canarymatch.is_file_canary({"type": "flag-file"}) is True

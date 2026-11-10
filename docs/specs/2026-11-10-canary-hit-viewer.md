@@ -288,16 +288,16 @@ redacts nothing. Neither imports the other; where the airlock exists, a test ass
 
 ## Clarifications
 
-1. **Open WebUI's chats are a source** (2026-11-10; plan PR #75). The watcher reads Open WebUI's `webui.db`
+1. **Open WebUI's chats are a source** (2026-11-10; found while planning). The watcher reads Open WebUI's `webui.db`
    read-only on the instance and `openwebui-export.json` in the archive; every hit names its `frontend`, and both
    pages label and filter by it. *Reason:* the plan checked the spec's assumption that Open WebUI's runs reach
    `runs.jsonl` and found it false: Open WebUI calls the model and the sandbox directly
    (`roles/openwebui/templates/webui.env.j2`), and on the portal's archive (50 runs, 2026-11-10) its 18 chats carry
    their tool calls in each assistant message's `output`, with none in `agent-runs.jsonl`. The user asked for Open
-   WebUI sessions to be covered (relayed by the session `elixir-biohackathon-2026-test-b6`, 2026-11-10; the user's own words were not passed on). *Amends:* decisions 3, 5, 6; *Sources*,
+   WebUI sessions to be covered (relayed by another agent session, 2026-11-10; the user's own words were not passed on). *Amends:* decisions 3, 5, 6; *Sources*,
    *Watcher* (*On stop*), *Hits*, *Participant page*, *Admin page*, Glossary. *Status:* folded.
 2. **The on-stop scan reads the whole run directory once its `index.md` is there, or after 10 minutes without
-   it** (2026-11-10; implementation PR #78). *Reason:* the dedup keys hold no source, so a whole-directory scan
+   it** (2026-11-10; found while implementing). *Reason:* the dedup keys hold no source, so a whole-directory scan
    with the workspace's keys drops what polling found, which is simpler than carrying offsets into the archive;
    `index.md` is written last, so its presence means the copy is complete, and an archive that never writes it
    would otherwise leave the workspace running forever. *Amends:* *Watcher* (*On stop*). *Status:* folded.
