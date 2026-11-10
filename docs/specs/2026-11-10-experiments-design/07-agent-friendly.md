@@ -25,20 +25,20 @@ VM, and stop destroys it); a fresh build from a branch template is the participa
 ## Commands
 
 How to run the tests is these commands, in this order: `test` after each edit (offline), `arm` to try a build by
-hand, `run` to measure both arms, `results` to read them. The workspace guide's *Experiments* section and
+hand, `run` to measure both arms (the baseline only for red), `results` to read them. The workspace guide's *Experiments* section and
 `CONTRIBUTING.md` give the same table; `spe-eval --help` prints it.
 
 | Step | Command | For an agent |
 |---|---|---|
-| Start | `spe-eval new <name> [--threat TM-NNN] [--path P<n>] [--injection <surface>] [--from <experiment>]` | writes the skeleton: `experiments/<name>.yml`, `mitigations/<name>.yml` with a `spe_mitigate_<name>` switch, its default in `group_vars`, with `--injection` a `fixtures.json` entry, a payload file and a `spe_inject_<name>` switch defaulting to `false` (01, *Attacks*), `tests/experiments/<name>.yaml` with one labelled test, and threat or path files from their templates when the ids are new; prints each path and the `TODO`s to fill |
-| Check | `check_experiment.py <name> [--json]` | each problem as `file:line: id: what is wrong: what to do`; `--json` the same as a list |
+| Start | `spe-eval new <name> [--kind red\|blue\|end-to-end] [--threat TM-NNN] [--path P<n>] [--injection <surface>] [--from <experiment>]` | `--kind` (default `end-to-end`) picks what the skeleton holds (05, *Kinds of contribution*): `red` no mitigation and `mitigation: null`, `base` the `--from` experiment's `base` plus its mitigation (from `ladder-l2`: `[L1, L2]`, the build it attacks); `blue` no injection, threat, path or test file, and the experiment's `tests` and `injections` filled from the catalogue's attacks on `--path`; `end-to-end` all of the following. Writes the skeleton: `experiments/<name>.yml`, `mitigations/<name>.yml` with a `spe_mitigate_<name>` switch, its default in `group_vars`, with `--injection` a `fixtures.json` entry, a payload file and a `spe_inject_<name>` switch defaulting to `false` (01, *Attacks*), `tests/experiments/<name>.yaml` with one labelled test, and threat or path files from their templates when the ids are new; prints each path and the `TODO`s to fill |
+| Check | `check_experiment.py [<name>] [--base <ref>] [--json]` | the kind first (`kind: red (…)`), then each problem as `file:line: id: what is wrong: what to do`; `--json` the same as a list |
 | Test offline | `spe-eval test` | the offline checks, no instance and no model: the evaluations' unit tests (`pytest` in `platform/promptfoo-evals`, which lint the catalogue and every assertion a test names) and the checker; seconds, so an agent runs it after every edit |
 | Try | `spe-eval arm [<name>] baseline\|mitigated` | applies one arm and exits when the stack answers |
 | Run | `spe-eval run [<name>] [--repeat N] [--detach]` | `--detach` starts the run in the background (a user systemd unit) and returns at once with its id; the agent's own command timeouts never cut a run short |
 | Watch | `spe-eval status [--json]` | the lock, the run id, arm, test *k* of *n*, last error; `spe-eval wait [--timeout S]` blocks until the run ends or the timeout passes, for agents that can wait in bounded steps |
 | List | `spe-eval runs [--json]` | every kept run, newest first: id, experiment, mitigation sets, model, repeat, how it ended |
-| Read | `spe-eval results [--run <id>] [--json] [--test <id>]` | the latest run, or the one named; the two arms side by side as text: per test and metric, baseline and mitigated pass counts, the utility tests' outcome, and a one-line verdict per metric (closed, narrowed, unchanged, worse); `--test` adds that test's assertion reasons |
-| Share | `spe-eval pr-body <name> [--run <id>]` | prints the PR template filled in, from the latest run of `<name>` or the one named: the files, the counts, the checker's output, ready to paste or pass to `gh pr create --body-file -` |
+| Read | `spe-eval results [--run <id>] [--json] [--test <id>]` | the latest run, or the one named; the two arms side by side as text: per test and metric, baseline and mitigated pass counts, the utility tests' outcome, and a one-line verdict per metric (closed, narrowed, unchanged, worse); a one-arm run gives the baseline counts and no verdict; `--test` adds that test's assertion reasons |
+| Share | `spe-eval pr-body [<name>] [--run <id>]` | prints the title with the kind's prefix, the kind's PR template filled in from the latest run of `<name>` or the one named (the files, the counts, the checker's output), and the new-PR link that selects that template, since GitHub cannot choose one; ready to open the link and paste, or to pass to `gh pr create --title … --body-file -`; refuses a red run with no harm recorded and a blue or end-to-end one with no mitigated arm |
 
 Every command is non-interactive, prints no secrets, and exits 0 on success, 1 on a failure of the thing checked
 (a failed check, a run whose gate refused), 2 on a usage or configuration error, so an agent can branch on it

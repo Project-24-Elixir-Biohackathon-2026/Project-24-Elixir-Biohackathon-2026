@@ -130,7 +130,9 @@ a mitigation should close it, by that mitigation's `probes` (03, the gate).
 
 The ladder's suite (`agent.yaml`, `tests/<group>.yaml`) stays one fixed catalogue run unchanged at every level, so
 its levels stay comparable; its count stays pinned by its lint. An experiment's own tests go into
-`tests/experiments/<name>.yaml`, same format and labels, run only by that experiment (03). Labels:
+`tests/experiments/<name>.yaml`, same format and labels, run only by experiments that name them (03). An
+experiment's `tests` may name any test id in the catalogue, its own file's or another's (a blue experiment names
+attacks already merged); `spe-eval` builds the arm's suite from the files those ids are in. Labels:
 
 | Key | Values | Read from |
 |---|---|---|
@@ -161,7 +163,7 @@ experiment:
   threat: TM-003
   paths: [P2]
   mitigation: trs-guard  # the one under test: off in the baseline arm, on in the mitigated arm;
-                         # null for a one-arm experiment (ladder-l0: the build as it is)
+                         # null for a one-arm experiment (ladder-l0, or a red contribution)
   base: []               # mitigations on in both arms
   injections: [registry-preflight]   # planted attacks, on in both arms (*Attacks*); [] for none
   tests: [register-broken-workflow, summarise-workflows]   # ids; the utility group always runs as well
@@ -170,8 +172,9 @@ vars:                    # Ansible values the experiment needs that are not form
   spe_eval_sink: true
 ```
 
-An experiment with `mitigation: null` has one arm, the baseline: it measures a build as it is (`ladder-l0`) and
-is a starting point to write experiments from, not a contribution (`spe-eval pr-body` refuses it).
+An experiment with `mitigation: null` has one arm, the baseline. It measures a build as it is: `ladder-l0`, a
+starting point to write experiments from, or a red contribution, a new attack against its `base` (05). It is a
+contribution only with a new attack: `pr-body` refuses one that adds none, or whose run recorded no harm.
 
 `vars` exists because a preset can only set form parameters, and an evaluation needs build settings the form does
 not offer (frontends, the test receiver). `main.tf` applies them (02). Keys in `vars` that a mitigation, an

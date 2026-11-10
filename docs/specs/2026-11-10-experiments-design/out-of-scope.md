@@ -6,6 +6,8 @@
 | L4 and L5 as selectable mitigations | L4 (typed tools) is not built; L5 (airlock) is refused while Open WebUI runs | `mitigations/L4.yml`, `L5.yml` stay `status: planned` until their specs land |
 | Branch templates from forks or PR refs | the portal makes them from upstream branches only | a later change to `sync-template.sh` |
 | CI running `check_experiment.py` | the repositories have no workflows yet | with the first CI workflow |
+| Labelling a PR by its kind automatically | no workflows yet; the reviewer adds the label the checker names | a workflow running `check_experiment.py --json`, with the first CI workflow |
+| A threat or path contributed alone | a description the pipeline cannot run; it comes with an attack (red or end-to-end) | an issue; `check_experiment.py` refuses it as a PR |
 | A probe for every participant mitigation | a mitigation's `probes` is optional; without them the gate checks only the ladder's | a later spec, if experiments show the need (03's gate notes an undeclared probe meanwhile) |
 | The ladder matrix in the viewer | promptfoo has no levels or conditions | `matrix.py render`, as a command |
 | Comparing experiments across workspaces | the seed is secret, so builds differ | the official ladder's controller-side runs |
