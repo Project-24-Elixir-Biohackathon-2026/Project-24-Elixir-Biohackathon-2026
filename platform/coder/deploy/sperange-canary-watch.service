@@ -1,0 +1,22 @@
+# /etc/systemd/system/sperange-canary-watch.service: the canary hit viewer's watcher
+# (platform/report/canary_watch.py), which polls every running Coder workspace's instance over
+# SSH and scans each stopped run's archive once it is written, writing hits under
+# /data-share/canary-hits. Runs as ubuntu: the user that owns each instance's output directory
+# (canary record, hosts.yml, SSH key) and already reaches every instance over SSH for the archive
+# and destroy playbooks (spec *Watcher*). Restart it after a merge that changes platform/report
+# (the sync timer only moves the checkout).
+[Unit]
+Description=sperange canary hit watcher
+After=network-online.target remote-fs.target coder.service
+Wants=network-online.target
+RequiresMountsFor=/data-share
+
+[Service]
+User=ubuntu
+Group=ubuntu
+ExecStart=/usr/bin/python3 /home/ubuntu/sperange/platform/report/canary_watch.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

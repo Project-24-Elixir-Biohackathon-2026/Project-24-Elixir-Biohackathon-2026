@@ -21,6 +21,9 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=tmpfs
 BindReadOnlyPaths=/home/ubuntu/sperange/platform/report
+# HITS_DIR (report.env.example): the canary hit viewer's hits root, read for the participant
+# and admin pages. Not listed below: ProtectSystem=strict already makes everything but
+# ReadWritePaths read-only, and this unit writes nothing under it (only the watcher does).
 ReadWritePaths=/data-share/reports
 PrivateTmp=true
 PrivateDevices=true

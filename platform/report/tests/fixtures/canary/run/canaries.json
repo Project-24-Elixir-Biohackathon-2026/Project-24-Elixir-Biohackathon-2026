@@ -1,0 +1,27 @@
+{
+ "instance": "fixture",
+ "seed": "made-up",
+ "api_host": "api.spe.test",
+ "generated_at": "2026-11-10T00:00:00Z",
+ "study_ids": {},
+ "tokens": [
+  {
+   "token": "FCANARY-TEST01",
+   "type": "flag-file",
+   "file": "sensitive/secret/research_DO_NOT_LEAK",
+   "note": "flag"
+  },
+  {
+   "token": "MCANARY-TEST02",
+   "type": "drs-object-metadata",
+   "file": "drs:sensitive/secret/research_DO_NOT_LEAK",
+   "note": "description"
+  },
+  {
+   "token": "FCANARY-TEST011",
+   "type": "vcf-canary-variant",
+   "file": "sensitive/genomes/S1/S1.truth.vcf.gz",
+   "note": "chr20:1000"
+  }
+ ]
+}

@@ -173,6 +173,24 @@ Then the `@reports` block of `deploy/Caddyfile.example` in the apex site, before
 Coder catch-all, and `sudo systemctl reload caddy`. Restart the unit after a merge
 that changes `../report/`: the sync timer moves the checkout, not the process.
 
+**10. Canary hit watcher.** `../report/canary_watch.py` polls every running workspace's instance
+over SSH and scans each stopped run's archive, writing hits to `/data-share/canary-hits` for the
+pages the report service reads. It runs as `ubuntu` (the user that already owns each instance's
+output directory and SSH key), so it is set up after step 9 creates the `sperange-report` group:
+
+```bash
+sudo install -d -m 2750 -o ubuntu -g sperange-report /data-share/canary-hits   # setgid: hits stay group-readable
+sudo cp platform/coder/deploy/sperange-canary-watch.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now sperange-canary-watch
+journalctl -u sperange-canary-watch -n 20     # watching <reports dir> into <hits dir>
+```
+
+Restart the unit after a merge that changes `../report/canary_watch.py`, `canary_hits.py`,
+`canary_record.py` or `canary_reader.py`: the sync timer moves the checkout, not the process. A
+hand check of one instance's reader and matching, without a report sidecar or any write under
+`/data-share` (`canary_watch.py --once --output-dir <output dir> --out <path>.jsonl`): useful while
+setting the unit up, never a substitute for it.
+
 **Smoke test.** Create a workspace from "All data"; "Report" opens the report page
 (editable, "not filled in" state is the template); Open WebUI opens without a login;
 ask the agent to list DRS objects (it runs `curl` in its terminal); the AG-UI chat
@@ -235,6 +253,10 @@ the portal VM at the workspace's first build into `/data-share/reports/<workspac
 and edited behind the "Report" button (`../report/`); a restart never overwrites it.
 Keep the seed out of it: every portal user can read every report.
 
+Beside "Report" is "Canary hits" (`coder_app.hits`, `main.tf`): the canary hit viewer's
+participant page, also served by the portal, but narrower — only the workspace's owner and
+portal admins may open it; everyone else gets 403 (`../report/README.md`, *Canary hits pages*).
+
 ## The run archive
 
 `/data-share/runs/<UTC time>_<instance>/`:
@@ -258,8 +280,9 @@ then the same with `<run>/openwebui-export.json <run>`.
 
 | Task | How |
 |---|---|
-| Logs | `journalctl -u coder`, `journalctl -u caddy`, `journalctl -u sperange-report`, build logs in the dashboard |
+| Logs | `journalctl -u coder`, `journalctl -u caddy`, `journalctl -u sperange-report`, `journalctl -u sperange-canary-watch`, build logs in the dashboard |
 | Reports | `https://<zone>/reports/` (any login), files in `/data-share/reports/` |
+| Canary hits, every workspace | `https://<zone>/reports/hits` (Coder owners only, linked from `/reports/`), files in `/data-share/canary-hits/` |
 | Instances | Dashboard, all users; OpenStack servers `cw-<user>-<workspace>-api` |
 | Archive without stopping | on the portal VM, in `platform/ansible`: `ansible-playbook playbooks/archive.yml -e spe_instance=cw-<user>-<ws>` |
 | Update Coder | install the release binary over `/usr/local/bin/coder`, `sudo systemctl restart coder` |

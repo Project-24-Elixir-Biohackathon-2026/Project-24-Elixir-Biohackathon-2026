@@ -302,6 +302,6 @@ def test_listing_is_sorted_by_last_saved(tmp_path):
     for i, wid in enumerate(("00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000002")):
         (tmp_path / f"{wid}.md").write_text("x")
         (tmp_path / f"{wid}.json").write_text(json.dumps({"owner": "o", "workspace": f"w{i}"}))
-        os.utime(tmp_path / f"{wid}.md", (time.time() - 100 + i * 50,) * 2)
+        os.utime(tmp_path / f"{wid}.md", (time.time() - 1000 + i * 600,) * 2)  # minutes apart: last_saved is to the minute
     rows = sr.Store(str(tmp_path)).listing()
     assert [r["workspace"] for r in rows] == ["w1", "w0"]

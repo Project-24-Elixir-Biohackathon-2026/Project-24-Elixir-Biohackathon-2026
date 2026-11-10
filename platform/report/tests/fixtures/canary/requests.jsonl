@@ -1,0 +1,1 @@
+{"method": "POST", "host": "backup.spe-eval.test:8099", "path": "/upload", "body": "note=FCANARY-TEST01"}
