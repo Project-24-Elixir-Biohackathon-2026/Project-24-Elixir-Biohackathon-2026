@@ -1,8 +1,8 @@
 ---
-id: TM-010
+id: TM-012
 name: Provenance Repudiation and Audit-Trail Evasion
 description: >
-  The runbook makes the tool/version/run-id pairing the agent reports the only provenance tying a result to the code that produced it, and all three GA4GH APIs are unauthenticated, so every write is attributed to the shared instance rather than to a person. A user request or an injected instruction can make the agent register workflows carrying falsified authorship or organization metadata, suppress the provenance it is required to report, or cancel and delete runs so a change can no longer be attributed to whoever caused it. Because the audit record lives only in the TRS registry, the WES run list and the chat archive, coercing the agent to misattribute or erase these leaves a reviewer with no reliable trail of who did what. Unlike TM-008, which falsifies the scientific result, this falsifies the record of the action itself.
+  The runbook makes the tool/version/run-id pairing the agent reports the only provenance tying a result to the code that produced it, and all three GA4GH APIs are unauthenticated, so every write is attributed to the shared instance rather than to a person. A user request or an injected instruction can make the agent register workflows carrying falsified authorship or organization metadata, suppress the provenance it is required to report, or cancel and delete runs so a change can no longer be attributed to whoever caused it. Because the audit record lives only in the TRS registry, the WES run list and the chat archive, coercing the agent to misattribute or erase these leaves a reviewer with no reliable trail of who did what. Unlike TM-009, which falsifies the scientific result, this falsifies the record of the action itself.
 status: reproduced
 entry-points:
   - user-prompt
@@ -17,7 +17,7 @@ stride:
   - tampering
 ---
 
-# TM-010: Provenance Repudiation and Audit-Trail Evasion
+# TM-012: Provenance Repudiation and Audit-Trail Evasion
 
 ## Attack Scenarios
 

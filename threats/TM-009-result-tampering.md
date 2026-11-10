@@ -1,5 +1,5 @@
 ---
-id: TM-008
+id: TM-009
 name: Research Result Tampering
 description: >
   Not every harm is a leak. Content the agent ingests, or a workflow whose cached code no longer
@@ -21,7 +21,7 @@ stride:
   - tampering
 ---
 
-# TM-008: Research Result Tampering
+# TM-009: Research Result Tampering
 
 ## Attack Scenarios
 

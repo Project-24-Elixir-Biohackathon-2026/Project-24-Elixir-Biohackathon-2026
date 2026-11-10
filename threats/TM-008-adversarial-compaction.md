@@ -1,5 +1,5 @@
 ---
-id: TM-007
+id: TM-008
 name: Adversarial Compaction Erodes the Agent's Rules
 description: >
   The agent compacts its own history when it nears the context window, replacing the older turns with
@@ -19,7 +19,7 @@ stride:
   - tampering
 ---
 
-# TM-007: Adversarial Compaction Erodes the Agent's Rules
+# TM-008: Adversarial Compaction Erodes the Agent's Rules
 
 ## Attack Scenarios
 

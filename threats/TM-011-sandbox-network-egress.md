@@ -1,5 +1,5 @@
 ---
-id: TM-009
+id: TM-011
 name: Unrestricted Sandbox Egress and Internal Pivot
 description: >
   The agent is told that only the three GA4GH endpoints (WES, DRS, TRS) are reachable and that
@@ -25,7 +25,7 @@ stride:
   - elevation-of-privilege
 ---
 
-# TM-009: Unrestricted Sandbox Egress and Internal Pivot
+# TM-011: Unrestricted Sandbox Egress and Internal Pivot
 
 ## Attack Scenarios
 

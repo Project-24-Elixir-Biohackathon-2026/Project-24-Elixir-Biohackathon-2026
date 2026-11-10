@@ -1,5 +1,5 @@
 ---
-id: TM-011
+id: TM-013
 name: Secret Disclosure Through Verbatim Error Reporting
 description: >
   The system prompt and runbook repeatedly order the agent to report the actual HTTP status and response body and to quote stderr verbatim without summarising, so that real errors are never hidden. That directive collides with redaction: when a failing command, a workflow process or an API error embeds a credential-shaped string (a connection string, a token in a stack trace, a dumped environment) in its diagnostic output, "quote it verbatim" carries that secret straight into the chat answer. The agent is told to redact its own three keys, but nothing strips other credential-shaped values that appear in tool output, so the verbatim-reporting rule becomes a disclosure channel. Unlike TM-001, where the agent deliberately reads sensitive data, here an unintended secret in an error trace leaks because the runbook tells the agent not to summarise it away.
@@ -14,7 +14,7 @@ stride:
   - information-disclosure
 ---
 
-# TM-011: Secret Disclosure Through Verbatim Error Reporting
+# TM-013: Secret Disclosure Through Verbatim Error Reporting
 
 ## Attack Scenarios
 
