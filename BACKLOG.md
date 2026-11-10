@@ -11,6 +11,11 @@ Due soon, on any track: what someone said to do "in the next session", and what 
 start reads this section; keep it short.
 
 <!-- - <item> — from <investigation / review / handoff>; <waits on the user: what> | <due: why soon>. -->
+- Open the upstream PR for `contrib/canary-hit-viewer` from the compare link in fork issue #82 (title and body
+  there), then close the issue; once it has a number, the ledger lines in `docs/upstream-ports.md` for `dc64a92`
+  (#74, the spec) and #77–#81 (#77's noting that its `promptfoo-evals` and `test_airlock.py` changes go up with the
+  ladder's port), and its *Current work* line (`docs/guides/contributing-upstream.md`, step 6) — from the canary hit viewer slice
+  5; waits on the user: opening it.
 
 - AG-UI chat: does a reply that finished while away need a mark of its own, and should the open row show its running
   spinner? Two no-gate questions on #58's early output (issuecomment-6730913819), nothing built — waits on the user:
@@ -24,7 +29,8 @@ start reads this section; keep it short.
   a short `docs/specs/` version of the spec (the design lives fork-only in `docs/superpowers/specs/`), and the
   L1–L3 switches checked off by default (the portal follows upstream `main`) — from the user, 2026-11-09; due: at
   slice 5's merge. The port now also needs `platform/report/canarymatch.py` and `canary_record.py` (canary hit
-  viewer slice 1, this track's upstream port, or carried itself), since `metrics.py` and `handoff.py` import them.
+  viewer slice 1, upstream in `contrib/canary-hit-viewer`, whose PR should merge first, or carried itself),
+  since `metrics.py` and `handoff.py` import them.
 - Canary ladder: is a study id inside a listed DRS object name a disclosure (spec part 04, *Authorisation
   boundary*)? 20 of the 36 DRS object names on de.NBI carry a `registry-study-id` canary, so a utility row that
   lists DRS objects fails `canary.answer` at every level, and with it the row's utility pass rate (`matrix._tests`

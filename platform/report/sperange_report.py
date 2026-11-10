@@ -21,7 +21,7 @@ Routes (Caddy sends /reports* here):
     GET  /reports/<id>/hits.json   the same hits as JSON, ?after=<id> for only the new ones
     GET  /reports/<id>/hits/events the same hits live, as server-sent events (decision 6); resumes
                                     past Last-Event-ID (else ?after=<id>); ends after 30 minutes,
-                                    503 past 200 open streams (ruling 7)
+                                    503 past 200 open streams
     GET  /reports/hits             the admin page (spec *Admin page*): every workspace's row and the
                                     newest 500 hits of all; Coder owners only, 403 for anyone else
     GET  /reports/hits.json        the rows and the newest 2000 hits as JSON
@@ -71,7 +71,7 @@ COOKIE = "coder_session_token"
 MAX_BYTES = 1_000_000
 CACHE_SECONDS = 30
 HITS_DIR = "/data-share/canary-hits"
-# The event stream (ruling 7): one thread per open stream, so both its life and their number are bounded.
+# The event stream, bounded: one thread per open stream, so both its life and their number are bounded.
 STREAM_SECONDS = 30 * 60  # then it ends; EventSource reconnects with Last-Event-ID
 STREAM_MAX = 200  # open streams per server; past it, 503
 STREAM_POLL = 0.5  # seconds between looks at the hits and status files (decision 6: a hit shown within 2 s)
@@ -79,7 +79,7 @@ STREAM_READ = 1 << 20  # bytes of the hits file read per look at most (a catch-u
 STREAM_PING = 15  # seconds with nothing sent before a ": ping" comment (keeps proxies from closing it)
 STREAM_WRITE_TIMEOUT = 30  # seconds a write may block (a client that stops reading); then the stream ends
 STREAM_STATUS_REFRESH = 10  # seconds before an unchanged status is resent, so "watched N s ago" ages live
-ADMIN_PAGE_HITS = 500  # hits the admin page renders (ruling 9); the rest are on each workspace's page
+ADMIN_PAGE_HITS = 500  # hits the admin page renders; the rest are on each workspace's page
 ADMIN_JSON_HITS = 2000  # hits the admin hits.json returns; a workspace's full list is its own hits.json
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 STATIC_TYPES = {".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".woff2": "font/woff2"}
@@ -519,7 +519,7 @@ class Handler(BaseHTTPRequestHandler):
         return HitsFile(path).read(after=after) if path else []
 
     def read_status(self, wid: str) -> dict | None:
-        """The watcher's status file (ruling 6), or None: no `hits_dir`, no file, or one that is
+        """The watcher's status file (`<id>.status.json`), or None: no `hits_dir`, no file, or one that is
         not valid JSON or not an object (never raises on it: untrusted only in the sense that the
         watcher could be mid-write, never the participant's)."""
         path = self._status_path(wid)
@@ -598,7 +598,7 @@ class Handler(BaseHTTPRequestHandler):
         self._event_stream(self._stream_all)
 
     def hits_events(self, wid: str, user: dict) -> None:
-        """The event stream (spec *Participant page*; decision 6, ruling 7): resumes past
+        """The event stream (spec *Participant page*; decision 6; bounded in life and number): resumes past
         Last-Event-ID (else ?after=), and sends a status event whenever the watcher's status changes."""
         if not UUID_RE.match(wid):
             return self.send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
@@ -607,7 +607,7 @@ class Handler(BaseHTTPRequestHandler):
         self._event_stream(lambda: self._stream(wid, self._stream_start()))
 
     def _event_stream(self, run) -> None:
-        """Opens an event stream and runs `run` to write it (ruling 7: a bounded number open at once).
+        """Opens an event stream and runs `run` to write it (a bounded number open at once).
         Not sent through `send`: no Content-Length, and each event is written as it is found. Its
         timings and cap are the server's attributes (`make_server`), so tests can shorten them."""
         srv = self.server
@@ -904,7 +904,7 @@ def make_server(listen: str, reports_dir: str, coder_url: str, hits_dir: str | N
                                                  "hits_dir": hits_dir})
     srv = ThreadingHTTPServer((host or "127.0.0.1", int(port)), handler)
     srv.daemon_threads = True
-    srv.streams, srv.streams_lock = 0, threading.Lock()  # open event streams (ruling 7)
+    srv.streams, srv.streams_lock = 0, threading.Lock()  # open event streams, at most stream_max
     srv.stream_max, srv.stream_seconds = STREAM_MAX, STREAM_SECONDS
     srv.stream_poll, srv.stream_ping, srv.stream_read = STREAM_POLL, STREAM_PING, STREAM_READ
     srv.stream_write_timeout = STREAM_WRITE_TIMEOUT

@@ -25,23 +25,23 @@ track's line removed; the upstream PR's line is added once it has a number, guid
 *Next* line for the ladder's upstream port (slice 1 rewrote it; adjust it only if the dependency changed, e.g.
 this port merged first), the handoff.
 
-- [ ] **Step 1: The worktree** from `upstream/main` (guide step 2), `git merge-base --is-ancestor upstream/main
+- [x] **Step 1: The worktree** from `upstream/main` (guide step 2), `git merge-base --is-ancestor upstream/main
   origin/main` (else merge upstream into our `main` first, its own unit), then take the files above with
   `git checkout origin/main -- <paths>` and commit with `-s`.
-- [ ] **Step 2: Check the spec's upstream claims** on the branch: `platform/report/` imports nothing from
+- [x] **Step 2: Check the spec's upstream claims** on the branch: `platform/report/` imports nothing from
   `platform/promptfoo-evals/` (`grep -rn "promptfoo-evals\|import handoff\|import metrics" platform/report`:
   nothing); the spec and READMEs link nothing fork-only (guide step 4's grep); comments under `platform/` cite no
   plan ruling or task (`grep -rnE "ruling [0-9]|Task [0-9]" platform/report platform/coder`: nothing, reworded to
   the spec's decisions; PR #80's review, finding 3). Fix what either finds in a commit of
   its own on the branch and, if the fork has the same text, in this slice's PR.
-- [ ] **Step 3: Run** the fork-only check (`AGENTS.md`, *Contributing upstream*: `ok`), and the report suite
+- [x] **Step 3: Run** the fork-only check (`AGENTS.md`, *Contributing upstream*: `ok`), and the report suite
   (the only area with tests the package touches; `main.tf` gets `terraform fmt -check` where `terraform` is
   installed). Expected: PASS on upstream's code.
-- [ ] **Step 4: Push** `git push -u origin contrib/canary-hit-viewer` (our fork, never `upstream`).
-- [ ] **Step 5: The PR text** for the user, as an issue on our fork (guide step 5): what changes and why (the
+- [x] **Step 4: Push** `git push -u origin contrib/canary-hit-viewer` (our fork, never `upstream`).
+- [x] **Step 5: The PR text** for the user, as an issue on our fork (guide step 5): what changes and why (the
   spec's *Problem* and *Decision*), how to try it (the watcher unit, the hits root, `--archive` on one run), what
   ran, and slice 3's and 4's screenshots from `pr-assets` (`canary-hit-viewer/<name>.png`), which show fixture
   tokens only. Opening the upstream PR is publishing: the user does it from the compare link; this slice
   does not wait for it.
-- [ ] **Step 6: Commit** on this slice's branch: the slices table, *Current work*, the `BACKLOG.md` line, and the
+- [x] **Step 6: Commit** on this slice's branch: the slices table, *Current work*, the `BACKLOG.md` line, and the
   handoff (the track's last: `methodology next --end` after the merge).

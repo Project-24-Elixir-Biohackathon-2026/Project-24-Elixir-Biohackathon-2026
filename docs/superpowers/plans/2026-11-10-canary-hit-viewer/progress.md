@@ -146,3 +146,17 @@ slice is the README's slices table; the handoffs say what each session did.
     `hits.json` gets 401 like the stream, not a redirect to login a script cannot follow; the only difference left
     is 401 versus redirect on paths that are no route. *Cost if wrong:* none worth a change (final review, left
     alone).
+36. **The upstream package is two commits on `contrib/canary-hit-viewer`**: the files from `origin/main` at
+    `8fc8f0e`, then the comment rewording, the same change as this slice's on the fork, so the package is
+    `main`'s code byte for byte once this slice merges. *Cost if wrong:* none; upstream may squash them.
+37. **The spec drops its fork PR numbers and its read-against hash**: the header's `#74` and `ab9537c` ("Read
+    against this repository on 2026-11-10"), clarification 1's plan PR #75 and session name, clarification 2's
+    #78 (review of #81) — on the fork too: none resolves upstream, and the fork's history keeps the hash. *Cost if
+    wrong:* the hash is in `git log` of the spec.
+38. **The `promptfoo-evals` mentions in `canarymatch.py` and `canary_record.py` stay**, worded as "where it
+    exists" (the ladder's files): upstream lacks them today, and its port brings them. *Cost if wrong:* a reader
+    upstream looks for a file not there yet; the wording says so.
+39. **No ledger lines or *Current work* line for the upstream PR yet**: the user opens it from issue #82, and both
+    follow its number (`contributing-upstream.md`, step 6), tracked by `BACKLOG.md` *Next*: lines for the spec
+    (#74) and #77–#81; the handoff commits touch only fork-only files, so the candidate list never shows them. *Cost if wrong:*
+    none; the BACKLOG line names what to add.

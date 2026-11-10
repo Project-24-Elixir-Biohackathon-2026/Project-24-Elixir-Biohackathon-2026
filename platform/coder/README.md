@@ -186,7 +186,7 @@ journalctl -u sperange-canary-watch -n 20     # watching <reports dir> into <hit
 ```
 
 Restart the unit after a merge that changes `../report/canary_watch.py`, `canary_hits.py`,
-`canary_record.py` or `canary_reader.py`: the sync timer moves the checkout, not the process. A
+`canarymatch.py`, `canary_record.py`, `canary_reader.py` or `hits_view.py`: the sync timer moves the checkout, not the process. A
 hand check of one instance's reader and matching, without a report sidecar or any write under
 `/data-share` (`canary_watch.py --once --output-dir <output dir> --out <path>.jsonl`): useful while
 setting the unit up, never a substitute for it.

@@ -1,7 +1,7 @@
 """The participant page's HTML (spec *Participant page*; decisions 4, 5, 11): `participant_body`
 renders the header, the headline counts and the hits, newest first; `standalone` wraps a body into a
 whole, self-contained HTML document (hits.css inlined, no script) for the early output
-(`canary_watch.py --archive ... --html PAGE.html`) and for tests. The live service page (slice 3) adds
+(`canary_watch.py --archive ... --html PAGE.html`) and for tests. The live service page adds
 its own script (notifications, the event stream) around the same body.
 
 The admin page (spec *Admin page*; decision 7): `workspace_rows` reads every workspace's hits and
@@ -9,7 +9,7 @@ status file in the hits directory into one summary row each, and `admin_body` re
 the filters and the hits of all workspaces as one list (each wrapped with the data the filters and
 static/hits-admin.js read).
 
-`status` is the watcher's status file (ruling 6: `state`, `since`, `last_poll`, `note`), read by the
+`status` is the watcher's status file (`<id>.status.json`: `state`, `since`, `last_poll`, `note`), read by the
 live service; `status_line` turns it into the header's clause ("running · watched 3 s ago"), and
 `empty_text` into the placeholder text for a hits list with none to show, shared with the live
 service's status event so hits.js can keep a placeholder current without a reload. `None` is
@@ -90,8 +90,8 @@ def _tool_html(tool: dict | None) -> str:
 
 
 def hit_html(hit: dict) -> str:
-    """One hit's collapsed <details>, as the page lists it and the event stream carries it (ruling 8:
-    one renderer, so a hit inserted live reads as one loaded with the page). Its `data-id`,
+    """One hit's collapsed <details>, as the page lists it and the event stream carries it (one
+    renderer, so a hit inserted live reads as one loaded with the page). Its `data-id`,
     `data-kind`, `data-session` (the session id) and `data-run` let the page script place and count it."""
     kind = hit.get("kind")
     loud = "loud" if kind in LOUD else "quiet"
@@ -162,7 +162,7 @@ def _epoch(value: object) -> float | None:
 
 
 def status_line(status: dict | None, now: float) -> str:
-    """The header's live status clause (ruling 6: the watcher's status file: `state`, `since`,
+    """The header's live status clause (the watcher's status file: `state`, `since`,
     `last_poll`, `note`): "running · watched 3 s ago", "stopped" (or "stopped · archive incomplete"
     when `note` is set), "not reachable since 14:02", "hits file full" (state `capped`; a note that says
     more is appended as `stopped`'s is).
@@ -210,8 +210,8 @@ def _header(meta: dict, hits: list[dict], status: dict | None, now: float) -> st
     label = meta.get("instance") or meta.get("workspace") or "workspace"
     owner = meta.get("owner")
     text = "archived run" if status is None else status_line(status, now)
-    # #hits-status: the live service's script sets its textContent on every status event
-    # (slice 3); the early output (standalone, no script) never updates it.
+    # #hits-status: the live service's script sets its textContent on every status event;
+    # the early output (standalone, no script) never updates it.
     head = f'<h1>Canary hits &middot; {_esc(label)} (<span id="hits-status">{_esc(text)}</span>)</h1>'
     if owner:
         head += f'<p class="owner muted">owner {_esc(owner)}</p>'
@@ -244,7 +244,7 @@ def participant_body(meta: dict, hits: list[dict], status: dict | None) -> str:
         # status event keeps current meanwhile (a hit cannot change the encrypted notice above,
         # so that one stays plain "muted").
         items = f'<p class="muted placeholder">{_esc(empty_text(status))}</p>'
-    # The two buttons below are static, `hidden` until hits.js (slice 3) removes the attribute:
+    # The two buttons below are static, `hidden` until hits.js removes the attribute:
     # with no script (the standalone early output), they stay invisible. hits.js builds no HTML
     # of its own but these two, with document.createElement + textContent, so they are rendered
     # here once, where hit_html's escaping discipline already lives.
@@ -264,7 +264,7 @@ def participant_body(meta: dict, hits: list[dict], status: dict | None) -> str:
 # --- the admin page (spec *Admin page*) -------------------------------------------------------------
 
 def read_status(path: str) -> dict | None:
-    """A watcher status file (ruling 6), or None: no file, or one that is not a JSON object (the
+    """A watcher status file (`<id>.status.json`), or None: no file, or one that is not a JSON object (the
     watcher could be mid-write; never raises on it)."""
     try:
         with open(path, encoding="utf-8") as f:

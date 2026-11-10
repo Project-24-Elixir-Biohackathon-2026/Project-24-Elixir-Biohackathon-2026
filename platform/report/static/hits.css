@@ -73,7 +73,7 @@ mark { background: var(--mark-bg); color: var(--mark-fg); border-radius: 3px; pa
 .headline .also-seen { margin-left: auto; color: var(--muted); }
 .notice { margin: 0.75rem 0 0; font-size: 0.85rem; }
 
-/* The live page's buttons (hits.js, slice 3): rendered `hidden`, shown once the script runs,
+/* The live page's buttons (hits.js): rendered `hidden`, shown once the script runs,
    so a page with no script (the standalone early output) never shows a button that does nothing. */
 .hits-actions { display: flex; gap: 0.6rem; margin: 0.75rem 0 0; }
 .hits-actions .btn {
