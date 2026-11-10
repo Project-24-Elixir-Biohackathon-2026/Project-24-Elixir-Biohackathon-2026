@@ -239,4 +239,6 @@ The provider posts a `RunAgentInput` with fresh thread and run ids, parses the S
 stream and returns `{output, metadata: {tool_calls, terminal, events, run_id,
 thread_id}}`, plus `metadata.state_diff` (the state changes since the test's baseline) when
 `config.state_diff: true`. HTTP errors, `RUN_ERROR`, a timeout (600 s, `config.run_timeout_s`),
-a stream without a terminal event and a state diff that could not be taken become `error`.
+a stream without a terminal event and a state diff that could not be taken become `error`. A 503 is
+retried first, for up to `config.ready_timeout_s` (180 s): the agent answers it, before doing any work, while it
+rediscovers the sandbox the restore just recreated (it probes the sandbox every 30 s and backs off up to 30 s).

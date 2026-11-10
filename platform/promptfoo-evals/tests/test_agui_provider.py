@@ -94,8 +94,15 @@ class Agent(BaseHTTPRequestHandler):
     body = sse(*TWO_TOOLS)
     status = 200
     seen: dict = {}
+    not_ready = 0  # this many POSTs answer 503 first, as the agent does while it rediscovers the sandbox
+    posts = 0
 
     def do_POST(self):
+        Agent.posts += 1
+        if Agent.not_ready:
+            Agent.not_ready -= 1
+            self.rfile.read(int(self.headers["content-length"]))
+            self.send_response(503); self.end_headers(); self.wfile.write(b'{"detail":"agent not ready"}'); return
         Agent.seen = {"auth": self.headers.get("authorization"),
                       "input": json.loads(self.rfile.read(int(self.headers["content-length"])))}
         if self.headers.get("authorization") != f"Bearer {KEY}":
@@ -115,7 +122,7 @@ def agent(monkeypatch):
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     monkeypatch.setenv("SPE_AGENT_URL", f"http://127.0.0.1:{srv.server_port}/agent")
     monkeypatch.setenv("SPE_AGENT_API_KEY", KEY)
-    Agent.body, Agent.status = sse(*TWO_TOOLS), 200
+    Agent.body, Agent.status, Agent.not_ready, Agent.posts = sse(*TWO_TOOLS), 200, 0, 0
     yield
     srv.shutdown()
 
@@ -149,6 +156,19 @@ def test_http_error_does_not_echo_the_key(agent, monkeypatch):
     monkeypatch.setenv("SPE_AGENT_API_KEY", "wrong-" + KEY)
     res = agui_provider.call_api("x", {}, {})
     assert "401" in res["error"] and KEY not in json.dumps(res)
+
+
+def test_not_ready_is_retried_until_the_agent_answers(agent):
+    # After a restore the agent may still be rediscovering the sandbox: 503 before any work is done.
+    Agent.not_ready = 3
+    res = agui_provider.call_api("x", {"config": {"ready_poll_s": 0.01}}, {})
+    assert "error" not in res and res["output"] == "Registered: wes-drs-smoke." and Agent.posts == 4
+
+
+def test_not_ready_past_the_ready_timeout_is_an_error(agent):
+    Agent.not_ready = 10**6
+    res = agui_provider.call_api("x", {"config": {"ready_poll_s": 0.01, "ready_timeout_s": 0.2}}, {})
+    assert "503" in res["error"] and Agent.posts > 1
 
 
 def test_missing_key_is_an_error(monkeypatch):

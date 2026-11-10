@@ -28,17 +28,21 @@ start reads this section; keep it short.
   boundary*)? 20 of the 36 DRS object names on de.NBI carry a `registry-study-id` canary, so a utility row that
   lists DRS objects fails `canary.answer` at every level, and with it the row's utility pass rate (`matrix._tests`
   ANDs every assertion) — from slice 5's catalogue (F11) and final review; waits on the user: should metadata
-  canaries met in utility rows count? A *no* is a spec clarification; slice 10 reads the matrix either way.
-- Canary ladder: the de.NBI key for the ladder's agent runs is **in reach** (2026-11-09 14:20Z): the portal workspace
-  `thodkatz/thodkatz-workspace` (made for it, the user's OK), key hash `52bb9f98`, `/v1/models` 200; read it into the
-  environment per run only (`docs/knowledge/denbi-llm-key.md`). It is a second de.NBI instance: delete it
-  (`coder delete thodkatz-workspace`) once slice 10's runs are done, or sooner if the runs wait long; a deleted one is
-  rebuilt in ~9 minutes. Slice 10 takes the key from there and removes this line.
+  canaries met in utility rows count? A *no* is a spec clarification. Slice 10's L3 reports (2026-11-10) found every
+  direct row's `answer` failure there to be a metadata canary from a listing, not the row's target data, so the
+  answer decides most of the matrix above L1. Also open there: whether L3's `touched` `registry-study-id
+  (linkage.csv)` on direct rows is the DRS listing or the file, and which canaries L1 and L2's direct-row answers
+  were (their reports are gone; a rerun of one level answers both).
 
 ## Unscheduled
 
 <!-- - <item> — from <PR #n / review thread / spec Inputs for>, waits because <reason>. -->
 
+- Canary ladder agent runs are slow, ~93 s per test of which ~80% is reset and waiting: the restore (~46 s,
+  `docker stop -t 30` on the stack) and the agent's sandbox rediscovery after it (30 s probe, backoff to 30 s; the
+  provider retries its 503, `docs/knowledge/ladder-agent-503-after-restore.md`). A shorter stop timeout, restoring
+  only touched volumes, or an agent probe the restore can trigger would roughly halve a run — from slice 10 (#70),
+  waits because changing them mid-batch breaks the levels' comparability; take it up before the next model's runs.
 - Canary hits inline in the AG-UI chat: chips on the tool group and answer, the leaked span highlighted, a session
   tally, "Add to report" — deferred by the canary hit viewer spec (`docs/specs/2026-11-10-canary-hit-viewer.md`,
   *Out of scope*), for a later spec once its participant page has been used.
@@ -60,9 +64,6 @@ start reads this section; keep it short.
 - e2e `--scenario all` failed once in seven local runs on #58's branch (2026-11-09; the traceback was not kept, the
   other six passed 47 ok) — from #58's checks; waits for a second sighting: keep the log (`> file 2>&1`) and note
   the failing step here.
-- Canary ladder: clean runs above L1. The run script and matrix accept a clean run at any level;
-  L2–L5 run injected only — from `biohackathon` knowledge 0015 and spec clarification 7 (#59); waits on the L0/L1
-  clean and injected results (slice 10), which show whether a level's clean comparison is worth its runs.
 - Canary ladder: `matrix.py` should show exposure per injection row (counts from `injection.followed`'s reason),
   so resisted and never-exposed differ in the committed matrix — from slice 5's final review (Important 1); waits
   because slice 10 records the counts in its handoff (`exposure`, its Task 1 step 5) until `counts` keeps them.

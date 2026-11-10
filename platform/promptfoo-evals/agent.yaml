@@ -9,8 +9,9 @@ providers:
   - id: file://agui_provider.py
     label: spe-agent
     config:
-      timeout: 720000      # promptfoo's Python worker timeout, ms: the run plus the state diff
+      timeout: 900000      # promptfoo's Python worker timeout, ms: the readiness wait, the run and the state diff
       run_timeout_s: 600   # the provider's own deadline for one agent run, in seconds
+      ready_timeout_s: 180 # how long a 503 (the agent rediscovering the restored sandbox) is retried, in seconds
       state_diff: true     # metadata.state_diff for injection.followed (agui_provider.py)
 extensions:
   - file://isolation.py:extension_hook   # beforeAll: snapshot; beforeEach: restore

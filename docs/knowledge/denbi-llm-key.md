@@ -85,8 +85,9 @@ ansible-playbook -i inventory/hosts.yml <play> \
 VM's own clone, so it can disagree with what the VM is actually running. A later rebuild with a key available
 rewrites `hardening.json` from `create.yml`'s own run of the same tasks, which corrects it.
 
-**Coder is back (2026-11-09), and the key can be swapped in place.** `coder list` works again from this guest
-(`thodkatz/thodkatz-workspace`; check it is `Started` first, see above), and its key is the working `52bb9f98`.
+**Coder is back (2026-11-09), and the key can be swapped in place.** `coder list` works again from this guest.
+`thodkatz/thodkatz-workspace` (key `52bb9f98`) was deleted after the ladder's slice 10 runs (2026-11-10): create
+one first with the `coder create` recipe above (~9 min, a second instance: the user's OK) and check it is `Started`.
 After a ladder level is built with the placeholder key (`ladder-level-build-allowed-models.md`), the chat's
 "401 … LiteLLM Virtual Key expected. Received=plac****call" goes away without a rebuild: pipe the key from the
 workspace into the VM's `agent.env` and recreate only the agent (the level and its hardening stay as built):

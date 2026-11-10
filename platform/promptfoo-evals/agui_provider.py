@@ -8,7 +8,8 @@ Environment (on the controller, never in the config):
   SPE_AGENT_API_KEY_FILE  a file holding it (output/<instance>/agent_api_key)
 
 Returns {output: final assistant text, metadata: {tool_calls: [{id, name, args, result}],
-run_id, thread_id, terminal, events}} or {error: ...} for an HTTP error, RUN_ERROR, a
+run_id, thread_id, terminal, events}} or {error: ...} for an HTTP error (a 503, the agent
+not ready yet, only once `config.ready_timeout_s` has passed), RUN_ERROR, a
 timeout, a malformed event or a stream that ends without a terminal event. Optional
 `vars.history` ([{role, content}]) is sent before the prompt as earlier turns.
 
@@ -36,6 +37,7 @@ import isolation
 
 DEFAULT_URL = "http://127.0.0.1:8100/agent"
 DEFAULT_TIMEOUT = 600.0
+DEFAULT_READY_TIMEOUT = 180.0  # the agent's rediscovery backs off to 30 s, after a restore that takes ~45 s
 
 
 class StreamError(Exception):
@@ -139,6 +141,21 @@ def _messages(prompt: str, context: dict | None) -> list[dict]:
     return msgs + [{"id": str(uuid.uuid4()), "role": "user", "content": prompt}]
 
 
+def _open_when_ready(req: urllib.request.Request, timeout: float, ready_timeout: float, poll: float):
+    """POST, again while the agent answers 503: it does before any work, until it has (re)discovered the sandbox,
+    which a restore just recreated (its probe runs every 30 s). A 503 for another reason (an upstream outage) waits
+    the same way. Past `ready_timeout` the 503 stands."""
+    ready_by = time.monotonic() + ready_timeout
+    while True:
+        try:
+            return urllib.request.urlopen(req, timeout=min(timeout, 120.0))
+        except urllib.error.HTTPError as e:
+            if e.code != 503 or time.monotonic() >= ready_by:
+                raise
+            e.close()
+            time.sleep(poll)
+
+
 def _run(prompt: str, config: dict, context: dict | None) -> dict:
     url = config.get("url") or os.environ.get("SPE_AGENT_URL", DEFAULT_URL)
     timeout = float(config.get("run_timeout_s", DEFAULT_TIMEOUT))
@@ -153,9 +170,11 @@ def _run(prompt: str, config: dict, context: dict | None) -> dict:
     req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST", headers={
         "Authorization": f"Bearer {key}", "Content-Type": "application/json", "Accept": "text/event-stream"})
     acc, parser = Accumulator(body["runId"], body["threadId"]), SSEParser()
-    deadline = time.monotonic() + timeout
     try:
-        with urllib.request.urlopen(req, timeout=min(timeout, 120.0)) as resp:
+        resp = _open_when_ready(req, timeout, float(config.get("ready_timeout_s", DEFAULT_READY_TIMEOUT)),
+                                float(config.get("ready_poll_s", 2.0)))
+        deadline = time.monotonic() + timeout
+        with resp:
             while chunk := resp.read1(65536):
                 for event in parser.feed(chunk):
                     acc.add(event)
