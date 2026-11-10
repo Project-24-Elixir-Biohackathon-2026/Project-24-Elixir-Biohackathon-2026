@@ -7,7 +7,7 @@ UI. Design: `docs/specs/2026-10-15-agui-frontend-design/`.
 
 ```bash
 uv run --group dev pytest -q                   # offline: no LLM, no network
-docker build -t spe-agent:dev .                # runs the same tests in its test stage
+docker build --build-context matcher=../../canary_check -t spe-agent:dev .   # runs the same tests in its test stage
 SPE_AGENT_CONFIG=agent.yaml SPE_AGENT_API_KEY=… SANDBOX_API_KEY=… OPENAI_API_KEY=… \
   uv run python -m spe_agent                   # serves :8100
 ```
