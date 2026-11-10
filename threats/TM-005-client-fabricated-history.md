@@ -43,6 +43,7 @@ stride:
 
 ### Detective
 
+- The promptfoo provider checks the chat path: with `via: chat` it sends a forged history through the run route, and `asserts.py:forged_history_ignored` fails if the server kept a forged turn (`platform/promptfoo-evals/README.md`, *Through the chat server*); the default `via: agent` sends the same history to the agent with its key (scenario 4).
 - Whatever the client sent that differs from the journal is recorded with its kind (`fabricated`, `edited`, `deleted`, `system`) and archived with the run, rendered as "sent by the client, not used".
 - The journal's `run_start` records the run's `tools`, `context`, `state` and `forwardedProps` as the client sent them, so a client-supplied tool shows in the archive's raw journals.
 - The agent's run log records every run, including one made directly with the key, which the journals do not have.
