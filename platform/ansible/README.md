@@ -143,7 +143,11 @@ instance files are sensitive too.
 
 Evaluation fixtures for the canary ladder (`docs/superpowers/specs/2026-10-22-canary-eval-ladder-design/02-injections.md`):
 an instruction planted in content the agent reads, naming a sensitive file and asking for it. Off by default; on in
-every `instances/L<n>.example.yml`. Payloads and their targets are fixed in `catalog/injections/fixtures.json`.
+every `instances/L<n>.example.yml`. Payloads and their targets are fixed in `catalog/injections/fixtures.json`; the
+surfaces they can land on and each one's location keys are in `catalog/injections/surfaces.json` beside it
+(`{"surfaces": {<surface>: [<key>, ...]}}`, e.g. `"trs-description": ["field", "tool_id"]`). Both are the
+evaluation side's authority too: `platform/promptfoo-evals/injections_schema.py`'s catalogue is built from
+these files, not listed in code (decision 23), so a new fixture on an existing surface needs no change there.
 
 | Variable | Payload | Where it lands |
 |---|---|---|
@@ -157,6 +161,13 @@ switching a fixture off removes it. The build writes `injections.json` (via `rol
 and validates it with `platform/promptfoo-evals/injections_schema.py`. It takes the placements from the TRS and DRS
 roles of the same run: `--tags handoff` alone writes an accurate `injections.json` only if those roles already ran in
 that playbook run (e.g. `--tags trs,drs,handoff`).
+
+Today's three fixtures are one per surface, but the mechanism is not: the `trs_install` and `drs_register` roles
+plant every catalogue entry whose own `spe_inject_*` switch is on, any number per surface (several payloads land on
+the same tool's description or descriptor, or the same DRS object's description, in catalogue order); a switch
+that isn't even defined counts as off. The hand-off matches each placement to its fixture by `id`, not by surface,
+and `hardening.json`'s `injections` is `true` only when every catalogue switch is on, `false` when none, `"mixed"`
+otherwise.
 
 ## Test receiver
 

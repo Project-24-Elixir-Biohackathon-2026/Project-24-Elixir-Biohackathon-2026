@@ -25,7 +25,10 @@ def build(tmp_path, overrides):
     (tmp_path / "play.yml").write_text(PLAY)
     (tmp_path / "extra.json").write_text(json.dumps({
         "spe_instance": "t-01", "spe_output_dir": str(out), "spe_frontends": ["agui"],
-        "spe_agent_model_provider": "openai_compatible", "spe_agent_model": "test-model", **overrides}))
+        "spe_agent_model_provider": "openai_compatible", "spe_agent_model": "test-model",
+        # hardening.yml reads the injection fixtures catalogue; playbook_dir here is tmp_path, not ansible/,
+        # so spe_catalog_dir's own default (relative to playbook_dir) would miss it.
+        "spe_catalog_dir": str(ANSIBLE / "catalog"), **overrides}))
     env = {**os.environ, "ANSIBLE_ROLES_PATH": str(ANSIBLE / "roles"), "ANSIBLE_LOCALHOST_WARNING": "False"}
     p = subprocess.run(["ansible-playbook", "-i", "localhost,", str(tmp_path / "play.yml"),
                         "-e", f"@{ANSIBLE / 'inventory' / 'group_vars' / 'all.yml'}",

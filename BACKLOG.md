@@ -52,6 +52,12 @@ start reads this section; keep it short.
 - Experiments: keep or delete the existing Coder template `spe` once `spe-experiments` runs the ladder experiments on the portal — from the experiments spec (#84, *out-of-scope*); waits on the user, after that plan's slice 2.
 - Experiments: branch templates from forks or PR refs (`sync-template.sh` makes them from upstream branches only, so contributing step 5 needs push access upstream) — from the experiments spec (#84, *out-of-scope*); waits until a participant without push access needs one.
 - Experiments: promoting a contributed mitigation to a ladder level (a column in the cumulative matrix, measured by controller-side runs) — from the experiments spec (#84, *out-of-scope*); waits until a merged mitigation is worth it.
+- Experiments: fixture and mitigation lint gaps for slice 6's checker: `check_fixtures` does not check `select`'s
+  shape (a bad new fixture fails late, as a Jinja error at build), checks types only after set membership and has no
+  `..` guard on `payload`; the mitigation id pattern accepts lowercase `l<n>`; `check_mitigations_catalog` keeps
+  only the first owner of each key in its message; `injections_manifest.py` uses `p.get("id")`; untested: a new
+  surface's `check_fixtures` result and an empty fixture list in the `repo` role — from slice 1's final review
+  (#85, rulings 3 and 4); waits for slice 6 (`check_experiment.py`).
 - Experiments: a controls-suite probe for every participant mitigation (`probes` is optional; the gate notes an undeclared closed probe) — from the experiments spec (#84, *out-of-scope*); waits until experiments show the need.
 - Canary ladder agent runs are slow, ~93 s per test of which ~80% is reset and waiting: the restore (~46 s,
   `docker stop -t 30` on the stack) and the agent's sandbox rediscovery after it (30 s probe, backoff to 30 s; the

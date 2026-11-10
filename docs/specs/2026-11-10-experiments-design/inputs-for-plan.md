@@ -34,3 +34,7 @@ Slices 3 and 4 together give the early output (README). `spe-eval`'s `--detach`,
 - Whether `spe-apply all` is the narrowest apply that switches every ladder mitigation (L3's compose overlay is
   written by the frontend roles) or a tag set suffices.
 - The progress line source (the `afterEach` hook appending to a file `spe-eval` tails).
+- Slice 2, from slice 1's rulings (#85): whether an experiment's `injections` ids map to `spe_inject_*` values in
+  the template (Terraform) or stay in Python (`injections_schema.switches`); and `hardening.json`'s `injections`,
+  today true/false/"mixed" over every fixture, so a fourth fixture makes ladder builds "mixed": revisit it when
+  `mitigations` is added there.

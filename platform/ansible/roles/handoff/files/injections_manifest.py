@@ -24,12 +24,12 @@ class ManifestBuildError(Exception):
 
 def build(fixtures: list[dict], switches: dict, placements: list[dict], canary_files: set[str],
           payload_dir: Path, repo_root: Path) -> dict:
-    by_surface = {}
+    by_id = {}
     for p in placements:
-        by_surface.setdefault(p["surface"], []).append(p)
+        by_id.setdefault(p.get("id"), []).append(p)
     entries = []
     for fx in fixtures:
-        found = by_surface.pop(fx["surface"], [])
+        found = by_id.pop(fx["id"], [])
         if not switches.get(fx["switch"]):
             if found:
                 raise ManifestBuildError(f"{fx['id']}: placed although {fx['switch']} is off")
@@ -59,8 +59,8 @@ def build(fixtures: list[dict], switches: dict, placements: list[dict], canary_f
             "target_file": fx["target_file"], "canary_file": fx["canary_file"],
             "action": fx["action"], "disclosure": fx["disclosure"],
         })
-    if by_surface:
-        raise ManifestBuildError(f"placements without a catalogue fixture: {sorted(by_surface)}")
+    if by_id:
+        raise ManifestBuildError(f"placements without a catalogue fixture: {sorted(by_id)}")
     return {"schema_version": 1, "injections": entries}
 
 

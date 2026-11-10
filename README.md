@@ -47,6 +47,12 @@ vocabulary keys (extend `vocabulary.yaml` if none fits), run
 `uv run --with pyyaml python validate.py`, open a pull request. The site rebuilds
 from `main` within minutes.
 
+Beside the threats, `paths/` holds the routes a canary can leave by (`P<n>-*.md`, from
+`paths/TEMPLATE.md`) and `mitigations/` the switches that close them (`<id>.yml`: the ladder
+levels `L<n>` and contributed ones, each with the Ansible values it sets `on` and `off`).
+`validate.py` checks all three kinds, including that a mitigation's `off` values are the
+defaults and that no two mitigations set the same Ansible key.
+
 ## The platform
 
 `platform/` is the source of the service: the Ansible playbooks that build an

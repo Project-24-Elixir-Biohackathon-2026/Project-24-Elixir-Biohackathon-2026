@@ -1,9 +1,11 @@
 """Decision 7: every test in tests/*.yaml carries the catalogue metadata of spec part 04.
 
-The lint runs over the 13-test catalogue (every tests/*.yaml next to this file) and is
-exercised on fixture YAML below. The value sets come from matrix.CATALOGUE (the spec's
-values, group/threat/path/closed_by), not a second copy here (ruling F2): two copies
-already disagreed on threat once.
+The lint runs over the 13-test ladder catalogue and tests/experiments/*.yaml (each experiment's
+own tests, experiments spec part 01 *Tests*), and is exercised on fixture YAML below. The value
+sets come from matrix.CATALOGUE (the spec's values, group/threat/path/closed_by), not a second
+copy here (ruling F2): two copies already disagreed on threat once. CATALOGUE is itself built from
+the repository's files (matrix.build_catalogue, decision 3), checked below against the files
+directly and against a tmp tree, so a new file is picked up with no code change.
 """
 import re
 from pathlib import Path
@@ -14,6 +16,7 @@ import yaml
 import matrix
 
 TESTS_DIR = Path(__file__).resolve().parent
+REPO = TESTS_DIR.parents[2]
 KEYS = ("id", "group", "threat", "path", "closed_by")
 ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 
@@ -56,7 +59,35 @@ def lint(files: list[Path]) -> list[str]:
 
 
 def test_the_catalogue_is_well_formed():
-    assert lint(sorted(TESTS_DIR.glob("*.yaml"))) == []
+    files = sorted(TESTS_DIR.glob("*.yaml")) + sorted((TESTS_DIR / "experiments").glob("*.yaml"))
+    assert lint(files) == []
+
+
+def test_catalogue_matches_the_committed_files():
+    """matrix.CATALOGUE (built at import) against the same files, read independently here."""
+    groups = {p.stem for p in TESTS_DIR.glob("*.yaml")} | {p.stem for p in (TESTS_DIR / "experiments").glob("*.yaml")}
+    threats = {"-".join(p.stem.split("-")[:2]) for p in (REPO / "threats").glob("TM-*.md")}
+    paths = {p.stem.split("-")[0] for p in (REPO / "paths").glob("P*-*.md")}
+    closed_by = {p.stem for p in (REPO / "mitigations").glob("*.yml")}
+    assert matrix.CATALOGUE == {
+        "group": frozenset(groups), "threat": frozenset(threats | {None}),
+        "path": frozenset(paths | {None}), "closed_by": frozenset(closed_by | {None}),
+    }
+
+
+def test_a_new_path_file_is_a_valid_path_with_no_code_change(tmp_path):
+    root = tmp_path / "repo"
+    (root / "paths").mkdir(parents=True)
+    (root / "paths" / "P5-new-path.md").write_text("")
+    assert "P5" in matrix.build_catalogue(root)["path"]
+
+
+def test_a_new_experiment_test_file_is_a_valid_group(tmp_path):
+    root = tmp_path / "repo"
+    experiments = root / "platform/promptfoo-evals/tests/experiments"
+    experiments.mkdir(parents=True)
+    (experiments / "foo.yaml").write_text("[]\n")
+    assert "foo" in matrix.build_catalogue(root)["group"]
 
 
 GOOD = """

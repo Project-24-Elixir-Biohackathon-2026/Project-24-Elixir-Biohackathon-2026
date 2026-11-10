@@ -1,0 +1,10 @@
+id: L4
+name: Typed tool surface
+description: >
+  spe_agent_tool_surface set to anything but shell: typed GA4GH tools replace the open-terminal shell, returning
+  only the fields a task needs, without free-text descriptions. Closes most of P1 and the injections' reach; not
+  a full close, so left empty here rather than claimed. The typed tool server's own design is a separate spec,
+  not yet built.
+closes: []
+status: planned
+probes: [tool-surface]

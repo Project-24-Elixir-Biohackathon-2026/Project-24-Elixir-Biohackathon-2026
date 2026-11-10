@@ -81,13 +81,21 @@ def test_one_fixture_per_switch_and_surface():
 
 
 def test_catalogue_matches_the_schema():
-    """fixtures.json agrees with slice 1's injections_schema.CATALOGUE (the scoring side's authority)."""
+    """fixtures.json agrees with injections_schema.build_catalogue, which reads it (task 3,
+    decision 23): the schema's catalogue is no longer a second, hand-kept copy."""
     schema = load("injections_schema", PLATFORM / "promptfoo-evals" / "injections_schema.py")
-    assert set(f["id"] for f in FIXTURES) == set(schema.CATALOGUE)
+    catalogue = schema.build_catalogue(REPO)
+    assert set(f["id"] for f in FIXTURES) == set(catalogue)
     for fx in FIXTURES:
-        switch, surface, target_file = schema.CATALOGUE[fx["id"]]
-        assert (fx["switch"], fx["surface"], fx["target_file"]) == (switch, surface, target_file)
+        switch, surface, target_file, payload = catalogue[fx["id"]]
+        assert (fx["switch"], fx["surface"], fx["target_file"], fx["payload"]) == (switch, surface, target_file,
+                                                                                    payload)
         assert fx["payload"] == fx["id"] + ".txt"
+
+
+def test_check_fixtures_passes_on_the_real_catalogue():
+    schema = load("injections_schema", PLATFORM / "promptfoo-evals" / "injections_schema.py")
+    assert schema.check_fixtures(REPO) == []
 
 
 def test_no_payload_contains_a_canary_token(record):
@@ -124,11 +132,11 @@ def sha(name):
 
 
 PLACEMENTS = [
-    {"surface": "trs-description", "payload_sha256": sha("registry-preflight.txt"),
+    {"id": "registry-preflight", "surface": "trs-description", "payload_sha256": sha("registry-preflight.txt"),
      "location": {"tool_id": "gatk-hc-chr20", "field": "description"}},
-    {"surface": "drs-description", "payload_sha256": sha("drs-integrity.txt"),
+    {"id": "drs-integrity", "surface": "drs-description", "payload_sha256": sha("drs-integrity.txt"),
      "path": "sensitive/secret/research_DO_NOT_LEAK", "location": {"object_id": "sha256-" + "a" * 64, "field": "description"}},
-    {"surface": "workflow-comment", "payload_sha256": sha("workflow-preflight.txt"),
+    {"id": "workflow-preflight", "surface": "workflow-comment", "payload_sha256": sha("workflow-preflight.txt"),
      "location": {"tool_id": "gatk-hc-chr20", "version": "v1", "descriptor_type": "NFL", "path": "main.nf"}},
 ]
 ALL_ON = {s: True for s in SWITCHES}
@@ -160,6 +168,27 @@ def test_one_switch_one_entry():
     manifest = build(switches={**{s: False for s in SWITCHES}, "spe_inject_drs_description": True},
                      placements=[PLACEMENTS[1]])
     assert [e["switch"] for e in manifest["injections"]] == ["spe_inject_drs_description"]
+
+
+# Two fixtures sharing a surface (not today's catalogue, which has one per surface): the mechanism task 4
+# adds (decision 23, Ansible side), exercised here with two synthetic drs-description entries.
+_DRS_BASE = next(fx for fx in FIXTURES if fx["id"] == "drs-integrity")
+_DRS_A = {**_DRS_BASE, "id": "drs-fixture-a", "switch": "spe_inject_drs_description_a"}
+_DRS_B = {**_DRS_BASE, "id": "drs-fixture-b", "switch": "spe_inject_drs_description_b"}
+
+
+def test_two_entries_on_the_same_surface_both_on_give_two_placements():
+    placements = [{**PLACEMENTS[1], "id": "drs-fixture-a"}, {**PLACEMENTS[1], "id": "drs-fixture-b"}]
+    manifest = BUILDER.build([_DRS_A, _DRS_B], {_DRS_A["switch"]: True, _DRS_B["switch"]: True},
+                             placements, CANARY_FILES, INJECTIONS, REPO)
+    assert [e["id"] for e in manifest["injections"]] == ["drs-fixture-a", "drs-fixture-b"]
+
+
+def test_one_entry_off_is_not_planted_the_other_still_is():
+    placements = [{**PLACEMENTS[1], "id": "drs-fixture-a"}]  # drs-fixture-b's switch is off: no placement for it
+    manifest = BUILDER.build([_DRS_A, _DRS_B], {_DRS_A["switch"]: True, _DRS_B["switch"]: False},
+                             placements, CANARY_FILES, INJECTIONS, REPO)
+    assert [e["id"] for e in manifest["injections"]] == ["drs-fixture-a"]
 
 
 @pytest.mark.parametrize("case, kwargs, message", [

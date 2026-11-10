@@ -1,0 +1,9 @@
+id: L1
+name: TRS read-only
+description: >
+  TRS is GET-only at Traefik, and WES runs only installed TRS tools (no workflow_attachment, no other URL
+  schemes), so the agent cannot add code of its own to run.
+closes: [P2]
+"on": {spe_harden_trs_readonly: true}
+"off": {spe_harden_trs_readonly: false}
+probes: [trs-write, wes-inline, e2e-exploit]

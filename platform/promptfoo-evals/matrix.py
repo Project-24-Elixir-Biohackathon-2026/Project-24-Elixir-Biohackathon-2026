@@ -22,9 +22,12 @@ hand-off/provider errors) or "Error running Python script:" (how promptfoo 0.125
 assertion that raised, as an ordinary failed component): neither is evidence of a leak. Only
 the six decision-8 assertions (METRICS) may carry a `metric:`; any other metric name is refused.
 
-The catalogue metadata value sets (spec part 04, group/threat/path/closed_by) are fixed here as
-CATALOGUE: this is their one definition, and the agent-catalogue lint (tests/test_catalogue.py)
-imports it rather than keeping a second copy that could drift from this one.
+The catalogue metadata value sets (spec part 04, group/threat/path/closed_by) are built as
+CATALOGUE from the repository's own files (build_catalogue, experiments spec part 01 decision 3):
+group from the stems of tests/*.yaml and tests/experiments/*.yaml, threat from threats/TM-*.md,
+path from paths/P*-*.md, closed_by from mitigations/*.yml. This is their one definition, and the
+agent-catalogue lint (tests/test_catalogue.py) imports it rather than keeping a second copy that
+could drift from this one.
 """
 from __future__ import annotations
 
@@ -41,16 +44,34 @@ import handoff  # noqa: E402
 ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 SHA256 = re.compile(r"[0-9a-f]{64}")
 STARTED = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")  # run.sh: date -u +%Y-%m-%dT%H:%M:%SZ
-GROUPS = ("utility", "direct", "troubleshooting", "injection", "egress")
-# The agent catalogue's value sets (spec part 04, *Tests*): the one place these are enumerated.
-# None is a member of threat/path/closed_by because a utility test carries closed_by: null, and a
-# test outside the threat model (none yet) could carry threat/path: null.
-CATALOGUE = {
-    "group": frozenset(GROUPS),
-    "threat": frozenset({"TM-001", "TM-002", "TM-003", "TM-004", None}),
-    "path": frozenset({"P1", "P2", "P3", "P4", None}),
-    "closed_by": frozenset({"L1", "L2", "L3", "L4", "L5", None}),
-}
+GROUPS = ("utility", "direct", "troubleshooting", "injection", "egress")  # render's row order; a
+# group outside it (an experiment's own) sorts after, by name (see render's `order`)
+
+
+def build_catalogue(root: Path) -> dict:
+    """The agent catalogue's value sets (spec part 04, *Tests*), read from the repository's own
+    files rather than listed here: `group` from the stems of the ladder's and the experiments'
+    test files, `threat`/`path`/`closed_by` from the threat, path and mitigation catalogues'
+    filenames (validate.py checks each id matches its filename, so the filename is enough).
+    None is a member of threat/path/closed_by because a utility test carries closed_by: null, and
+    a test outside the threat model could carry threat/path: null; never a member of group.
+    """
+    promptfoo = Path(root) / "platform/promptfoo-evals"
+    groups = {p.stem for p in promptfoo.glob("tests/*.yaml")} \
+        | {p.stem for p in promptfoo.glob("tests/experiments/*.yaml")}
+    threats = {"-".join(p.stem.split("-")[:2]) for p in (Path(root) / "threats").glob("TM-*.md")}
+    paths = {p.stem.split("-")[0] for p in (Path(root) / "paths").glob("P*-*.md")}
+    closed_by = {p.stem for p in (Path(root) / "mitigations").glob("*.yml")}
+    return {
+        "group": frozenset(groups),
+        "threat": frozenset(threats | {None}),
+        "path": frozenset(paths | {None}),
+        "closed_by": frozenset(closed_by | {None}),
+    }
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]  # matrix.py is platform/promptfoo-evals/matrix.py
+CATALOGUE = build_catalogue(REPO_ROOT)
 # The six leak metrics of decision 8 (metrics.py); the only metric names counts.py will record.
 METRICS = frozenset({"canary.answer", "canary.touched", "canary.sent", "canary.delivered", "injection.followed",
                      "key.leak"})
@@ -258,8 +279,11 @@ def render(counts_list: list[dict]) -> str:
     for c in levels:
         for tid, test in c["tests"].items():
             meta.setdefault(tid, test)
-    order = sorted(meta, key=lambda t: (GROUPS.index(meta[t]["group"]) if meta[t]["group"] in GROUPS
-                                        else len(GROUPS), t))
+
+    def group_key(group: str) -> tuple:
+        return (GROUPS.index(group), "") if group in GROUPS else (len(GROUPS), group)
+
+    order = sorted(meta, key=lambda t: group_key(meta[t]["group"]) + (t,))
     for tid in order:
         m = meta[tid]
         labels = [m["group"] or "–", m["threat"] or "–", m["path"] or "–", m["closed_by"] or "–"]

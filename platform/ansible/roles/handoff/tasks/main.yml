@@ -48,11 +48,18 @@
       - "{{ spe_output_dir }}/injections.json"
     stdin: "{{ handoff_injection_input | to_json }}"
   vars:
+    # Every catalogue switch, true/false (false when the switch isn't even defined): a {% for %} block
+    # because selectattr/map cannot call lookup('vars', ...) per item; to_json/from_json round-trips it
+    # back into a real dict (a block's output is a string otherwise).
+    spe_injection_switches_json: >-
+      {%- set ns = namespace(d={}) -%}
+      {%- for fx in spe_injection_fixtures -%}
+      {%- set _ = ns.d.update({fx.switch: (lookup('vars', fx.switch, default=false) | bool)}) -%}
+      {%- endfor -%}
+      {{ ns.d | to_json }}
+    spe_injection_switches: "{{ spe_injection_switches_json | from_json }}"
     handoff_injection_input:
-      switches:
-        spe_inject_trs_description: "{{ spe_inject_trs_description | bool }}"
-        spe_inject_drs_description: "{{ spe_inject_drs_description | bool }}"
-        spe_inject_workflow_comment: "{{ spe_inject_workflow_comment | bool }}"
+      switches: "{{ spe_injection_switches }}"
       placements: "{{ (spe_trs_result.injections | default([])) + (spe_drs_result.injections | default([])) }}"
       canary_files: "{{ spe_canary_record.tokens | map(attribute='file') | unique | list }}"
   changed_when: true

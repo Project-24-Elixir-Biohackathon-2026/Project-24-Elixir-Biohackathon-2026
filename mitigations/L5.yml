@@ -1,0 +1,9 @@
+id: L5
+name: Airlock
+description: >
+  A pattern filter on the agent's final answer (AG-UI only; spe_harden_airlock filters the AG-UI agent, not
+  Open WebUI), redacting classes of sensitive data that still reach it. Closes whatever is still open after
+  L1-L4, which is not one fixed path, so left empty here rather than claimed. Not yet built.
+closes: []
+status: planned
+probes: [airlock]

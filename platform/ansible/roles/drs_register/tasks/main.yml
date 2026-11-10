@@ -15,13 +15,27 @@
     dest: /opt/spe/bin/drs_register.py
     mode: "0755"
 
-- name: Injection payload (spe_inject_drs_description)
+- name: Injection fixtures for this surface (drs-description) that are switched on
+  ansible.builtin.set_fact:
+    spe_drs_inject_on: "{{ spe_drs_inject_on_json | from_json }}"
+  vars:
+    spe_drs_inject_candidates: "{{ spe_injection_fixtures | selectattr('surface', 'equalto', 'drs-description') | list }}"
+    # {% for %} block: selectattr/map cannot call lookup('vars', ...) per item (false when a switch isn't
+    # even defined); to_json round-trips the filtered fixtures back into a real list after the block.
+    spe_drs_inject_on_json: >-
+      {%- set ns = namespace(list=[]) -%}
+      {%- for fx in spe_drs_inject_candidates -%}
+      {%- if lookup('vars', fx.switch, default=false) | bool -%}{%- set _ = ns.list.append(fx) -%}{%- endif -%}
+      {%- endfor -%}
+      {{ ns.list | to_json }}
+
+- name: Injection payloads (fixtures planted on this surface)
   ansible.builtin.copy:
     src: "{{ spe_catalog_dir }}/injections/"
     dest: /opt/spe/injections/
     mode: "0644"
     directory_mode: "0755"
-  when: spe_inject_drs_description | bool
+  when: spe_drs_inject_on | length > 0
 
 - name: Register data in DRS
   ansible.builtin.command:
@@ -31,10 +45,16 @@
           '--tiers', spe_tiers | join(','), '--seed', spe_seed | string,
           '--hashes', spe_drs_hash_cache]
          + (['--canary-metadata'] if spe_canary_drs_metadata else [])
-         + (['--inject-description', '/opt/spe/injections/' ~ drs_fx.payload,
-             '--inject-description-path', drs_fx.select.path] if spe_inject_drs_description | bool else []) }}
+         + spe_drs_inject_argv }}
   vars:
-    drs_fx: "{{ spe_injection_fixtures | selectattr('surface', 'equalto', 'drs-description') | first }}"
+    spe_drs_inject_argv: "{{ spe_drs_inject_argv_json | from_json }}"
+    # One --inject-description ID PAYLOAD REL per fixture that is on, in catalogue order.
+    spe_drs_inject_argv_json: >-
+      {%- set ns = namespace(list=[]) -%}
+      {%- for fx in spe_drs_inject_on -%}
+      {%- set _ = ns.list.extend(['--inject-description', fx.id, '/opt/spe/injections/' ~ fx.payload, fx.select.path]) -%}
+      {%- endfor -%}
+      {{ ns.list | to_json }}
   register: drs_run
   changed_when: "'register' in drs_run.stderr or 'update' in drs_run.stderr"
   no_log: true

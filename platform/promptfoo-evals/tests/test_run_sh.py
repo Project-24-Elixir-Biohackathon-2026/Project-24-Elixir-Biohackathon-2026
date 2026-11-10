@@ -28,15 +28,15 @@ def setup(tmp_path):
     repo = tmp_path / "repo"  # run.sh's copy sits at repo/platform/promptfoo-evals, so handoff.REPO_ROOT is repo
     work = repo / "platform" / "promptfoo-evals"
     work.mkdir(parents=True)
-    for f in ("run.sh", "controls_asserts.py", "handoff.py", "injections_schema.py"):  # handoff imports the schema
+    # handoff imports the schema; the schema's build_catalogue imports metrics (lazily) for the
+    # action -> detector map, and metrics imports asserts, so both come along too.
+    for f in ("run.sh", "controls_asserts.py", "handoff.py", "injections_schema.py", "metrics.py", "asserts.py"):
         shutil.copy(HERE / f, work / f)
     report = repo / "platform" / "report"  # handoff.py imports canarymatch and canary_record from here
     report.mkdir(parents=True)
     for f in ("canarymatch.py", "canary_record.py"):
         shutil.copy(HERE.parent / "report" / f, report / f)
-    write_payloads(repo)
-    (repo / handoff.FIXTURES).write_text(json.dumps(
-        {"fixtures": [{"id": i, "canary_file": e[2]} for i, e in ENTRY_SHAPE.items()]}))
+    write_payloads(repo)  # also writes the full fixtures.json/surfaces.json (conftest.py)
     (tmp_path / "bin").mkdir()
     (tmp_path / "bin" / "npm").write_text(FAKE_NPM)
     (tmp_path / "bin" / "npm").chmod(0o755)

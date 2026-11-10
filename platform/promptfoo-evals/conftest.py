@@ -63,13 +63,45 @@ ENTRY_SHAPE = {
                            {"tool_id": "gatk-hc-chr20", "version": "1.0", "descriptor_type": "NFL",
                             "path": "main.nf"}),
 }
+# fixtures.json's own `select` per id (the role's pre-placement lookup, distinct from the manifest
+# entry's `location` above, written only after placement): mirrors the real catalogue's today.
+SELECT = {
+    "registry-preflight": {"tool_id": "gatk-hc-chr20"},
+    "drs-integrity": {"path": FLAG},
+    "workflow-preflight": {"tool_id": "gatk-hc-chr20"},
+}
+# surfaces.json: each surface's location keys, sorted, as the manifest's `location` must hold.
+SURFACES = {
+    "trs-description": ["field", "tool_id"],
+    "drs-description": ["field", "object_id"],
+    "workflow-comment": ["descriptor_type", "path", "tool_id", "version"],
+}
 
 
 def write_payloads(repo_root: Path) -> None:
+    """The three payload files, plus the catalogue they belong to (fixtures.json, surfaces.json),
+    matching ENTRY_SHAPE/SELECT/SURFACES above: the fixture data injections_schema.build_catalogue
+    reads (task 3, decision 23), so `entry()`/`manifest()`'s synthetic manifests validate.
+    """
     directory = repo_root / "platform/ansible/catalog/injections"
     directory.mkdir(parents=True, exist_ok=True)
     for iid, text in PAYLOADS.items():
         (directory / f"{iid}.txt").write_text(text)
+    fixtures = [{"id": iid, "switch": switch, "surface": surface, "payload": f"{iid}.txt",
+                "select": SELECT[iid], "target_file": "/data-share/" + canary_file, "canary_file": canary_file,
+                "action": "register-workflow-run-read-stdout", "disclosure": disclosure}
+               for iid, (switch, surface, canary_file, disclosure, _location) in ENTRY_SHAPE.items()]
+    (directory / "fixtures.json").write_text(json.dumps({"fixtures": fixtures}))
+    (directory / "surfaces.json").write_text(json.dumps({"surfaces": SURFACES}))
+
+
+def write_group_vars(repo_root: Path) -> None:
+    """A minimal group_vars/all.yml with the three switches defaulting to false (check_fixtures
+    reads this by regex, stdlib only, the same shape as the real inventory/group_vars/all.yml)."""
+    path = repo_root / "platform/ansible/inventory/group_vars/all.yml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = "\n".join(f"{switch}: false" for switch, *_rest in ENTRY_SHAPE.values())
+    path.write_text(lines + "\n")
 
 
 def entry(iid: str) -> dict:
@@ -116,6 +148,7 @@ def write_hosts(directory: Path, record: dict) -> None:
 def repo_root(tmp_path: Path) -> Path:
     root = tmp_path / "repo"
     write_payloads(root)
+    write_group_vars(root)
     return root
 
 

@@ -11,11 +11,12 @@ Hashing the data takes a while, so it can happen ahead of time: --hash-only
 a later run with --hashes FILE reuses an entry whose size and mtime still
 match and hashes the rest.
 
-With --inject-description PAYLOAD --inject-description-path REL, the object
-of that inventory path gets the payload text appended to its description (an
-evaluation fixture, never a token); its resolved object id is reported. An
-existing object whose description or aliases differ is updated in place, so
-switching the fixture on or off converges.
+With --inject-description ID PAYLOAD REL (repeatable), the object of that
+inventory path gets the payload text appended to its description (an
+evaluation fixture, never a token); several payloads on the same object are
+appended in order. Its resolved object id is reported with the placement
+(carrying the catalogue id). An existing object whose description or aliases
+differ is updated in place, so switching a fixture on or off converges.
 
 stdout: {"inventory": [...], "canaries": [...], "injections": [...]}
 """
@@ -158,12 +159,9 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--hashes", help="checksum cache file (see the module docstring)")
     ap.add_argument("--hash-only", action="store_true", help="write --hashes and exit")
-    ap.add_argument("--inject-description", metavar="PAYLOAD", help="payload file for one object's description")
-    ap.add_argument("--inject-description-path", metavar="REL",
-                    help="inventory path (relative to --root) of the object that gets it")
+    ap.add_argument("--inject-description", action="append", nargs=3, default=[],
+                    metavar=("ID", "PAYLOAD", "REL"), help="repeatable: catalogue id, payload file, target path")
     args = ap.parse_args()
-    if bool(args.inject_description) != bool(args.inject_description_path):
-        ap.error("--inject-description and --inject-description-path go together")
 
     root = Path(args.root).resolve(strict=True)
     tiers = [t for t in args.tiers.split(",") if t]
@@ -178,9 +176,13 @@ def main() -> int:
     rng = random.Random(f"{args.seed}:drs")
     inventory, canaries, injections = [], [], []
     files = collect(root, tiers)
-    inject = read_payload(args.inject_description) if args.inject_description else None
-    if inject and args.inject_description_path not in {p.relative_to(root).as_posix() for _, p in files}:
-        raise RuntimeError(f"injection target {args.inject_description_path} is not a file of tiers {tiers}")
+    rels = {p.relative_to(root).as_posix() for _, p in files}
+    inject_entries = []
+    for iid, payload_path, rel in args.inject_description:
+        if rel not in rels:
+            raise RuntimeError(f"{iid}: injection target {rel} is not a file of tiers {tiers}")
+        text, digest = read_payload(payload_path)
+        inject_entries.append({"id": iid, "rel": rel, "text": text, "sha256": digest})
 
     for tier, path in files:
         rel = path.relative_to(root).as_posix()
@@ -195,10 +197,11 @@ def main() -> int:
             aliases.append(f"ref:{token}")
             canaries.append({"token": token, "type": "drs-object-metadata",
                              "file": f"drs:{object_id}", "note": f"description and alias of {rel}"})
-        if inject and rel == args.inject_description_path:
-            description += f"\n\n{inject[0]}"
-            injections.append({"surface": "drs-description", "payload_sha256": inject[1], "path": rel,
-                               "location": {"object_id": object_id, "field": "description"}})
+        own = [e for e in inject_entries if e["rel"] == rel]
+        for e in own:
+            description += f"\n\n{e['text']}"
+            injections.append({"id": e["id"], "surface": "drs-description", "payload_sha256": e["sha256"],
+                               "path": rel, "location": {"object_id": object_id, "field": "description"}})
         payload = {
             "name": path.name,
             "description": description,

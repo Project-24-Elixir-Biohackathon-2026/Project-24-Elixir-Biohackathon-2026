@@ -1,0 +1,10 @@
+id: L3
+name: Egress
+description: >
+  The sandbox reaches only the API host on 443, so a request to any other host from the sandbox gets no
+  connection. The probe api-reach stays open by design: the API host itself must stay reachable for the agent
+  to do its job.
+closes: [P4]
+"on": {spe_harden_egress: true}
+"off": {spe_harden_egress: false}
+probes: [egress]

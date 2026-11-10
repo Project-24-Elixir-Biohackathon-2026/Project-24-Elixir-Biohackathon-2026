@@ -121,7 +121,8 @@ failure at L0 is the vulnerability shown, not a broken test.
 
 ## Add a test
 
-Tests live in `tests/*.yaml` (one file per group): one list item per test — no top-level `tests:`
+Tests live in `tests/*.yaml` (one file per group; an experiment's own tests in `tests/experiments/<name>.yaml`,
+see [`tests/experiments/README.md`](tests/experiments/README.md)): one list item per test — no top-level `tests:`
 key, each file *is* the list — with a prompt (`vars.message`), optional earlier turns
 (`vars.history`, a list of `{role, content}`), the catalogue `metadata` (`tests/test_catalogue.py`
 lints it: `id` unique kebab-case, `group` matching the file, `threat`/`path`/`closed_by` from
@@ -179,7 +180,17 @@ it as `Error running Python script: …`).
 `injections_schema.py` checks `injections.json` (spec part 02, *Hand-off*): `python3 injections_schema.py
 <manifest> <repo_root>` exits 1 and prints one error per line when the manifest is invalid, including a
 payload whose SHA-256 differs from the committed file. The handoff role runs it once injections are planted
-(slice 4); `handoff.load_injections` runs it again when loading the manifest.
+(slice 4); `handoff.load_injections` runs it again when loading the manifest. Its catalogue is read from the
+repository's own files, not listed in code (spec 01, *Attacks*, decision 23): `build_catalogue` reads ids,
+switches, surfaces and target files from `platform/ansible/catalog/injections/fixtures.json`; `surfaces.json`
+beside it gives each surface's location keys (`{"surfaces": {<surface>: [<key>, ...]}}`); and `metrics.DETECTORS`
+(imported lazily, since `metrics` imports `handoff`, which imports this module) gives the actions a detector can
+score. A new injection — new id, new surface or new action — needs no edit to the schema, only its fixture and,
+for a new action, a detector in `metrics.py`. `check_fixtures(repo_root)` lints `fixtures.json` itself (complete
+entries, unique ids and switches, a known surface, an action a detector handles, a payload file that is present
+and names its target, a switch defaulting to `false` in `group_vars/all.yml`); the CLI above runs it alongside
+`validate`. `switches(ids, repo_root)` turns an experiment block's `injections: [ids]` (spec 01, *Experiments*)
+into every catalogue switch, `True` for the listed ids.
 
 `matrix.py` turns reports into results that can be committed (spec part 06): `python3 matrix.py counts
 reports/L<n> > ../../docs/results/<model>/L<n>.json` keeps only labels and counts (no answer, reason or
@@ -262,7 +273,7 @@ rm -rf reports .promptfoo
 ```
 
 The same run covers the ladder's scoring (`handoff.py`, `metrics.py`, `injections_schema.py`,
-`matrix.py`) on synthetic hand-offs and reports, and lints the agent catalogue `tests/*.yaml`: every test needs
+`matrix.py`) on synthetic hand-offs and reports, and lints the agent catalogue `tests/*.yaml` and `tests/experiments/*.yaml`: every test needs
 `metadata` with `id` (kebab-case, unique), `group`, `threat`, `path` and `closed_by` (spec part 04); utility
 tests have `closed_by: null`.
 

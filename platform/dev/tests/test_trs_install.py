@@ -64,22 +64,20 @@ def test_all_off_keeps_todays_fields(tr, monkeypatch, capsys):
 
 
 def test_description_injection_lands_only_in_the_selected_tool(tr, monkeypatch, capsys):
-    out, calls = run(tr, monkeypatch, capsys, "--inject-description", str(DESC),
-                     "--inject-description-tool", "gatk-hc-chr20")
+    out, calls = run(tr, monkeypatch, capsys, "--inject-description", "desc-1", str(DESC), "gatk-hc-chr20")
     payload = DESC.read_text().strip()
     description = calls["/tools/gatk-hc-chr20"]["description"]
     assert description.endswith("\n\n" + payload) and description.count(payload) == 1
     assert "[ref TRSMETA-" in description
     assert payload not in calls["/tools/wes-drs-smoke"]["description"]
     assert payload not in descriptor(calls, "gatk-hc-chr20")
-    assert out["injections"] == [{"surface": "trs-description",
+    assert out["injections"] == [{"id": "desc-1", "surface": "trs-description",
                                   "payload_sha256": hashlib.sha256(DESC.read_bytes()).hexdigest(),
                                   "location": {"tool_id": "gatk-hc-chr20", "field": "description"}}]
 
 
 def test_comment_injection_wraps_every_line_and_keeps_the_code(tr, monkeypatch, capsys):
-    out, calls = run(tr, monkeypatch, capsys, "--inject-comment", str(COMMENT),
-                     "--inject-comment-tool", "gatk-hc-chr20")
+    out, calls = run(tr, monkeypatch, capsys, "--inject-comment", "comment-1", str(COMMENT), "gatk-hc-chr20")
     text = descriptor(calls, "gatk-hc-chr20")
     lines = text.splitlines()
     assert lines[0] == "nextflow.enable.dsl=2"
@@ -87,16 +85,26 @@ def test_comment_injection_wraps_every_line_and_keeps_the_code(tr, monkeypatch, 
         assert f"// {line}" in lines
     assert strip_comments(text) == strip_comments((CATALOG / "gatk-hc-chr20" / "main.nf").read_text())
     assert COMMENT.read_text().strip() not in descriptor(calls, "wes-drs-smoke")
-    assert out["injections"] == [{"surface": "workflow-comment",
+    assert out["injections"] == [{"id": "comment-1", "surface": "workflow-comment",
                                   "payload_sha256": hashlib.sha256(COMMENT.read_bytes()).hexdigest(),
                                   "location": {"tool_id": "gatk-hc-chr20", "version": "v1",
                                                "descriptor_type": "NFL", "path": "main.nf"}}]
 
 
+def test_two_description_injections_on_one_tool_both_land_in_order(tr, monkeypatch, capsys):
+    out, calls = run(tr, monkeypatch, capsys, "--inject-description", "desc-1", str(DESC), "gatk-hc-chr20",
+                     "--inject-description", "desc-2", str(COMMENT), "gatk-hc-chr20")
+    description = calls["/tools/gatk-hc-chr20"]["description"]
+    desc_payload, comment_payload = DESC.read_text().strip(), COMMENT.read_text().strip()
+    assert description.endswith(f"\n\n{desc_payload}\n\n{comment_payload}")
+    assert [i["id"] for i in out["injections"]] == ["desc-1", "desc-2"]
+    assert all(i["surface"] == "trs-description" for i in out["injections"])
+
+
 def test_both_on_keep_canaries_and_rerun_is_identical(tr, monkeypatch, capsys):
     off, _ = run(tr, monkeypatch, capsys)
-    flags = ["--inject-description", str(DESC), "--inject-description-tool", "gatk-hc-chr20",
-             "--inject-comment", str(COMMENT), "--inject-comment-tool", "gatk-hc-chr20"]
+    flags = ["--inject-description", "desc-1", str(DESC), "gatk-hc-chr20",
+             "--inject-comment", "comment-1", str(COMMENT), "gatk-hc-chr20"]
     first, calls1 = run(tr, monkeypatch, capsys, *flags)
     second, calls2 = run(tr, monkeypatch, capsys, *flags)
     assert first["canaries"] == off["canaries"]
@@ -108,17 +116,26 @@ def test_both_on_keep_canaries_and_rerun_is_identical(tr, monkeypatch, capsys):
 def test_unknown_tool_fails_before_any_put(tr, monkeypatch, capsys):
     monkeypatch.setattr(sys, "argv", ["trs_install.py", "--catalog", str(CATALOG), "--api", "https://h",
                                       "--seed", "1", "--workflow", "wes-drs-smoke",
-                                      "--inject-description", str(DESC),
-                                      "--inject-description-tool", "gatk-hc-chr20"])
+                                      "--inject-description", "desc-1", str(DESC), "gatk-hc-chr20"])
     tr.calls.clear()
-    with pytest.raises(RuntimeError, match="gatk-hc-chr20"):
+    with pytest.raises(RuntimeError, match="desc-1.*gatk-hc-chr20"):
         tr.main()
     assert tr.calls == {}
 
 
-def test_payload_and_tool_go_together(tr, monkeypatch):
+def test_inject_flags_need_exactly_id_payload_tool_id(tr, monkeypatch):
+    # --inject-description/--inject-comment take exactly ID PAYLOAD TOOL_ID (nargs=3, module
+    # docstring): an --inject-comment given only a payload, with no id or tool, is refused by
+    # argparse instead of being accepted with the wrong arity.
     monkeypatch.setattr(sys, "argv", ["trs_install.py", "--catalog", str(CATALOG), "--api", "https://h",
                                       "--seed", "1", "--inject-comment", str(COMMENT)])
+    with pytest.raises(SystemExit):
+        tr.main()
+
+
+def test_inject_description_with_two_args_is_also_refused(tr, monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["trs_install.py", "--catalog", str(CATALOG), "--api", "https://h",
+                                      "--seed", "1", "--inject-description", "desc-1", str(DESC)])
     with pytest.raises(SystemExit):
         tr.main()
 
@@ -132,9 +149,11 @@ def test_empty_payload_fails(tr, tmp_path):
 
 def test_wrapping_keeps_shebang_and_directives(tr):
     src = "#!/usr/bin/env nextflow\nnextflow.enable.dsl=2\nnextflow.preview.topic=true\nworkflow { run() }\n"
-    out = tr.build_descriptor(src, "NFL", token="WFCANARY-AAAAAAAA", payload="line one\n\nline two")
+    out = tr.build_descriptor(src, "NFL", token="WFCANARY-AAAAAAAA", payloads=["line one\n\nline two"])
     assert out.splitlines() == ["#!/usr/bin/env nextflow", "nextflow.enable.dsl=2", "nextflow.preview.topic=true",
                                 "// provenance-id: WFCANARY-AAAAAAAA", "// line one", "//", "// line two",
                                 "workflow { run() }"]
-    assert tr.build_descriptor("rule all:\n  input: 'x'\n", "SMK", payload="p").splitlines() == [
+    assert tr.build_descriptor("rule all:\n  input: 'x'\n", "SMK", payloads=["p"]).splitlines() == [
         "# p", "rule all:", "  input: 'x'"]
+    assert tr.build_descriptor("rule all:\n  input: 'x'\n", "SMK", payloads=["p", "q"]).splitlines() == [
+        "# p", "# q", "rule all:", "  input: 'x'"]

@@ -54,11 +54,19 @@
     group: "{{ spe_ssh_user }}"
     mode: "0600"
   vars:
-    # query('vars', *names), not map('extract', vars): the internal vars dictionary is
-    # deprecated in ansible-core 2.22 and goes away in 2.24.
+    # Two groups, two defaults: spe_local_vars/spe_local_vars_extra name known vars, so a typo
+    # there must still fail the build loudly (no default). Every fixture's spe_inject_* switch
+    # persists too (group_vars/all.yml, *Vars persisted*), without being listed there by name: a
+    # new fixture's switch needs no edit to spe_local_vars, so it gets its own default=false (not
+    # just on the fixture, as elsewhere) instead of failing the build for every other switch.
+    spe_local_vars_core: "{{ spe_local_vars + spe_local_vars_extra }}"
+    spe_local_vars_fixture_switches: "{{ spe_injection_fixtures | map(attribute='switch') | unique | list }}"
+    # query('vars', *names, default=false), not map('extract', vars): the internal vars dictionary is
+    # deprecated in ansible-core 2.22 and goes away in 2.24, and extract has no per-item default.
     spe_local_values: >-
-      {{ dict((spe_local_vars + spe_local_vars_extra)
-              | zip(query('ansible.builtin.vars', *(spe_local_vars + spe_local_vars_extra)))) }}
+      {{ dict(spe_local_vars_core | zip(query('ansible.builtin.vars', *spe_local_vars_core)))
+         | combine(dict(spe_local_vars_fixture_switches
+             | zip(query('ansible.builtin.vars', *spe_local_vars_fixture_switches, default=false)))) }}
   no_log: true
   when: not spe_local_apply
 

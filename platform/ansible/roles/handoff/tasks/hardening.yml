@@ -23,14 +23,24 @@
       {%- if ns.on and (c | bool) -%}{%- set ns.n = ns.n + 1 -%}{%- else -%}{%- set ns.on = false -%}{%- endif -%}
       {%- endfor -%}{{ ns.n }}
 
-- name: Injection fixtures planted (true all on, false all off, "mixed" otherwise, which is not a ladder run)
+# True when every catalogue switch is on, false when none, "mixed" otherwise (not a ladder run);
+# computed over the fixtures, so the result is unchanged while there are only today's three.
+- name: Injection fixtures planted
   ansible.builtin.set_fact:
-    spe_injections_planted: "{{ {3: true, 0: false}.get(spe_injection_switches | select | list | length, 'mixed') }}"
+    spe_injections_planted: >-
+      {{ {spe_injection_switch_total: true, 0: false}.get(
+          spe_injection_switches_on_json | from_json | select | list | length, 'mixed') }}
   vars:
-    spe_injection_switches:
-      - "{{ spe_inject_trs_description | default(false) | bool }}"
-      - "{{ spe_inject_drs_description | default(false) | bool }}"
-      - "{{ spe_inject_workflow_comment | default(false) | bool }}"
+    spe_injection_switch_names: "{{ spe_injection_fixtures | map(attribute='switch') | unique | list }}"
+    spe_injection_switch_total: "{{ spe_injection_switch_names | length }}"
+    # {% for %} block: selectattr/map cannot call lookup('vars', ...) per item (false when a switch isn't
+    # even defined); to_json round-trips the list of booleans back into a real list after the block.
+    spe_injection_switches_on_json: >-
+      {%- set ns = namespace(list=[]) -%}
+      {%- for sw in spe_injection_switch_names -%}
+      {%- set _ = ns.list.append(lookup('vars', sw, default=false) | bool) -%}
+      {%- endfor -%}
+      {{ ns.list | to_json }}
 
 - name: Hardening record
   ansible.builtin.copy:

@@ -1,0 +1,9 @@
+id: L2
+name: Data tiers
+description: >
+  Workflow containers mount only the listed tiers of /data-share and /drs-data, so an installed workflow run
+  on a sensitive-tier input finds no file to read.
+closes: [P3]
+"on": {spe_harden_data_tiers: [ref, genomes]}
+"off": {spe_harden_data_tiers: []}
+probes: [tier-reach]

@@ -1,0 +1,7 @@
+{
+  "surfaces": {
+    "trs-description": ["field", "tool_id"],
+    "drs-description": ["field", "object_id"],
+    "workflow-comment": ["descriptor_type", "path", "tool_id", "version"]
+  }
+}

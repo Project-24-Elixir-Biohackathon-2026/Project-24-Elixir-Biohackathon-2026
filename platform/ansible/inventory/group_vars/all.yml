@@ -176,6 +176,8 @@ spe_repo_ref: "{{ lookup('ansible.builtin.pipe', 'git -C ' ~ (playbook_dir | quo
 spe_repo_dir: "/home/{{ spe_ssh_user }}/sperange"
 # Vars persisted on the instance for local re-apply (platform/ansible/instances/local.yml
 # in the clone, 0600): what the controller passed, plus the keys the frontend roles need.
+# Every fixture's spe_inject_* switch is added by the consumer (roles/repo/tasks/main.yml), not listed
+# here by name, so a new fixture's switch persists without an edit to this list.
 spe_local_vars:
   - spe_instance
   - spe_seed
@@ -195,9 +197,6 @@ spe_local_vars:
   - spe_canary_trs_descriptions
   - spe_canary_workflow_comments
   - spe_canary_service_info
-  - spe_inject_trs_description
-  - spe_inject_drs_description
-  - spe_inject_workflow_comment
   - spe_eval_sink
   - spe_eval_sink_port
   - spe_eval_sink_host

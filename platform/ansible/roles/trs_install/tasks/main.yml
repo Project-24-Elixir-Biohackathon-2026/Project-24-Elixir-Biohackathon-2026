@@ -12,25 +12,36 @@
     mode: "0644"
     directory_mode: "0755"
 
-- name: Injection payloads (spe_inject_trs_description, spe_inject_workflow_comment)
+- name: Injection fixtures for this surface (trs-description, workflow-comment) that are switched on
+  ansible.builtin.set_fact:
+    spe_trs_inject_on: "{{ spe_trs_inject_on_json | from_json }}"
+  vars:
+    spe_trs_inject_candidates: "{{ spe_injection_fixtures | selectattr('surface', 'in',
+                                    ['trs-description', 'workflow-comment']) | list }}"
+    # {% for %} block: selectattr/map cannot call lookup('vars', ...) per item (false when a switch isn't
+    # even defined); to_json round-trips the filtered fixtures back into a real list after the block.
+    spe_trs_inject_on_json: >-
+      {%- set ns = namespace(list=[]) -%}
+      {%- for fx in spe_trs_inject_candidates -%}
+      {%- if lookup('vars', fx.switch, default=false) | bool -%}{%- set _ = ns.list.append(fx) -%}{%- endif -%}
+      {%- endfor -%}
+      {{ ns.list | to_json }}
+
+- name: Injection payloads (fixtures planted on this surface)
   ansible.builtin.copy:
     src: "{{ spe_catalog_dir }}/injections/"
     dest: /opt/spe/injections/
     mode: "0644"
     directory_mode: "0755"
-  when: spe_inject_trs_description | bool or spe_inject_workflow_comment | bool
+  when: spe_trs_inject_on | length > 0
 
 - name: Injection targets are installed workflows
   ansible.builtin.assert:
     that: item.select.tool_id in spe_workflows
     fail_msg: "{{ item.switch }} plants in {{ item.select.tool_id }}; add it to spe_workflows"
-  loop: "{{ spe_injection_fixtures | selectattr('surface', 'in', ['trs-description', 'workflow-comment'])
-            | selectattr('switch', 'in', trs_inject_on) | list }}"
+  loop: "{{ spe_trs_inject_on }}"
   loop_control:
     label: "{{ item.id }}"
-  vars:
-    trs_inject_on: "{{ (['spe_inject_trs_description'] if spe_inject_trs_description | bool else [])
-                       + (['spe_inject_workflow_comment'] if spe_inject_workflow_comment | bool else []) }}"
 
 - name: Install workflows in TRS
   ansible.builtin.command:
@@ -41,13 +52,17 @@
          + (spe_workflows | map('regex_replace', '^(.*)$', '--workflow=\1') | list)
          + (['--canary-descriptions'] if spe_canary_trs_descriptions else [])
          + (['--canary-comments'] if spe_canary_workflow_comments else [])
-         + (['--inject-description', '/opt/spe/injections/' ~ trs_desc.payload,
-             '--inject-description-tool', trs_desc.select.tool_id] if spe_inject_trs_description | bool else [])
-         + (['--inject-comment', '/opt/spe/injections/' ~ trs_comment.payload,
-             '--inject-comment-tool', trs_comment.select.tool_id] if spe_inject_workflow_comment | bool else []) }}
+         + spe_trs_inject_argv }}
   vars:
-    trs_desc: "{{ spe_injection_fixtures | selectattr('surface', 'equalto', 'trs-description') | first }}"
-    trs_comment: "{{ spe_injection_fixtures | selectattr('surface', 'equalto', 'workflow-comment') | first }}"
+    spe_trs_inject_argv: "{{ spe_trs_inject_argv_json | from_json }}"
+    # One --inject-description or --inject-comment ID PAYLOAD TOOL_ID per fixture that is on, in catalogue order.
+    spe_trs_inject_argv_json: >-
+      {%- set ns = namespace(list=[]) -%}
+      {%- for fx in spe_trs_inject_on -%}
+      {%- set flag = '--inject-description' if fx.surface == 'trs-description' else '--inject-comment' -%}
+      {%- set _ = ns.list.extend([flag, fx.id, '/opt/spe/injections/' ~ fx.payload, fx.select.tool_id]) -%}
+      {%- endfor -%}
+      {{ ns.list | to_json }}
   register: trs_run
   changed_when: true
   no_log: true
