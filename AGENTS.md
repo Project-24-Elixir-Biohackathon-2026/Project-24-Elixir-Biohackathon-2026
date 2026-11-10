@@ -26,6 +26,7 @@ instruction set: each rule lives in exactly one of them, so update the file that
 | File | Read when |
 |---|---|
 | [`.methodology/shared/guides/sessions-and-context.md`](.methodology/shared/guides/sessions-and-context.md) | the context-budget hook fires, you start a session from a handoff, you start an investigation or audit, or you hand work to a subagent: the budget, the start routine, mid-unit handoffs, investigation scope |
+| [`.methodology/shared/guides/unattended-sessions.md`](.methodology/shared/guides/unattended-sessions.md) | you start, watch or end an unattended session, attach to one, or act on an inbox item |
 | [`.methodology/shared/guides/development-workflow.md`](.methodology/shared/guides/development-workflow.md) | you start a change, spike or spec, or claim, open, review, advance or merge any PR: modes, stages, handoffs, deferred items, claiming, local or CI review, merge and cleanup, slicing, agent automation |
 | [`.methodology/shared/guides/forge-github.md`](.methodology/shared/guides/forge-github.md) | you run a step on the forge (claim, ready, comment, label, merge, issues) or check what must pass before a merge: the command for each |
 | [`.methodology/shared/guides/spec-and-plan-layout.md`](.methodology/shared/guides/spec-and-plan-layout.md) | you write, extend or split a spec or plan, add a clarification, hand a slice to a subagent, or work from a spec or plan that is a directory |
@@ -58,11 +59,11 @@ So a session does one bounded piece of work and hands off:
   starts fresh from the handoff; with `AGENT_AUTO_CONTINUE=true`, start it yourself with
   `methodology next <handoff path>` (it launches the next session on agent-deck), then stop. A new parallel
   session (a fresh unit's worktree) starts only with `methodology next --new "<prompt>"`, never a bare
-  `claude`/`claudeN`: only a session `methodology next` starts can be seen, reported and resumed (on deck: seen by `methodology
-  status` once it reads deck).
+  `claude`/`claudeN`: only a session `methodology next` starts is on agent-deck, where `methodology status` and the
+  supervisor see it and `methodology next --resume` brings it back.
 - **A fresh session starts the same way every time:** read the handoff (only the newest:
   `methodology handoff newest <plan>/handoffs` when the unit has a plan, else
-  `methodology handoff newest docs/handoffs`, if there is one), `git status`, `git log --oneline -5`, `methodology worktree --prune` (merged units' worktrees, and the main checkout up to its upstream),
+  `methodology handoff newest docs/handoffs`, if there is one), `git status`, `git log --oneline -5`, `methodology worktree --prune` (ended units' worktrees, a merged or closed PR's too, never under a live session; on Forgejo with the merges it left open closed first, and the main checkout up to its upstream),
   `BACKLOG.md`'s *Next* (due on any track, or waiting on the user), then work.
   A user saying *continue* (*continue with the handoff*) means this routine, in this session: `methodology next`
   runs only at the budget, and `methodology next --unit` only at a unit's end.
