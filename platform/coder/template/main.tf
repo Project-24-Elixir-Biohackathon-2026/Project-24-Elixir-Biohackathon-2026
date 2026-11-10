@@ -282,6 +282,19 @@ resource "coder_app" "report" {
   open_in      = "tab"
 }
 
+# Chats: this workspace's archived runs with their chats, in the portal's runs
+# browser (platform/report, /reports/runs). An external link like the report, so it
+# works while the workspace is stopped; the archive is written at each stop.
+resource "coder_app" "chats" {
+  agent_id     = coder_agent.main.id
+  slug         = "chats"
+  display_name = "Archived chats"
+  icon         = "/emojis/1f4ac.png"
+  url          = "${data.coder_workspace.me.access_url}/reports/runs#/workspace/${data.coder_workspace.me.id}"
+  external     = true
+  open_in      = "tab"
+}
+
 # Rebuild: applies the clone to the running frontend (spe-apply: build the images
 # that changed, recreate the containers, wait for health) in a web terminal.
 # Edits to the runbook, the prompt and the agent's source are live without it;

@@ -1,5 +1,5 @@
 // The runs browser: list, one run, one chat, drawn from the service's JSON API. The view is
-// in the URL's hash (#/, #/run/<id>, #/run/<id>/chat/<frontend>/<chat>) so every state has a
+// in the URL's hash (#/, #/run/<id>, #/run/<id>/chat/<frontend>/<chat>, #/workspace/<id>) so every state has a
 // link. Everything is built with DOM calls; the only HTML inserted as-is is what the service
 // rendered and sanitized (the report and the turns). No inline script (CSP).
 (function () {
@@ -174,7 +174,8 @@
       el("a", { href: base, text: "JSON" }),
       r.report ? el("a", { href: base + "report.md", text: "Report (Markdown)" }) : null,
       r.files && r.files.agent_runs ? el("a", { href: base + "agui/agent-runs.jsonl", text: "Agent run log (JSONL)" }) : null,
-      r.report && r.report.workspace_id ? el("a", { href: REPORTS + r.report.workspace_id, text: "Live report page" }) : null
+      r.report && r.report.workspace_id ? el("a", { href: REPORTS + r.report.workspace_id, text: "Live report page" }) : null,
+      r.report && r.report.workspace_id ? el("a", { href: "#/workspace/" + r.report.workspace_id, text: "All runs of this workspace" }) : null
     ]);
     var head = el("header", { class: "card run-head" }, [el("h1", { text: (r.workspace || r.instance) + " by " + (r.participant || "?") }), facts, raw]);
 
@@ -235,12 +236,59 @@
     document.title = c.title;
   }
 
+  // ---- one workspace: its runs, each with its chats (the "Chats" button of a Coder workspace lands here)
+  function loadWorkspace(wid) {
+    loading();
+    get(API + "workspaces/" + encodeURIComponent(wid)).then(renderWorkspace).catch(function (status) { failed("the workspace", status); });
+  }
+  function chatsTable(r) {
+    var list = r.chat_list || [];
+    if (!list.length) return el("p", { class: "muted", text: "No chat was exported for this run." });
+    var body = el("tbody", {}, list.map(function (c) {
+      return el("tr", {}, [
+        el("td", {}, [el("a", { href: "#/run/" + encodeURIComponent(r.id) + "/chat/" + c.frontend + "/" + encodeURIComponent(c.id), text: c.title })]),
+        el("td", {}, [el("span", { class: "chip " + (c.frontend === "agui" ? "agui" : ""), text: c.frontend === "agui" ? "AG-UI" : "Open WebUI" })]),
+        timeCell(c.created), el("td", { class: "num", text: String(c.messages) })
+      ]);
+    }));
+    return el("table", {}, [el("thead", {}, [el("tr", {}, ["Chat", "Frontend", "Created", "Messages"].map(function (t) { return el("th", { text: t, scope: "col" }); }))]), body]);
+  }
+  function renderWorkspace(w) {
+    var live = w.live_report;
+    var first = w.runs[0];
+    var name = (live && live.workspace) || (first && first.workspace) || w.workspace_id;
+    var owner = (live && live.owner) || (first && first.participant) || "";
+    var head = el("header", { class: "card run-head" }, [
+      el("h1", { text: "Chats of " + name + (owner ? " by " + owner : "") }),
+      el("div", { class: "facts" }, [fact("Workspace", name), fact("Owner", owner), fact("Instance", live ? live.instance : first ? first.instance : ""),
+        fact("Archived runs", w.runs.length), fact("Live report", live ? (live.last_saved ? "saved " + live.last_saved : "present") : "none")]),
+      el("div", { class: "raw-links" }, [
+        live ? el("a", { href: REPORTS + w.workspace_id, text: "Report" }) : null,
+        el("a", { href: API + "workspaces/" + encodeURIComponent(w.workspace_id), text: "JSON" })
+      ])
+    ]);
+    var parts = [crumbs([el("span", { text: name })]), head];
+    if (!w.runs.length) {
+      parts.push(el("section", { class: "card list-card" }, [el("p", { class: "muted", text: "No archived run yet. A workspace's chats are archived when it is stopped; until then they live in the workspace." })]));
+    }
+    w.runs.forEach(function (r) {
+      parts.push(el("section", { class: "card list-card" }, [
+        el("h2", {}, [el("a", { href: "#/run/" + encodeURIComponent(r.id), text: "Run archived " + (r.archived_at || r.id) }),
+          r.report && r.report.filled ? el("span", { class: "chip ok", text: " report filled in" }) : null]),
+        chatsTable(r)
+      ]));
+    });
+    show(el("div", {}, parts));
+    document.title = "Chats of " + name;
+  }
+
   // ---- routing on the hash
   function route() {
     var h = location.hash.replace(/^#\/?/, "");
     var parts = h ? h.split("/").map(decodeURIComponent) : [];
     if (parts.length >= 5 && parts[0] === "run" && parts[2] === "chat") return loadChat(parts[1], parts[3], parts[4]);
     if (parts.length >= 2 && parts[0] === "run") return loadRun(parts[1]);
+    if (parts.length >= 2 && parts[0] === "workspace") return loadWorkspace(parts[1]);
     document.title = "Runs";
     if (state.runs) renderList(); else loadList();
   }

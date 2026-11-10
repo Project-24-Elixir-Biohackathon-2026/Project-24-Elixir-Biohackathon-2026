@@ -57,7 +57,7 @@ curl -s -H "Coder-Session-Token: $TOKEN" https://sperange.bihealth.org/reports/a
 curl -s -H "Coder-Session-Token: $TOKEN" https://sperange.bihealth.org/reports/api/reports                 # the live reports
 ```
 
-The routes are listed in the service's docstring. A chat's turns come from the archived
+`/reports/api/workspaces/<workspace id>` gives one workspace's archived runs with their chats and its live report; the workspace's "Chats" button in Coder (`coder_app.chats` in the template) opens that view (`/reports/runs#/workspace/<id>`). The routes are listed in the service's docstring. A chat's turns come from the archived
 Markdown (`write_run.py` renders both frontends the same way), split at its `## role · time`
 headings and sanitized like the reports; the raw `.md` and `.json` are one link away.
 

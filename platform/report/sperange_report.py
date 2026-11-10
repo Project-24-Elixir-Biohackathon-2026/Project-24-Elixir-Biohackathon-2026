@@ -25,6 +25,7 @@ goes in the coder_session_token cookie or in a Coder-Session-Token header; witho
 one the answer is 401, never a redirect). Everyone logged in may read all of it:
     GET  /reports/api/reports                                   the live reports (the list above as JSON)
     GET  /reports/api/runs                                      every archived run under RUNS_DIR, newest first
+    GET  /reports/api/workspaces/<id>                           one workspace's runs with their chats, and its live report
     GET  /reports/api/runs/<run>                                one run: parameters, report, chats of both frontends
     GET  /reports/api/runs/<run>/report.md                      the archived report, text/markdown
     GET  /reports/api/runs/<run>/chats/<frontend>/<chat>        one chat as turns (role, time, sanitized HTML)
@@ -413,6 +414,16 @@ class Runs:
             self._listing = (now + RUNS_CACHE_SECONDS, rows)
         return rows
 
+    def for_workspace(self, wid: str, instance: str | None) -> list[dict]:
+        """The runs of one workspace: those whose archived report sidecar names it, or (archives
+        without a sidecar) whose instance is the one the workspace's live sidecar names."""
+        rows = []
+        for s in self.listing():
+            report = s.get("report") or {}
+            if report.get("workspace_id") == wid or (instance and s["instance"] == instance and not report.get("workspace_id")):
+                rows.append({**s, "chat_list": self.chats(s["id"])})
+        return rows
+
     def detail(self, rid: str) -> dict:
         d = self.summary(rid)
         d["parameters"] = self.params(rid)
@@ -568,9 +579,7 @@ def list_page(rows: list[dict], user: dict) -> bytes:
     table = ("<table><thead><tr><th>Workspace</th><th>Owner</th><th>Instance</th><th>Created</th>"
              "<th>Last saved</th></tr></thead><tbody>" + "".join(trs) + "</tbody></table>"
              if trs else "<p class=\"muted\">No report yet. A report is created with each workspace.</p>")
-    body = ("<main class=\"list\"><h1>Run reports</h1><p class=\"lead\">One report per workspace, written by its "
-            "owner while testing. Everyone logged in can read them.</p>"
-            f"<section class=\"card\">{table}</section></main>")
+    body = f"<main class=\"list\"><h1>Run reports</h1><section class=\"card\">{table}</section></main>"
     return page("Run reports", body, user)
 
 
@@ -727,6 +736,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(HTTPStatus.OK, {"reports": [public(r) for r in self.store.listing()]})
         if parts == ["runs"]:
             return self.send_json(HTTPStatus.OK, {"runs": self.runs.listing()})
+        if len(parts) == 2 and parts[0] == "workspaces" and UUID_RE.match(parts[1]):
+            wid = parts[1]
+            meta = self.store.meta(wid)
+            live = None
+            if meta is not None and os.path.isfile(self.store._md(wid)):
+                live = {**public(meta), "workspace_id": wid, "last_saved": self.store.last_saved(wid)}
+            runs = self.runs.for_workspace(wid, (meta or {}).get("instance"))
+            return self.send_json(HTTPStatus.OK, {"workspace_id": wid, "live_report": live, "runs": runs})
         if len(parts) < 2 or parts[0] != "runs" or not self.runs.exists(parts[1]):
             return self.send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
         rid, sub = parts[1], parts[2:]

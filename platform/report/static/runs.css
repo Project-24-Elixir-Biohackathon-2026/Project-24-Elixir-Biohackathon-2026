@@ -79,3 +79,4 @@ main.runs td time, main.runs td .when { white-space: nowrap; color: var(--muted)
   .turn.user { margin-left: 0; }
   .turn.assistant { margin-right: 0; }
 }
+.list-card h2 .chip { margin-left: 0.6rem; vertical-align: middle; }

@@ -24,7 +24,7 @@ report as Markdown and rendered HTML, the chat list of both frontends, which raw
 exist), `GET /reports/api/runs/<run>/chats/<frontend>/<chat>` (the chat as turns: role,
 model, time, sanitized HTML and the Markdown of each), the raw `.md` and `.json` of a chat,
 `report.md`, `agui/agent-runs.jsonl`, `agui/journals/<session>.jsonl`, and
-`GET /reports/api/reports` (the live reports). The session token is read from the cookie or
+`GET /reports/api/reports` (the live reports), and `GET /reports/api/workspaces/<id>` (one workspace's runs with their chats, matched by the archived sidecar's workspace id, or by instance name for archives without one, plus its live report). The session token is read from the cookie or
 from a `Coder-Session-Token` header, so `curl` with the token of the `coder` CLI works.
 Without a session the API answers 401 as JSON; the pages still redirect to the login.
 
@@ -38,7 +38,8 @@ as archived is one link away for anyone who wants the structure.
 sortable table, the live reports), one run (facts, report, chats, raw files) and one chat
 (turns) from the API, with the view in the URL's hash so every state has a link. Vanilla
 script, no inline script, the service's Content Security Policy unchanged. The landing page
-gets a third card.
+gets a third card, and every Coder workspace a "Chats" button (`coder_app.chats`) that opens
+`#/workspace/<id>`: the workspace's archived runs with their chats and a link to its report.
 
 **Access.** Everyone logged in reads everything, as with the reports. Never served: the
 participant's e-mail (`run.yml`, the sidecar) and `canaries.json`. Every path component is
