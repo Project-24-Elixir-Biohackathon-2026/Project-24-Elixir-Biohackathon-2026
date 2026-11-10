@@ -39,6 +39,10 @@ start reads this section; keep it short.
 
 <!-- - <item> — from <PR #n / review thread / spec Inputs for>, waits because <reason>. -->
 
+- Canary hits, visible: a live canary detector for participants (hits with trace metadata) and an admin view of all
+  workspaces' hits on the portal — from the user, 2026-11-10; proposal `docs/proposals/2026-11-10-canary-hit-viewer.md`;
+  its spec is being written on `spec/canary-hit-viewer`.
+
 - AG-UI chat, minor polish from #58's review (finding 5): opening a session no holder keeps shows *Loading…* for
   one render; no unit test drives `SessionAgent` with the page (only e2e `leave-running` does); while a chat
   reopened mid-run streams, the whole chat re-renders per message change (`page.tsx`, `midRun`); a ms race between
