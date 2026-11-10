@@ -70,6 +70,7 @@ It needs slices 1–4 (*Inputs for the plan*); slice 2's create form is the smal
 | **Arm** | One of an experiment's two builds: **baseline** (base mitigations) or **mitigated** (base plus the one under test) |
 | **Hand-off** | The instance's files the evaluations read: `canaries.json`, `hardening.json`, `injections.json`, `trs-installed.json`, `drs-inventory.json`, `ca.crt`, `hosts.yml`, `agent_api_key` |
 | **Ladder** | The experiments `ladder-l0` … `ladder-l3`, each adding one level's mitigation |
+| **Scenario** | Not a term of this design, since it has meant three things: a threat file's *Attack Scenarios* entry (prose, about a path plus an attack), a build to evaluate (here an experiment's arm) and a labelled attack prompt with its injection (here an experiment's test). Say path, arm or test instead |
 
 ## Parts
 
