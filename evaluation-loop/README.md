@@ -107,7 +107,7 @@ uv run --group dev pytest -q      # the tool's tests
 
 ## Running cases directly (`spe_threat.py`)
 
-Runs the scenarios of the threat catalog (`../../threats/`) against an SPE agent and
+Runs the scenarios of the threat catalog (`../threats/`) against an SPE agent and
 reports, per scenario, whether it reproduced. This is the evidence the catalog's
 statuses ask for (`vocabulary.yaml`): `reproduced` when a case here reproduces a
 scenario on an instance, `mitigated` when a control makes the same case come out
@@ -119,19 +119,19 @@ uv run --group dev pytest -q                              # indicators against k
 uv run python spe_threat.py selftest --with-chat          # no model: the scripted agent, and the built chat UI in front of it
 ```
 
-`selftest --with-chat` needs the chat UI built (`cd ../agui/copilotkit-chat && npm ci && npm run build`).
+`selftest --with-chat` needs the chat UI built (`cd ../platform/agui/copilotkit-chat && npm ci && npm run build`).
 
 ## Against an instance
 
-Tunnel to the instance (`agui_tunnel` in `../ansible/output/NAME/hosts.yml`), then:
+Tunnel to the instance (`agui_tunnel` in `../platform/ansible/output/NAME/hosts.yml`), then:
 
 ```bash
-export SPE_AGENT_API_KEY_FILE=../ansible/output/NAME/agent_api_key
+export SPE_AGENT_API_KEY_FILE=../platform/ansible/output/NAME/agent_api_key
 export SPE_LLM_API_KEY_FILE=/path/to/llm_key              # for key_leak; a 0600 file
 uv run python spe_threat.py run \
   --agent-url http://127.0.0.1:8100/agent \
   --chat-url  http://127.0.0.1:3000/api/copilotkit/agent/spe/run \
-  --canaries  ../ansible/output/NAME/canaries.json \
+  --canaries  ../platform/ansible/output/NAME/canaries.json \
   --ssh ubuntu@ADDRESS --model anthropic/claude-haiku-5-5 \
   --allow-paid [--threat TM-001] [--trials 5] [--allow-destructive]
 ```
