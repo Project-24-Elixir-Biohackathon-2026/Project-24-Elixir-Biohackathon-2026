@@ -119,6 +119,11 @@ def role_table(cfg: dict) -> str:
     return "models per role:\n" + "\n".join(rows)
 
 
+def hashlib_sha256(data: bytes) -> str:
+    import hashlib
+    return hashlib.sha256(data).hexdigest()
+
+
 def now_id() -> str:
     return datetime.now().strftime("%Y%m%d-%H%M%S")
 
@@ -287,7 +292,8 @@ def propose_drafts(n: int, focus: str | None, context: list[str], dup_threshold:
     except lab_llm.Refused as e:
         print(f"the model refused: {e}")
         return []
-    print(f"  done by Claude Code ({prov['model']}), session {prov['session_id']}")
+    print(f"  done by {prov.get('generator', 'model')} ({prov.get('model')})" +
+          (f", session {prov['session_id']}" if prov.get("session_id") else ""))
     texts = {tid: f"{e['name']} {e['description']}" for tid, e in catalog.items()}
     accepted: list[Path] = []
     for d in drafts:
@@ -941,6 +947,7 @@ def promptfoo_config(rdir: Path, plan: dict, cfg: dict) -> Path:
 def promptfoo_env(rdir: Path, plan: dict) -> dict:
     return {**os.environ, "THREATLAB_APPROVE": plan["hash"][:16], "PROMPTFOO_PYTHON": sys.executable,
             "PROMPTFOO_DISABLE_TELEMETRY": "1", "PROMPTFOO_DISABLE_SHARING": "1", "PROMPTFOO_DISABLE_UPDATE": "1",
+            "PROMPTFOO_DISABLE_REMOTE_GENERATION": "true",
             "PROMPTFOO_CONFIG_DIR": str((rdir / "promptfoo" / ".promptfoo").resolve())}
 
 
@@ -1362,6 +1369,82 @@ def cmd_promote(args, cfg) -> int:
     return 0
 
 
+# --- red-team loop around promptfoo (pf_lab.py) ------------------------------------------------------
+
+def cmd_pf_generate(args, cfg) -> int:
+    import pf_lab
+    pf_lab.generate(args.threat, cfg)
+    return 0
+
+
+def cmd_pf_run(args, cfg) -> int:
+    import pf_lab
+    rdir = Path(args.run_dir)
+    rc = pf_lab.run(rdir, cfg, args.approve)
+    if rc == 0:
+        pf_lab.evaluate(rdir, cfg)
+        print(f"\nnext: uv run python threatlab.py pf-confirm {rdir}")
+    return rc
+
+
+def cmd_pf_evaluate(args, cfg) -> int:
+    import pf_lab
+    pf_lab.evaluate(Path(args.run_dir), cfg)
+    return 0
+
+
+def cmd_pf_confirm(args, cfg) -> int:
+    import pf_lab
+    trials = args.trials or pf_lab.pf_cfg(cfg)["confirm_trials"]
+    out = pf_lab.confirm(Path(args.run_dir), cfg, args.approve, trials)
+    if out is not None:
+        print(f"\nnext: uv run python threatlab.py pf-validate {args.run_dir}")
+    return 0
+
+
+def cmd_pf_validate(args, cfg) -> int:
+    import pf_lab
+    pf_lab.validate(Path(args.run_dir), cfg)
+    print(f"\nnext: uv run python threatlab.py pf-revise {args.run_dir}")
+    return 0
+
+
+def cmd_pf_revise(args, cfg) -> int:
+    import pf_lab
+    pf_lab.revise(Path(args.run_dir), cfg)
+    return 0
+
+
+def cmd_pf_loop(args, cfg) -> int:
+    import pf_lab
+    refs = list(args.threats)
+    if args.propose:
+        refs += [str(d) for d in propose_drafts(args.propose, args.focus, [], 0.6, cfg, with_cases=False)]
+    if not refs:
+        print("name threats (drafts or TM-NNN) or pass --propose N")
+        return 1
+    trials = args.trials or pf_lab.pf_cfg(cfg)["confirm_trials"]
+    pf_lab.loop(refs, cfg, args.rounds, args.budget, trials)
+    if args.promote:
+        import argparse as _a
+        for ref in refs:
+            if not ref.startswith("TM-"):
+                cmd_promote(_a.Namespace(draft=Path(ref).name, evaluation=None), cfg)
+    return 0
+
+
+def cmd_pf_view(args, cfg) -> int:
+    import pf_lab
+    rdir = Path(args.run_dir)
+    return subprocess.run([str(pf_lab.promptfoo_bin()), "view", "--yes"], cwd=rdir,
+                          env=pf_lab.pf_env(rdir, cfg)).returncode
+
+
+def cmd_doctor(args, cfg) -> int:
+    import pf_lab
+    return pf_lab.doctor(cfg)
+
+
 # --- CLI -------------------------------------------------------------------------------------------
 
 MODEL_COMMANDS = {"propose", "variants", "evaluate", "loop", "validate", "pipeline", "adaptive", "promptfoo",
@@ -1443,16 +1526,45 @@ def main() -> int:
     p = sub.add_parser("promote", help="write a checked draft as a new threats/TM-NNN-*.md (for git) and scenarios/TM-NNN.yaml (local)")
     p.add_argument("draft")
     p.add_argument("--evaluation")
+    p = sub.add_parser("pf-generate", help="translator -> promptfoo redteam generate -> checks -> a frozen plan to approve")
+    p.add_argument("threat", help="a draft (drafts/<slug> or its slug) or a catalog id TM-NNN")
+    p = sub.add_parser("pf-run", help="run an approved red-team plan in promptfoo (paid: the agent's model)")
+    p.add_argument("run_dir")
+    p.add_argument("--approve", required=True)
+    p = sub.add_parser("pf-evaluate", help="judge every conversation of a red-team run from raw.jsonl (free)")
+    p.add_argument("run_dir")
+    p = sub.add_parser("pf-confirm", help="replay the hits unchanged with fresh payloads (paid; prints a hash to approve)")
+    p.add_argument("run_dir")
+    p.add_argument("--approve")
+    p.add_argument("--trials", type=int, default=None)
+    p = sub.add_parser("pf-validate", help="the validator on a confirmed red-team run")
+    p.add_argument("run_dir")
+    p = sub.add_parser("pf-revise", help="the reviser rewrites the draft from the validation (drafts only)")
+    p.add_argument("run_dir")
+    p = sub.add_parser("pf-loop", help="generate -> run -> evaluate -> confirm -> validate -> revise, in rounds")
+    p.add_argument("threats", nargs="*", help="drafts or TM-NNN; with --propose, new drafts are added")
+    p.add_argument("--propose", type=int, default=0, help="first let the proposer write N new drafts")
+    p.add_argument("--focus")
+    p.add_argument("--rounds", type=int, default=2)
+    p.add_argument("--budget", type=int, help="agent runs this loop may use; without it, it stops before running")
+    p.add_argument("--trials", type=int, default=None)
+    p.add_argument("--promote", action="store_true", help="promote each draft at the end (new threats/ file)")
+    p = sub.add_parser("pf-view", help="promptfoo's local UI for a red-team run")
+    p.add_argument("run_dir")
+    sub.add_parser("doctor", help="check the models, the chat and promptfoo this config uses, from here")
     args = ap.parse_args()
     cfg = load_config(args.config)
     cfg["allow_paid_models"] = args.allow_paid_models
+    cfg["_config_path"] = Path(args.config).resolve()
     if args.cmd in MODEL_COMMANDS:
         print(role_table(cfg))
     if getattr(args, "via", None):
         cfg["via"] = args.via
     return {"lint": cmd_lint, "propose": cmd_propose, "variants": cmd_variants, "plan": cmd_plan,
             "run": cmd_run, "evaluate": cmd_evaluate, "loop": cmd_loop, "promptfoo": cmd_promptfoo, "validate": cmd_validate, "pipeline": cmd_pipeline, "adaptive": cmd_adaptive,
-            "promote": cmd_promote}[args.cmd](args, cfg)
+            "promote": cmd_promote, "pf-generate": cmd_pf_generate, "pf-run": cmd_pf_run,
+            "pf-evaluate": cmd_pf_evaluate, "pf-confirm": cmd_pf_confirm, "pf-validate": cmd_pf_validate,
+            "pf-revise": cmd_pf_revise, "pf-loop": cmd_pf_loop, "pf-view": cmd_pf_view, "doctor": cmd_doctor}[args.cmd](args, cfg)
 
 
 if __name__ == "__main__":
