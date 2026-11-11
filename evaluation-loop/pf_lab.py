@@ -747,6 +747,8 @@ def doctor(cfg: dict) -> int:
             t.preflight()
             t.close()
             say(True, f"logged-in browser at {cfg.get('cdp')} reaches {cfg.get('chat_url')}")
+        except ModuleNotFoundError:
+            say(False, "browser: playwright is missing: run with `uv run --group browser python threatlab.py ...`")
         except (SystemExit, Exception) as e:  # noqa: BLE001
             say(False, f"browser: {str(e)[:160]}")
     print("promptfoo")

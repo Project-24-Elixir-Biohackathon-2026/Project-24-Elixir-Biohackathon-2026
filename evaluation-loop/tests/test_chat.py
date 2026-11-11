@@ -38,6 +38,12 @@ class StubChat(BaseHTTPRequestHandler):
                              {"type": "RUN_FINISHED"}).encode())
 
     def do_GET(self):
+        if self.path == "/api/sessions":  # the session list chat-ui serves
+            self.send_response(200)
+            self.send_header("content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"sessions": list(StubChat.sessions)}).encode())
+            return
         sid = self.path.rsplit("/", 1)[-1]
         if sid not in StubChat.sessions:
             self.send_response(404); self.end_headers(); return

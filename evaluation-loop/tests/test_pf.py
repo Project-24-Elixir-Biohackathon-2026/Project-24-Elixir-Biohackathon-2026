@@ -367,3 +367,23 @@ def test_pf_model_routes_roles_caps_and_guards_paid(tmp_path, monkeypatch):
     rows = pf_provider.read_rows(tmp_path / "model_calls.jsonl")
     assert [r["role"] for r in rows] == ["attacker", "grader"] and srv.key not in (tmp_path / "model_calls.jsonl").read_text()
     srv.close()
+
+
+def test_doctor_checks_what_the_config_uses(tmp_path):
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import threading
+    from http.server import ThreadingHTTPServer
+
+    from fake_openai import FakeOpenAI
+    from test_chat import StubChat
+    srv = FakeOpenAI()
+    chat = ThreadingHTTPServer(("127.0.0.1", 0), StubChat)
+    threading.Thread(target=chat.serve_forever, daemon=True).start()
+    cfg = {**threatlab.DEFAULTS, "transport": "http",
+           "chat_run_url": f"http://127.0.0.1:{chat.server_port}/api/copilotkit/agent/spe/run",
+           "models": {"default": {"backend": "openai-compatible", "base_url": srv.url, "model": "m1", "api_key": srv.key}}}
+    assert pf_lab.doctor(cfg) == 0 or not (threatlab.PF_DIR / "node_modules").exists()
+    cfg["models"]["default"]["base_url"] = "http://127.0.0.1:9/v1"   # nothing listens there
+    assert pf_lab.doctor(cfg) == 1
+    srv.close()
+    chat.shutdown()
