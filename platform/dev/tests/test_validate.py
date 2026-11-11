@@ -137,7 +137,6 @@ def coder_parameter_names() -> set[str]:
 
 
 def test_known_parameter_keys_match_the_templates_coder_parameters():
-    # Ruling (final review of slice 2/7, Important/Minor on validate.py's known-parameters check):
     # validate.py keeps its own EXPERIMENT_PARAMETER_ANSIBLE_NAMES list rather than parsing main.tf
     # at run time, and this test keeps the two from drifting. 'seed' is the one coder_parameter the
     # template defines that is never a key of an experiment's 'parameters' (the seed is secret, so
@@ -382,6 +381,36 @@ def test_two_mitigations_setting_the_same_on_key_fail_naming_both_files(tmp_path
     assert overlap, problems
 
 
+def test_three_mitigations_setting_the_same_on_key_name_all_three(tmp_path):
+    """Naming only the first-seen owner of a contested key would leave a third mitigation setting
+    it unnamed alongside the second -- the message must name all three files involved, not just
+    two."""
+    mitigations_dir = tmp_path / "mitigations"
+    shutil.copytree(REPO / "mitigations", mitigations_dir)
+    (mitigations_dir / "trs-guard.yml").write_text(
+        "id: trs-guard\n"
+        "name: TRS guard (duplicate of L1's switch, for the test)\n"
+        "description: Sets the same Ansible key as L1.\n"
+        "closes: []\n"
+        '"on": {spe_harden_trs_readonly: true}\n'
+        '"off": {spe_harden_trs_readonly: false}\n'
+    )
+    (mitigations_dir / "trs-guard-2.yml").write_text(
+        "id: trs-guard-2\n"
+        "name: A second mitigation also setting L1's key, for the test\n"
+        "description: Sets the same Ansible key as L1 and trs-guard.\n"
+        "closes: []\n"
+        '"on": {spe_harden_trs_readonly: true}\n'
+        '"off": {spe_harden_trs_readonly: false}\n'
+    )
+    _, problems = validate.validate_mitigations_catalog(
+        mitigations_dir, real_path_ids(), real_probe_ids(), real_group_vars()
+    )
+    overlap = [p for p in problems if "spe_harden_trs_readonly" in p and "L1.yml" in p
+               and "trs-guard.yml" in p and "trs-guard-2.yml" in p]
+    assert overlap, problems
+
+
 def test_two_mitigations_setting_the_same_on_key_pass_when_conflicts_declares_the_pair(tmp_path):
     mitigations_dir = tmp_path / "mitigations"
     shutil.copytree(REPO / "mitigations", mitigations_dir)
@@ -399,6 +428,26 @@ def test_two_mitigations_setting_the_same_on_key_pass_when_conflicts_declares_th
     )
     overlap = [p for p in problems if "spe_harden_trs_readonly" in p and "catalog:" in p]
     assert not overlap, problems
+
+
+def test_mitigation_lowercase_ladder_id_fails(tmp_path):
+    """`l1` has the same shape as the reserved ladder id `L1`, lowercased: confusable enough with
+    it that it is refused rather than accepted as an ordinary kebab-case id."""
+    mitigations_dir = tmp_path / "mitigations"
+    shutil.copytree(REPO / "mitigations", mitigations_dir)
+    (mitigations_dir / "l1.yml").write_text(
+        "id: l1\n"
+        "name: Lowercase ladder-shaped id\n"
+        "description: An id shaped like a reserved ladder level, lowercased.\n"
+        "closes: []\n"
+        "conflicts: [L1]\n"
+        '"on": {spe_harden_trs_readonly: true}\n'
+        '"off": {spe_harden_trs_readonly: false}\n'
+    )
+    _, problems = validate.validate_mitigations_catalog(
+        mitigations_dir, real_path_ids(), real_probe_ids(), real_group_vars()
+    )
+    assert any("l1.yml" in p and "l1" in p and "L<n>" in p for p in problems), problems
 
 
 def test_mitigation_closing_an_unknown_path_fails(tmp_path):

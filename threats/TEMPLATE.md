@@ -31,7 +31,9 @@ stride:
 
 ### Detective
 
-- Controls that notice it happening: canaries, logs, promptfoo assertions.
+- Controls that notice it happening: canaries, logs, promptfoo assertions. An attack prompt or planted
+  injection that shows this threat happening through a path, and the test that scores it, belong in an
+  **experiment** (`../experiments/`, `../CONTRIBUTING.md`), not only here in prose.
 
 ### Responsive
 

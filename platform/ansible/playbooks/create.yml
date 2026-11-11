@@ -34,7 +34,9 @@
         spe_mitigation_catalog_json: >-
           {%- set ns = namespace(list=[]) -%}
           {%- for f in query('ansible.builtin.fileglob', spe_mitigations_root ~ '/*.yml') -%}
+          {%- if (f | basename) != 'TEMPLATE.yml' -%}
           {%- set _ = ns.list.append(lookup('ansible.builtin.file', f) | from_yaml) -%}
+          {%- endif -%}
           {%- endfor -%}
           {{ ns.list | to_json }}
         spe_mitigation_catalog: "{{ spe_mitigation_catalog_json | from_json }}"

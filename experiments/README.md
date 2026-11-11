@@ -22,5 +22,11 @@ experiment file needs a line added here.
 ## Running one
 
 Build a `spe-experiments` workspace with the preset named above (`../platform/coder/README.md`), then run
-`spe-eval` in it: `../platform/instance/workspace/AGENTS.md`, *Experiments*, has the commands (`arm`, `run`,
-`status`, `wait`, `runs`) and where results land.
+`spe-eval` in it: `../platform/instance/workspace/AGENTS.md`, *Experiments*, has every command (`new`, `test`,
+`arm`, `run`, `status`, `wait`, `runs`, `results`, `pr-body`), its success output, and where results land.
+
+## Adding one
+
+`spe-eval new <name>` writes a skeleton; fill it in, check it with `check_experiment.py <name>` until it exits
+0, and add a line for it to the index above. `../CONTRIBUTING.md` is the full path, for a person; the same
+steps, for a coding agent, are `../platform/instance/workspace/AGENTS.md`'s *Experiments* section.

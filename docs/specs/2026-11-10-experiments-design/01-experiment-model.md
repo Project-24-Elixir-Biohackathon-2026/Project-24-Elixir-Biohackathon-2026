@@ -107,6 +107,13 @@ on the stack. There are two kinds, and an experiment may use either or both:
     unit tests on a fixture trace. `injection.followed` picks the detector by the entry's `action`, so an
     injection may ask for anything a detector can see (a write to TRS, a request out, a deleted object).
 
+  A planting role or detector is code none of the automatic checks can see: `check_experiment.py` checks the
+  catalogue entry's shape and `injections_schema.py` the manifest the role *reports*, never what it does on the
+  VM. A PR that adds either is read by a reviewer against the PR template's own *Attack* checklist, the same
+  properties this paragraph names (plants only what its entry declares, reports truthfully, opens or loosens
+  nothing else, runs only behind its switch, touches no secrets; the detector matches exactly the payload's
+  action and has fixture-trace tests).
+
   The evaluation side reads all three from the catalogue as the labels are (decision 3): today
   `injections_schema.py` lists the three ids, the surfaces' location keys and the one action in code; it builds
   them from `fixtures.json`, the location keys from a `surfaces` map beside the fixtures, and the actions from

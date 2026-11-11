@@ -1,0 +1,43 @@
+# Template for experiments/<name>.yml (01-experiment-model.md, *Experiments*). Copy this file to
+# experiments/<name>.yml (kebab-case) and replace every placeholder value (every field still a
+# literal TODO is checked; a value already filled in below, like an empty list, is not); `validate.py`
+# and `check_experiment.py` check the result. `spe-eval new <name> [--threat TM-NNN] [--path P<n>]
+# [--injection <surface>] [--from <experiment>]` writes a filled-in copy of this shape for you
+# (07-agent-friendly.md), deriving the mitigation id, its switch and the test file's name from
+# <name>; delete the slots your idea does not need (05-contribution.md, *A skeleton, not a
+# rulebook*).
+# Excluded from the catalog by every reader (validate.py, check_experiment.py, the spe-experiments
+# template, spe-eval): never rename this file to anything but TEMPLATE.yml.
+
+name: TODO                  # shown on the spe-experiments form; must be unique across experiments/
+description: >              # what this measures and why -- the lasting explanation (05, *Idea and rationale*)
+  TODO
+
+parameters:                 # the spe-experiments template's own form parameters (02-coder-template.md)
+  experiment: TODO            # must equal this file's own stem
+  mitigations: []             # = experiment.base below: mitigations on in the baseline arm too
+  samples: [HG002, HG003, HG004, HG005]   # GIAB samples to seed
+  tiers: [ref, genomes, registry, secret]  # /data-share tiers to seed
+  workflows: [wes-drs-smoke, gatk-hc-chr20]  # TRS tools to install
+  canaries: [registry_tokens, honeypot_files, vcf_variants, flag_file, drs_metadata,
+    trs_descriptions, workflow_comments, service_info]  # canary types this experiment needs
+  flavor: de.NBI mini          # VM sizing
+  smoke_test: true             # run the smoke workflow at creation
+
+experiment:
+  threat: TODO                # a threats/TM-NNN-*.md id (existing, or new: see threats/TEMPLATE.md)
+  paths: [TODO]                # paths/P<n>-*.md ids this measures (existing, or new: paths/TEMPLATE.md)
+  mitigation: TODO             # the mitigation id under test (null for a one-arm, attack-only
+                               # experiment -- then also delete mitigations/<id>.yml and its switch,
+                               # and set the test's own metadata.closed_by: null)
+  base: []                     # mitigation ids already on in both arms (must equal parameters.mitigations)
+  injections: []                # planted attacks on in both arms (fixtures.json ids; 01, *Attacks*);
+                                # stays [] if this idea plants none
+  tests: [TODO]                 # test ids this experiment runs (its own tests/experiments/<name>.yaml,
+                                # plus any existing ones); the utility group always runs as well -- a
+                                # mitigation-only idea with no new attack deletes its own tests file
+                                # and removes this file's own stem from this list
+
+# vars:                        # optional: Ansible values no form parameter offers (02); refused if
+#   spe_frontends: [agui]      # it collides with a mitigation's `on`, an injection's `switch`, or a
+#   spe_eval_sink: true        # parameter's own Ansible name (one place per value)

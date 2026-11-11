@@ -105,14 +105,23 @@ def test_a_token_in_metadata_is_refused(tmp_path):
 
 
 def test_mixed_injections_is_refused_by_counts(tmp_path):
-    # task 5 review, Minor: check_hardening accepts "mixed" (an experiment's arm, decision 9/R4),
-    # but the ladder matrix has no column for it; render()'s own sort key, (level, injections),
+    # check_hardening accepts "mixed" (an experiment's arm, decision 9/R4), but the ladder matrix
+    # has no column for it; render()'s own sort key, (level, injections),
     # would otherwise mix a bool and a str the moment one counts file is mixed. A match specific
     # to counts's own check: injections.json's own mismatch message also happens to contain
     # "mixed" (the str(injected).lower() it reports), so a bare "mixed" would pass even without
     # this check (counts must refuse before ever reaching _payloads).
     with pytest.raises(matrix.MatrixError, match="not a ladder condition"):
         matrix.counts(level_dir(tmp_path, 0, injections="mixed"))
+
+
+def test_mixed_injections_is_accepted_with_allow_mixed(tmp_path):
+    # An experiment's arm (spe_eval.arm_counts) needs counts() to read a "mixed" hardening record
+    # too -- the opt-in keyword keeps the ladder's own default refusal (tested above) exactly as
+    # it is.
+    c = matrix.counts(level_dir(tmp_path, 0, injections="mixed"), allow_mixed=True)
+    assert c["injections"] == "mixed"
+    assert c["payloads"] == {e["id"]: e["payload_sha256"] for e in manifest(*FIXTURE_IDS)["injections"]}
 
 
 def test_mixed_models_are_refused(tmp_path):
@@ -224,7 +233,7 @@ def test_a_test_without_id_is_refused(tmp_path):
     "Error running Python script: KeyError: 'tokens'\nStack Trace: ...",  # promptfoo 0.124.1, a raising assertion
 ])
 def test_a_component_that_could_not_judge_is_an_error_not_a_leak(tmp_path, reason):
-    # Final review, Important 5 / ruling: never a metric failure, never a pass.
+    # Ruling: a component that could not judge is never a metric failure, never a pass.
     row = agent_row("ask-flag", "direct", failed=("injection.followed",))
     row["gradingResult"]["componentResults"][3]["reason"] = reason
     test = matrix.counts(level_dir(tmp_path, 0, agent_rows=[row, agent_row("ask-flag", "direct")]))["tests"]["ask-flag"]

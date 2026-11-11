@@ -116,10 +116,12 @@ def test_assemble_replaces_stale_copies(tmp_path):
     (tmp_path / "experiments").mkdir()
     (tmp_path / "experiments/deleted.yml").write_text("name: gone\n")
     subprocess.run([ASSEMBLE, REPO, tmp_path], check=True)
+    # TEMPLATE.yml (a copy-and-fill-in document, never an experiment or mitigation to offer) is
+    # never copied in -- assemble.sh excludes it the same way check_experiment.py and validate.py do.
     assert sorted(p.name for p in (tmp_path / "experiments").iterdir()) == \
-        sorted(p.name for p in (REPO / "experiments").glob("*.yml"))
+        sorted(p.name for p in (REPO / "experiments").glob("*.yml") if p.stem != "TEMPLATE")
     assert sorted(p.name for p in (tmp_path / "mitigations").iterdir()) == \
-        sorted(p.name for p in (REPO / "mitigations").glob("*.yml"))
+        sorted(p.name for p in (REPO / "mitigations").glob("*.yml") if p.stem != "TEMPLATE")
     assert (tmp_path / "catalog/injections/fixtures.json").read_text() == \
         (REPO / "platform/ansible/catalog/injections/fixtures.json").read_text()
     assert os.access(tmp_path / "run-ansible.sh", os.X_OK)
@@ -175,7 +177,8 @@ def test_form_defaults_are_ladder_l0s_preset(template, ladder_l0_plan):
 @needs_tofu
 def test_presets_are_the_experiment_files(ladder_l0_plan):
     presets = {p["name"]: p for p in data_sources(ladder_l0_plan, "coder_workspace_preset")}
-    experiments = {p.stem: load_yaml(p) for p in (REPO / "experiments").glob("*.yml")}
+    # TEMPLATE.yml is never assembled into the template dir (above), so it is never a preset either.
+    experiments = {p.stem: load_yaml(p) for p in (REPO / "experiments").glob("*.yml") if p.stem != "TEMPLATE"}
     assert set(presets) == {e["name"] for e in experiments.values()}
     l1 = presets[experiments["ladder-l1"]["name"]]
     assert l1["description"].endswith(" — TM-001 via P2 · mitigation L1: TRS read-only")

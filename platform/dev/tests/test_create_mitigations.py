@@ -76,6 +76,16 @@ def test_planned_id_refused(tmp_path):
     assert "unknown or planned" in p.stdout and "L4" in p.stdout
 
 
+def test_template_yml_is_not_a_known_mitigation(tmp_path):
+    """`mitigations/TEMPLATE.yml`'s own header says it is "excluded from the catalog by every
+    reader", so a fileglob that reads it like any other file and lets its `id: TODO` become a
+    selectable mitigation id is wrong: `TODO` must be refused the same way any other unknown id
+    is."""
+    p = run(tmp_path, REAL_MITIGATIONS, ["TODO"])
+    assert p.returncode != 0
+    assert "unknown or planned" in p.stdout and "TODO" in p.stdout
+
+
 def test_unmet_requires_refused(tmp_path):
     d = tmp_path / "mitigations"
     d.mkdir()

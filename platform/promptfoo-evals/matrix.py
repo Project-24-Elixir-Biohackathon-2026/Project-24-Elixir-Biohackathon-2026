@@ -61,7 +61,7 @@ def build_catalogue(root: Path) -> dict:
         | {p.stem for p in promptfoo.glob("tests/experiments/*.yaml")}
     threats = {"-".join(p.stem.split("-")[:2]) for p in (Path(root) / "threats").glob("TM-*.md")}
     paths = {p.stem.split("-")[0] for p in (Path(root) / "paths").glob("P*-*.md")}
-    closed_by = {p.stem for p in (Path(root) / "mitigations").glob("*.yml")}
+    closed_by = {p.stem for p in (Path(root) / "mitigations").glob("*.yml") if p.stem != "TEMPLATE"}
     return {
         "group": frozenset(groups),
         "threat": frozenset(threats | {None}),
@@ -193,23 +193,31 @@ def _payloads(directory: Path, injected: bool) -> dict[str, str]:
     return payloads
 
 
-def counts(level_dir: Path) -> dict:
+def counts(level_dir: Path, *, allow_mixed: bool = False) -> dict:
+    """One report directory's counts (the ladder's own reading, decision 11). `allow_mixed`
+    (default `False`, the ladder's own call: unchanged) lets a hardening record whose
+    `injections` is `"mixed"` through instead of refusing it: an experiment's arm can plant only
+    some of the catalogue's fixtures (decision 9 / R4), which is exactly that record, and
+    `spe_eval.arm_counts` (experiments spec part 07, `results`/`pr-body`) needs to read it too."""
     directory = Path(level_dir)
     try:
         record = handoff.check_hardening(_load(directory / "hardening.json"))
     except handoff.ConfigError as e:
         # The contract promises MatrixError; a caller catching only that must not see a bare ConfigError.
         raise MatrixError(str(e)) from e
-    if record["injections"] == "mixed":
+    if record["injections"] == "mixed" and not allow_mixed:
         # check_hardening accepts "mixed" for an experiment's arm (decision 9 / R4), but the ladder
         # matrix only ever has true/false columns: render()'s own sort key, (level, injections),
-        # would mix a bool and a str the moment one counts file is mixed (task 5 review, Minor).
+        # would mix a bool and a str the moment one counts file is mixed.
         raise MatrixError(f"{directory / 'hardening.json'}: injections is \"mixed\", not a ladder "
                           "condition (true or false); the ladder matrix has no column for it")
     run = _run(directory)
+    # "mixed" means at least one catalogue fixture is planted (never none, by definition): the
+    # same bool _payloads itself uses for the "every fixture on" case.
+    payloads_injected = True if record["injections"] == "mixed" else record["injections"]
     return {"schema_version": 1, "instance": record["instance"], "level": record["level"],
             "injections": record["injections"], "started": run["started"],
-            "canaries_sha256": run["canaries_sha256"], "payloads": _payloads(directory, record["injections"]),
+            "canaries_sha256": run["canaries_sha256"], "payloads": _payloads(directory, payloads_injected),
             "model": f"{record['model_provider']}:{record['model']}", "commit": record["commit"],
             "restore_seconds": record.get("restore_seconds"),
             "controls": _controls(_rows(_load(directory / "controls.json"), "controls.json")),

@@ -1,0 +1,30 @@
+# Template for mitigations/<id>.yml (01-experiment-model.md, *Mitigations*). Copy this file to
+# mitigations/<id>.yml (kebab-case, or L<n> for a ladder level) and replace every placeholder value
+# (every field still a literal TODO is checked; a value already filled in below, like an empty
+# list, is not); `validate.py` and `check_experiment.py` check the result. `spe-eval new <name>`
+# writes a filled-in copy of this shape for you, with its own switch already wired to
+# group_vars/all.yml.
+# Excluded from the catalog by every reader (validate.py, check_experiment.py, the spe-experiments
+# template, spe-eval): never rename this file to anything but TEMPLATE.yml.
+
+id: TODO                 # kebab-case (matches this file's own stem once renamed); L<n> is reserved
+                          # for ladder levels (mitigations/L1.yml .. L5.yml)
+name: TODO                # short name, shown on the spe-experiments form
+description: >            # one or two sentences: what it changes, and where, when it is on
+  TODO
+
+closes: []                # path ids (P<n>, paths/) this closes when on; stays [] for a
+                          # control that narrows rather than closes (it still needs `probes` below
+                          # to show its effect)
+
+# The Ansible values for this mitigation's own switch, spe_mitigate_<id with - as _>: `on` may be
+# any value, not only a plain boolean -- a map or a list (see mitigations/L2.yml for a list
+# example); `off` MUST equal the default already in platform/ansible/inventory/group_vars/all.yml,
+# so a build with every mitigation off stays today's build (decision 4).
+"on": {spe_mitigate_TODO: true}
+"off": {spe_mitigate_TODO: false}
+
+requires: []               # optional: mitigation ids that must also be on for this one to make sense
+conflicts: []               # optional: mitigation ids that must not be on at the same time
+probes: []                  # optional: controls-suite probes (platform/promptfoo-evals/probes/*.sh)
+                            # this mitigation closes when on (03, the gate)

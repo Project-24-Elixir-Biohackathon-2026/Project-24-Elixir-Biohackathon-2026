@@ -3,7 +3,8 @@
 # The build is spe's (platform/coder/template/, unchanged): the same parameters, agent,
 # apps and run-ansible.sh around create.yml/destroy.yml. It adds an Experiment select
 # and a Mitigations multi-select, and nothing experiment-specific is written here:
-# experiments/*.yml, mitigations/*.yml, catalog/injections/fixtures.json and
+# experiments/*.yml, mitigations/*.yml (each skipping its own TEMPLATE.yml, a copy-and-fill-in
+# document, not a real experiment or mitigation), catalog/injections/fixtures.json and
 # run-ansible.sh are copied into this directory by assemble.sh (the portal's sync
 # runs it before every push), because fileset() sees only files inside it.
 terraform {

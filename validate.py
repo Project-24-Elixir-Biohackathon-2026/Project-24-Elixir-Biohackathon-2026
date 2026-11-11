@@ -119,6 +119,11 @@ PATH_REQUIRED_FIELDS = ["id", "name", "description", "reaches"]
 PATH_BODY_HEADINGS = [(2, "Route"), (2, "Shown by")]
 
 MITIGATION_ID_PATTERN = re.compile(r"^(?:L\d+|[a-z0-9]+(?:-[a-z0-9]+)*)$")
+# A lowercase l<n> matches the kebab-case branch above (a single word of letters and digits needs
+# no hyphen), so it would otherwise pass as an ordinary contributed id indistinguishable from the
+# ladder's own reserved L<n> (uppercase only): refused instead, on the ruling that the whole l<n>
+# shape is reserved, not just L<n>.
+LOWERCASE_LADDER_ID_PATTERN = re.compile(r"^l\d+$")
 MITIGATION_REQUIRED_FIELDS = ["id", "name", "description", "closes"]
 MITIGATION_OPTIONAL_FIELDS = ["on", "off", "requires", "conflicts", "probes", "status"]
 MITIGATION_ALLOWED_FIELDS = MITIGATION_REQUIRED_FIELDS + MITIGATION_OPTIONAL_FIELDS
@@ -455,6 +460,11 @@ def check_mitigation(mitigation: Mitigation, path_ids: set[str], mitigation_ids:
     entry_id = meta["id"]
     if not isinstance(entry_id, str) or not MITIGATION_ID_PATTERN.match(entry_id):
         errors.append(f"id '{entry_id}' does not match format L<n> or kebab-case")
+    elif LOWERCASE_LADDER_ID_PATTERN.match(entry_id):
+        errors.append(
+            f"id '{entry_id}' looks like a ladder level written lowercase: reserved ladder ids "
+            "are L<n> (uppercase) only, pick a different id"
+        )
     elif entry_id != stem:
         errors.append(f"id '{entry_id}' does not match filename stem '{stem}'")
 
@@ -525,13 +535,17 @@ def check_mitigation(mitigation: Mitigation, path_ids: set[str], mitigation_ids:
 
 def check_mitigations_catalog(mitigations: list[Mitigation]) -> list[str]:
     """Cross-mitigation checks: duplicate ids, one owner per 'on' Ansible key,
-    unless the pair declares the overlap in 'conflicts' (either direction)."""
+    unless every pair sharing it declares the overlap in 'conflicts' (either direction).
+
+    Every mitigation that sets a contested key is named in its error: naming only the first-seen
+    owner would report a key set by three or more mitigations against that first owner alone,
+    never naming the others to each other."""
     errors = []
     ids_seen: dict[str, str] = {}
     conflicts_by_id = {
         m.meta.get("id"): set(m.meta.get("conflicts") or []) for m in mitigations
     }
-    owners: dict[str, tuple[str, str]] = {}  # Ansible key -> (mitigation id, filename)
+    owners: dict[str, list[tuple[str, str]]] = {}  # Ansible key -> every (mitigation id, filename) setting it
     for m in mitigations:
         entry_id = m.meta.get("id")
         if entry_id in ids_seen:
@@ -542,25 +556,28 @@ def check_mitigations_catalog(mitigations: list[Mitigation]) -> list[str]:
         on = m.meta.get("on")
         if isinstance(on, dict):
             for key in on:
-                if key not in owners:
-                    owners[key] = (entry_id, m.path.name)
-                    continue
-                other_id, other_name = owners[key]
-                if other_id == entry_id:
-                    continue
-                declared = (
-                    entry_id in conflicts_by_id.get(other_id, set())
-                    or other_id in conflicts_by_id.get(entry_id, set())
-                )
-                if not declared:
-                    errors.append(f"Ansible key '{key}' is set in both {other_name} and {m.path.name}")
+                owners.setdefault(key, []).append((entry_id, m.path.name))
+
+    def declared(a_id: str, b_id: str) -> bool:
+        return a_id in conflicts_by_id.get(b_id, set()) or b_id in conflicts_by_id.get(a_id, set())
+
+    for key, who in owners.items():
+        if len(who) < 2:
+            continue
+        undeclared = {name for i, (a_id, name) in enumerate(who)
+                      if any(not declared(a_id, b_id) for j, (b_id, _) in enumerate(who) if j != i)}
+        if undeclared:
+            errors.append(f"Ansible key '{key}' is set with no declared conflict in: "
+                           + ", ".join(sorted(undeclared)))
     return errors
 
 
 def validate_mitigations_catalog(mitigations_dir: Path, path_ids: set[str], probe_ids: set[str],
                                   group_vars: dict) -> tuple[list[Mitigation], list[str]]:
-    """Load and check every <id>.yml. Returns (valid mitigations, problems), as validate_catalog does."""
-    files = sorted(mitigations_dir.glob("*.yml"))
+    """Load and check every <id>.yml, except TEMPLATE.yml (a copy-and-fill-in document, not a
+    mitigation to validate; `mitigations/TEMPLATE.yml`). Returns (valid mitigations, problems), as
+    validate_catalog does."""
+    files = sorted(p for p in mitigations_dir.glob("*.yml") if p.stem != "TEMPLATE")
     if not files:
         return [], [f"no *.yml files found in '{mitigations_dir}'"]
 
@@ -798,10 +815,11 @@ def check_experiments_catalog(entries: list[ExperimentEntry], experiments_dir: P
 def validate_experiments_catalog(experiments_dir: Path, threat_ids: set[str], path_ids: set[str],
                                   mitigations: dict[str, dict], fixtures: list[dict], test_ids: set[str],
                                   reserved_vars: set[str]) -> tuple[list[ExperimentEntry], list[str]]:
-    """Load and check every experiments/*.yml. Returns (valid entries, problems), as validate_catalog
-    does. Unlike the other catalogs, an empty or absent directory is not itself a problem: callers
-    check `experiments_dir.is_dir()` first (experiments are optional)."""
-    files = sorted(experiments_dir.glob("*.yml"))
+    """Load and check every experiments/*.yml, except TEMPLATE.yml (a copy-and-fill-in document, not
+    an experiment to validate; `experiments/TEMPLATE.yml`). Returns (valid entries, problems), as
+    validate_catalog does. Unlike the other catalogs, an empty or absent directory is not itself a
+    problem: callers check `experiments_dir.is_dir()` first (experiments are optional)."""
+    files = sorted(p for p in experiments_dir.glob("*.yml") if p.stem != "TEMPLATE")
     entries: list[ExperimentEntry] = []
     problems: list[str] = []
     for path in files:

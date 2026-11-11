@@ -98,9 +98,12 @@ def switches(ids: list[str], repo_root: Path = REPO_ROOT) -> dict[str, bool]:
 
 def check_fixtures(repo_root: Path = REPO_ROOT) -> list[str]:
     """Lints fixtures.json against the invariants every entry must meet (spec 01, *Attacks*):
-    complete, unique id and switch, a switch named `spe_inject_*`, a known surface, an action a
-    detector can score, a payload file that is present and names its target, and a switch that
-    defaults to `false` in `group_vars/all.yml` (so a build with every switch off is today's).
+    every field a string but `select` (a membership test on a wrong-typed field would otherwise
+    raise rather than report), unique id and switch, a switch named `spe_inject_*`, a known
+    surface, an action a detector can score, `select` exactly one key (what the planting role
+    matches the real placement by), a payload that is a plain filename (never a path that climbs
+    out of the injections directory), present and naming its target, and a switch that defaults
+    to `false` in `group_vars/all.yml` (so a build with every switch off is today's).
     """
     root = Path(repo_root)
     try:
@@ -129,6 +132,14 @@ def check_fixtures(repo_root: Path = REPO_ROOT) -> list[str]:
         if missing:
             errors.append(f"{where}: missing {', '.join(missing)}")
             continue
+        # Every field but `select` is a string: a membership test on a field of the wrong type --
+        # `fx["surface"] not in surfaces`, `switch in seen_switches` -- raises TypeError for an
+        # unhashable value, e.g. a list, instead of a clean lint error; checked, and the rest of
+        # this fixture skipped, before any such test runs.
+        not_strings = [f for f in FIXTURE_FIELDS if f != "select" and not isinstance(fx[f], str)]
+        if not_strings:
+            errors.append(f"{where}: {', '.join(not_strings)} must be strings")
+            continue
         if iid in seen_ids:
             errors.append(f"{where}: duplicate id")
         seen_ids.add(iid)
@@ -136,21 +147,33 @@ def check_fixtures(repo_root: Path = REPO_ROOT) -> list[str]:
         if switch in seen_switches:
             errors.append(f"{where}: duplicate switch {switch}")
         seen_switches.add(switch)
-        if not (isinstance(switch, str) and switch.startswith("spe_inject_")):
+        if not switch.startswith("spe_inject_"):
             errors.append(f"{where}: switch must start with spe_inject_")
         if fx["surface"] not in surfaces:
             errors.append(f"{where}: unknown surface {fx['surface']!r}")
         if fx["action"] not in detectors:
             errors.append(f"{where}: no detector for action {fx['action']!r}")
-        payload_path = root / PAYLOAD_DIR / fx["payload"]
-        try:
-            text = payload_path.read_text()
-        except OSError:
-            errors.append(f"{where}: payload file {fx['payload']} not found")
+        select = fx.get("select")
+        if not isinstance(select, dict) or len(select) != 1:
+            # Exactly one key (01-experiment-model.md, *Attacks*): the planting role matches it
+            # against the real placement's own top-level or `location` field
+            # (`injections_manifest.py`: `(key, want), = fx["select"].items()`, which raises
+            # "not enough values to unpack"/"too many values to unpack" for anything else).
+            errors.append(f"{where}: select must hold exactly one key")
+        payload = fx["payload"]
+        payload_rel = PurePosixPath(payload)
+        if payload_rel.is_absolute() or ".." in payload_rel.parts or payload != payload_rel.name:
+            errors.append(f"{where}: payload must be a plain filename, not {payload!r}")
         else:
-            if fx["target_file"] not in text:
-                errors.append(f"{where}: payload {fx['payload']} does not name {fx['target_file']}")
-        if isinstance(switch, str) and not re.search(rf"^{re.escape(switch)}: false\b", group_vars, re.MULTILINE):
+            payload_path = root / PAYLOAD_DIR / payload
+            try:
+                text = payload_path.read_text()
+            except OSError:
+                errors.append(f"{where}: payload file {payload} not found")
+            else:
+                if fx["target_file"] not in text:
+                    errors.append(f"{where}: payload {payload} does not name {fx['target_file']}")
+        if not re.search(rf"^{re.escape(switch)}: false\b", group_vars, re.MULTILINE):
             errors.append(f"{where}: switch {switch} does not default to false in {GROUP_VARS}")
     return errors
 

@@ -68,7 +68,7 @@ def test_catalogue_matches_the_committed_files():
     groups = {p.stem for p in TESTS_DIR.glob("*.yaml")} | {p.stem for p in (TESTS_DIR / "experiments").glob("*.yaml")}
     threats = {"-".join(p.stem.split("-")[:2]) for p in (REPO / "threats").glob("TM-*.md")}
     paths = {p.stem.split("-")[0] for p in (REPO / "paths").glob("P*-*.md")}
-    closed_by = {p.stem for p in (REPO / "mitigations").glob("*.yml")}
+    closed_by = {p.stem for p in (REPO / "mitigations").glob("*.yml") if p.stem != "TEMPLATE"}
     assert matrix.CATALOGUE == {
         "group": frozenset(groups), "threat": frozenset(threats | {None}),
         "path": frozenset(paths | {None}), "closed_by": frozenset(closed_by | {None}),
@@ -143,6 +143,6 @@ def test_a_missing_group_is_rejected(tmp_path):
 
 
 def test_a_null_id_is_rejected(tmp_path):
-    """id: null must not be rejected with the generic 'id must be kebab-case' message (minor, task 5 review)."""
+    """id: null must not be rejected with the generic 'id must be kebab-case' message."""
     errors = lint([write(tmp_path, GOOD.replace("id: ask-flag", "id: null"))])
     assert any("id must not be null" in e for e in errors), errors

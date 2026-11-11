@@ -24,9 +24,16 @@ class ManifestBuildError(Exception):
 
 def build(fixtures: list[dict], switches: dict, placements: list[dict], canary_files: set[str],
           payload_dir: Path, repo_root: Path) -> dict:
-    by_id = {}
+    by_id: dict[str, list[dict]] = {}
     for p in placements:
-        by_id.setdefault(p.get("id"), []).append(p)
+        # `p["id"]`, not `.get("id")` (final review, I4b): a placement with no 'id' used to be
+        # grouped silently under the key None, which either lingered unreported (no fixture ever
+        # has id None) or, once a second kind of unmatched placement existed too, made the final
+        # `sorted(by_id)` below raise TypeError (None is not orderable against a str) instead of
+        # this clear error.
+        if "id" not in p:
+            raise ManifestBuildError("a placement was reported with no 'id'")
+        by_id.setdefault(p["id"], []).append(p)
     entries = []
     for fx in fixtures:
         found = by_id.pop(fx["id"], [])
