@@ -1,0 +1,160 @@
+---
+# The hand-off, held a second time on the VM itself (experiments spec part 03, *The hand-off on the
+# VM*): spe-eval runs promptfoo locally against this instance, with no controller and no SSH tunnel,
+# so it needs its own copy of everything a promptfoo run normally reads over SPE_HANDOFF_DIR from the
+# controller's output/<instance>/. Written once, at build time (this file runs under the "handoff"
+# tag only, never spe-apply all's): every value here (the canary record, the registrations, the
+# certificate, the keys, hosts.yml) is the same for every arm of one build, unlike hardening.json
+# (vm_hardening.yml), which a later spe-apply all rewrites per arm.
+#
+# Included from main.yml, so spe_canary_record, spe_drs_result, spe_trs_result and spe_svc_canaries
+# are already set; no delegate_to, so these tasks target the VM (this play's own host), unlike the
+# controller-only tasks above (delegate_to: localhost) that wrote the same information to
+# spe_output_dir on a possibly different machine.
+# fix round 1, Minor 4 -- an explicit task, rather than relying on Ansible's own behaviour of
+# applying a `file` task's owner/mode to the intermediate directories it creates along the way
+# (the handoff/ task below would otherwise be ~/spe-eval's only creator): makes the guarantee
+# visible and keeps it whatever order the tasks below run in.
+- name: "{{ spe_eval_dir }} itself (owner the workspace user, mode 0700)"
+  ansible.builtin.file:
+    path: "{{ spe_eval_dir }}"
+    state: directory
+    owner: "{{ spe_ssh_user }}"
+    group: "{{ spe_ssh_user }}"
+    mode: "0700"
+
+- name: ~/spe-eval/handoff (owner the workspace user, mode 0700 -- canaries and keys live under it)
+  ansible.builtin.file:
+    path: "{{ spe_eval_dir }}/handoff"
+    state: directory
+    owner: "{{ spe_ssh_user }}"
+    group: "{{ spe_ssh_user }}"
+    mode: "0700"
+
+- name: ~/spe-eval/{reports,promptfoo} (spe-eval's own reports and PROMPTFOO_CONFIG_DIR)
+  ansible.builtin.file:
+    path: "{{ spe_eval_dir }}/{{ item }}"
+    state: directory
+    owner: "{{ spe_ssh_user }}"
+    group: "{{ spe_ssh_user }}"
+    mode: "0755"
+  loop: [reports, promptfoo]
+
+- name: Canary record (plaintext, on the VM -- spe-eval's own promptfoo run reads it locally)
+  ansible.builtin.copy:
+    content: "{{ spe_canary_record | to_nice_json }}\n"
+    dest: "{{ spe_eval_dir }}/handoff/canaries.json"
+    owner: "{{ spe_ssh_user }}"
+    mode: "0600"
+  no_log: true
+
+- name: DRS inventory and installed workflows (VM copy)
+  ansible.builtin.copy:
+    content: "{{ item.content | to_nice_json }}\n"
+    dest: "{{ spe_eval_dir }}/handoff/{{ item.name }}"
+    owner: "{{ spe_ssh_user }}"
+    mode: "0600"
+  loop:
+    - { name: drs-inventory.json, content: "{{ spe_drs_result.inventory }}" }
+    - { name: trs-installed.json, content: "{{ spe_trs_result.installed }}" }
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Trust anchor for clients (VM copy; the certificate already lives on this VM)
+  ansible.builtin.copy:
+    src: "{{ spe_cert_dir }}/traefik.crt"
+    dest: "{{ spe_eval_dir }}/handoff/ca.crt"
+    owner: "{{ spe_ssh_user }}"
+    mode: "0644"
+    remote_src: true
+
+- name: Agent bearer key (VM copy; spe-eval's own promptfoo run reads it locally)
+  ansible.builtin.copy:
+    content: "{{ spe_agent_api_key }}\n"
+    dest: "{{ spe_eval_dir }}/handoff/agent_api_key"
+    owner: "{{ spe_ssh_user }}"
+    mode: "0600"
+  no_log: true
+  when: "'agui' in spe_frontends"
+
+# The LLM key the key-leak metric reads (asserts.no_key_leak, SPE_LLM_API_KEY_FILE): on the
+# controller this is the operator's own file, outside the repository, exported by hand for a ladder
+# run; an unattended spe-eval run on the VM has no operator to export it, so the handoff role writes
+# it here instead, from the same spe_agent_llm_key the agui role already gives the agent container.
+- name: LLM key file (VM copy; spe-eval sets SPE_LLM_API_KEY_FILE to it)
+  ansible.builtin.copy:
+    content: "{{ spe_agent_llm_key }}\n"
+    dest: "{{ spe_eval_dir }}/handoff/llm_api_key"
+    owner: "{{ spe_ssh_user }}"
+    mode: "0600"
+  no_log: true
+  when: "'agui' in spe_frontends"
+
+- name: Connection details (VM copy; provision existing, ssh_target localhost -- isolation.vm_runner runs locally)
+  ansible.builtin.copy:
+    content: |
+      # Managed by spe-ansible (role: handoff). The VM's own copy of hosts.yml, for spe-eval's
+      # promptfoo run, which has no controller and no SSH tunnel to itself.
+      {{ spe_vm_handoff | to_nice_yaml(width=1000) }}
+    dest: "{{ spe_eval_dir }}/handoff/hosts.yml"
+    owner: "{{ spe_ssh_user }}"
+    mode: "0600"
+  vars:
+    spe_vm_handoff_common:
+      instance: "{{ spe_instance }}"
+      server: "{{ spe_instance }}-api"
+      api_host: "{{ spe_api_host }}"
+      ssh_user: "{{ spe_ssh_user }}"
+      provision: existing
+      ssh_target: localhost
+      wes: "https://{{ spe_api_host }}/ga4gh/wes/v1"
+      drs: "https://{{ spe_api_host }}/ga4gh/drs/v1"
+      trs: "https://{{ spe_api_host }}/ga4gh/trs/v2"
+      weskit_image: "{{ spe_weskit_image }}"
+      frontends: "{{ spe_frontends }}"
+    spe_vm_handoff_agui: >-
+      {{ {'agent_url': 'http://127.0.0.1:' ~ spe_agui_agent_port ~ '/agent',
+          'agent_api_key_file': spe_eval_dir ~ '/handoff/agent_api_key',
+          'agent_model': spe_agent_model_provider ~ ':' ~ spe_agent_model}
+         if 'agui' in spe_frontends else {} }}
+    spe_vm_handoff: "{{ spe_vm_handoff_common | combine(spe_vm_handoff_agui) }}"
+
+# injections.json (VM copy): the same switches and placements as the controller's own manifest
+# (spe_eval.py's arm_vars sets the same injection switches for every arm of one experiment, 01
+# *Attacks*), built by the same script, run on the VM against the VM's own clone, so a later
+# spe-apply all (which cannot re-derive spe_canary_record: spe_data's canary tokens are only
+# computed under the "data" tag, which spe-apply all never passes) never needs to touch it again.
+- name: Injection manifest (VM copy)
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ spe_repo_dir }}/platform/ansible/roles/handoff/files/injections_manifest.py"
+      - --fixtures
+      - "{{ spe_repo_dir }}/platform/ansible/catalog/injections/fixtures.json"
+      - --repo-root
+      - "{{ spe_repo_dir }}"
+      - --out
+      - "{{ spe_eval_dir }}/handoff/injections.json"
+    stdin: "{{ handoff_injection_input | to_json }}"
+  vars:
+    spe_injection_switches_json: >-
+      {%- set ns = namespace(d={}) -%}
+      {%- for fx in spe_injection_fixtures -%}
+      {%- set _ = ns.d.update({fx.switch: (lookup('vars', fx.switch, default=false) | bool)}) -%}
+      {%- endfor -%}
+      {{ ns.d | to_json }}
+    spe_injection_switches: "{{ spe_injection_switches_json | from_json }}"
+    handoff_injection_input:
+      switches: "{{ spe_injection_switches }}"
+      placements: "{{ (spe_trs_result.injections | default([])) + (spe_drs_result.injections | default([])) }}"
+      canary_files: "{{ spe_canary_record.tokens | map(attribute='file') | unique | list }}"
+  changed_when: true
+
+- name: Injection manifest matches its schema (VM copy)
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ spe_repo_dir }}/platform/promptfoo-evals/injections_schema.py"
+      - "{{ spe_eval_dir }}/handoff/injections.json"
+      - "{{ spe_repo_dir }}"
+  changed_when: false

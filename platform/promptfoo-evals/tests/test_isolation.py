@@ -82,6 +82,31 @@ def test_snapshot_key_follows_the_build(hdir):
     assert isolation.snapshot_key(hdir) == ("eval-01", KEY)
 
 
+def test_snapshot_key_with_no_hardening_file_equals_todays_build(hdir):
+    # Older hand-offs, or a plain (non-experiments) build: no hardening.json at all.
+    assert isolation.snapshot_key(hdir) == ("eval-01", KEY)
+
+
+@pytest.mark.parametrize("mitigations", [[], None])
+def test_snapshot_key_with_an_empty_mitigation_set_equals_todays_build(hdir, mitigations):
+    (hdir / "hardening.json").write_text(json.dumps({"schema_version": 1, "mitigations": mitigations}))
+    assert isolation.snapshot_key(hdir) == ("eval-01", KEY)
+
+
+def test_snapshot_key_includes_the_sorted_mitigation_set(hdir):
+    (hdir / "hardening.json").write_text(json.dumps({"schema_version": 1, "mitigations": ["m2", "m1"]}))
+    assert isolation.snapshot_key(hdir) == ("eval-01", f"{KEY}+m1+m2")
+
+
+def test_snapshot_key_rejects_a_malformed_mitigation_list(hdir):
+    (hdir / "hardening.json").write_text(json.dumps({"mitigations": ["not a valid id!"]}))
+    with pytest.raises(isolation.ConfigError, match="mitigations"):
+        isolation.snapshot_key(hdir)
+    (hdir / "hardening.json").write_text("not json")
+    with pytest.raises(isolation.ConfigError):
+        isolation.snapshot_key(hdir)
+
+
 @pytest.mark.parametrize("record", [{"instance": "a;rm -rf /", "generated_at": STAMP},
                                     {"instance": "eval-01", "generated_at": "yesterday"}, None])
 def test_bad_or_missing_record_is_a_config_error(tmp_path, record):
@@ -190,16 +215,40 @@ def test_snapshot_and_restore_scripts_round_trip(tmp_path):
     (vol / "sub").mkdir(parents=True)
     (vol / "a").write_text("1")
     (vol / "sub" / "b").write_text("2")
-    (roots["s"] / "eval-01" / "old").mkdir(parents=True)
+    older_build = "2026-10-20T000000Z"  # a different stamp: an earlier build, pruned on this snapshot
+    (roots["s"] / "eval-01" / older_build).mkdir(parents=True)
+    same_build_other_arm = KEY + "+m1"  # same stamp, another arm: kept (Snapshots per arm)
+    (roots["s"] / "eval-01" / same_build_other_arm).mkdir(parents=True)
+    (roots["s"] / "eval-01" / KEY / "stale.tar").parent.mkdir(parents=True)
+    (roots["s"] / "eval-01" / KEY / "stale.tar").write_text("a previous snapshot of this same key")
     assert _sh(isolation.SNAP_SH, roots, "eval-01", KEY).returncode == 0
     assert (roots["s"] / "eval-01" / KEY / "COMPLETE").read_text() == KEY + "\n"
-    assert not (roots["s"] / "eval-01" / "old").exists()  # the old build's snapshot goes
+    # an earlier build's directory is pruned (task 5 review, Minor: piling up forever otherwise):
+    assert not (roots["s"] / "eval-01" / older_build).exists()
+    # another arm of the SAME build stays (Snapshots per arm):
+    assert (roots["s"] / "eval-01" / same_build_other_arm).exists()
+    assert not (roots["s"] / "eval-01" / KEY / "stale.tar").exists()  # this key's own stale content goes
     (vol / "a").unlink()
     (vol / "c").write_text("left by a test")
     assert _sh(isolation.RESTORE_SH, roots, "eval-01", KEY).returncode == 0
     assert sorted(str(f.relative_to(vol)) for f in vol.rglob("*")) == ["a", "sub", "sub/b"]
     (roots["v"] / "workflow-stack_new").mkdir()  # a volume the snapshot lacks: restore fails, never skips
     assert _sh(isolation.RESTORE_SH, roots, "eval-01", KEY).returncode != 0
+
+
+def test_snapshotting_one_arm_leaves_another_arms_directory(tmp_path):
+    """Snapshots per arm: taking arm B's snapshot must not touch arm A's directory under the same instance."""
+    roots = {"v": tmp_path / "v", "s": tmp_path / "s"}
+    vol = roots["v"] / "workflow-stack_trs-mongodb"
+    vol.mkdir(parents=True)
+    (vol / "a").write_text("1")
+    key_a, key_b = KEY + "+m1", KEY + "+m2"
+    assert _sh(isolation.SNAP_SH, roots, "eval-01", key_a).returncode == 0
+    marker_a = (roots["s"] / "eval-01" / key_a / "COMPLETE").read_text()
+    (vol / "a").write_text("2")  # arm B's volume content differs from arm A's at snapshot time
+    assert _sh(isolation.SNAP_SH, roots, "eval-01", key_b).returncode == 0
+    assert (roots["s"] / "eval-01" / key_a / "COMPLETE").read_text() == marker_a
+    assert (roots["s"] / "eval-01" / key_a).exists() and (roots["s"] / "eval-01" / key_b).exists()
 
 
 def test_unreachable_vm_fails_at_once(hdir):
@@ -216,7 +265,7 @@ def test_snapshot_saves_every_volume_and_marks_complete(hdir):
     for vol in isolation.VOLUMES:
         assert f"{vol}:/v/{vol}:ro" in call
     assert f"{isolation.SNAPSHOT_ROOT}:/s" in call and call[-2:] == ["eval-01", KEY]
-    assert 'rm -rf "/s/$1"' in call[-4] and "COMPLETE" in call[-4]
+    assert 'd="/s/$i/$k"; rm -rf "$d"' in call[-4] and "COMPLETE" in call[-4]
     assert vm.index("docker stop") < vm.index("tar -cf") < vm.index("--force-recreate") < vm.index("service-info")
 
 
@@ -490,6 +539,65 @@ def test_before_all_snapshots_only_when_missing(hooked):
     assert hooked["snapshot"] == 1
 
 
+def _progress_lines(path):
+    return [json.loads(line) for line in path.read_text().splitlines()]
+
+
+def test_progress_is_not_written_when_the_env_var_is_unset(hooked, tmp_path, monkeypatch):
+    monkeypatch.delenv(isolation.PROGRESS_ENV, raising=False)
+    isolation.extension_hook("beforeAll", {"suite": {"tests": [{}, {}]}})
+    isolation.extension_hook("afterEach", {"test": {}, "result": {"success": True}})
+    assert not list(tmp_path.glob("**/progress.jsonl"))
+
+
+def test_before_all_writes_the_total_first(hooked, tmp_path, monkeypatch):
+    progress = tmp_path / "progress.jsonl"
+    monkeypatch.setenv(isolation.PROGRESS_ENV, str(progress))
+    isolation.extension_hook("beforeAll", {"suite": {"tests": [{}, {}, {}]}})
+    assert _progress_lines(progress) == [{"total": 3}]
+
+
+def test_before_all_total_is_the_test_count_when_the_suite_has_none(hooked, tmp_path, monkeypatch):
+    progress = tmp_path / "progress.jsonl"
+    monkeypatch.setenv(isolation.PROGRESS_ENV, str(progress))
+    isolation.extension_hook("beforeAll", {"suite": {}})
+    assert _progress_lines(progress) == [{"total": 0}]
+
+
+def test_after_each_appends_one_line_per_test_with_a_running_done_count(hooked, monkeypatch, tmp_path):
+    progress = tmp_path / "progress.jsonl"
+    monkeypatch.setenv(isolation.PROGRESS_ENV, str(progress))
+    monkeypatch.setattr(isolation, "state_diff", lambda d, b: {})
+    isolation.write_baseline({"trs": [], "wes": [], "sandbox": []})
+    isolation.extension_hook("afterEach", {"test": {"description": "first test"}, "result": {"success": True}})
+    isolation.extension_hook("afterEach", {"test": {"metadata": {"id": "second-test"}},
+                                           "result": {"success": False, "error": "assertion failed"}})
+    assert _progress_lines(progress) == [
+        {"done": 1, "test": "first test", "pass": True, "error": None},
+        {"done": 2, "test": "second-test", "pass": False, "error": "assertion failed"}]
+
+
+def test_progress_total_after_total_keeps_counting_done_from_only_done_lines(hooked, monkeypatch, tmp_path):
+    progress = tmp_path / "progress.jsonl"
+    monkeypatch.setenv(isolation.PROGRESS_ENV, str(progress))
+    monkeypatch.setattr(isolation, "state_diff", lambda d, b: {})
+    isolation.write_baseline({"trs": [], "wes": [], "sandbox": []})
+    isolation.extension_hook("beforeAll", {"suite": {"tests": [{}]}})
+    isolation.extension_hook("afterEach", {"test": {}, "result": {"success": True}})
+    assert [line.get("done") for line in _progress_lines(progress)] == [None, 1]
+
+
+def test_progress_write_failure_never_raises(hooked, monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv(isolation.PROGRESS_ENV, str(tmp_path / "progress.jsonl"))
+    monkeypatch.setattr(isolation, "_append_progress", lambda line: (_ for _ in ()).throw(OSError("disk full")))
+    assert isolation.extension_hook("beforeAll", {"suite": {"tests": []}}) is None
+    assert "progress total not written" in capsys.readouterr().err
+    isolation.write_baseline({"trs": [], "wes": [], "sandbox": []})
+    monkeypatch.setattr(isolation, "state_diff", lambda d, b: {})
+    assert isolation.extension_hook("afterEach", {"test": {}, "result": {}}) is None
+    assert "progress line not written" in capsys.readouterr().err
+
+
 def test_before_each_restores_then_writes_baseline_and_restore_seconds(hooked, hdir):
     (hdir / "hardening.json").write_text(json.dumps({"schema_version": 1, "restore_seconds": None}))
     for _ in range(3):
@@ -530,17 +638,17 @@ def test_after_each_logs_counts_and_never_raises(hooked, monkeypatch, capsys):
     assert "state diff unavailable" in capsys.readouterr().err
 
 
-def _dirty(hdir, stamp):
-    (hdir / isolation.DIRTY_MARKER).write_text(json.dumps({"generated_at": stamp}))
+def _dirty(hdir, key):
+    (hdir / isolation.DIRTY_MARKER).write_text(json.dumps({"key": key}))
 
 
 def test_before_each_marks_the_stack_dirty(hooked, hdir):
     isolation.extension_hook("beforeEach", {"test": {}})
-    assert json.loads((hdir / isolation.DIRTY_MARKER).read_text()) == {"generated_at": STAMP}
+    assert json.loads((hdir / isolation.DIRTY_MARKER).read_text()) == {"key": KEY}
 
 
 def test_after_all_restores_and_marks_clean(hooked, hdir, capsys):
-    _dirty(hdir, STAMP)
+    _dirty(hdir, KEY)
     hooked["exists"] = True
     assert isolation.extension_hook("afterAll", {"suite": {}}) is None
     assert "restored after the run in 30.0s" in capsys.readouterr().err
@@ -551,7 +659,7 @@ def test_after_all_restores_and_marks_clean(hooked, hdir, capsys):
 
 
 def test_after_all_restore_failure_is_loud_and_raised(hooked, hdir, monkeypatch, capsys):
-    _dirty(hdir, STAMP)
+    _dirty(hdir, KEY)
     hooked["exists"] = True
     monkeypatch.setattr(isolation, "restore", lambda d: (_ for _ in ()).throw(isolation.RestoreError("down")))
     with pytest.raises(isolation.RestoreError):
@@ -560,9 +668,12 @@ def test_after_all_restore_failure_is_loud_and_raised(hooked, hdir, monkeypatch,
 
 
 def test_before_all_refuses_a_snapshot_over_an_earlier_builds_dirty_stack(hooked, hdir, monkeypatch):
-    _dirty(hdir, "2026-01-01T00:00:00Z")
-    with pytest.raises(isolation.IsolationError, match="not restored before this rebuild.*ACCEPT_DIRTY"):
+    _dirty(hdir, "2026-01-01T000000Z")
+    with pytest.raises(isolation.IsolationError, match="not restored before this rebuild.*SPE_ISOLATION_ACCEPT_DIRTY=1") as exc:
         isolation.extension_hook("beforeAll", {"suite": {}})
+    # task 5 review, Minor: "destroy.yml, then create.yml" is a controller remedy a workspace has
+    # no destroy.yml for; the message must also name a workspace one.
+    assert "a new workspace" in str(exc.value) and "destroy.yml" in str(exc.value)
     assert hooked["snapshot"] == 0
     hooked["exists"] = True  # a snapshot of this build: the marker is not consulted
     isolation.extension_hook("beforeAll", {"suite": {}})
@@ -573,13 +684,23 @@ def test_before_all_refuses_a_snapshot_over_an_earlier_builds_dirty_stack(hooked
 
 
 def test_before_all_snapshots_over_this_builds_own_dirty_stack(hooked, hdir):
-    _dirty(hdir, STAMP)
+    _dirty(hdir, KEY)
     isolation.extension_hook("beforeAll", {"suite": {}})
     assert hooked["snapshot"] == 1
 
 
+def test_before_all_refuses_a_snapshot_over_another_arms_dirty_stack(hooked, hdir):
+    # Same build, different arm: the marker's key carries the mitigation set (Snapshots per arm), so a marker
+    # left by arm A (m1) mismatches arm B's own key (m2) exactly as an earlier build's would.
+    _dirty(hdir, KEY + "+m1")
+    (hdir / "hardening.json").write_text(json.dumps({"schema_version": 1, "mitigations": ["m2"]}))
+    with pytest.raises(isolation.IsolationError, match="not restored before this rebuild.*ACCEPT_DIRTY"):
+        isolation.extension_hook("beforeAll", {"suite": {}})
+    assert hooked["snapshot"] == 0
+
+
 def test_cli_snapshot_is_guarded_and_restore_marks_clean(hooked, hdir, capsys):
-    _dirty(hdir, "2026-01-01T00:00:00Z")
+    _dirty(hdir, "2026-01-01T000000Z")
     with pytest.raises(isolation.IsolationError, match="not restored"):
         isolation.main(["isolation.py", "snapshot"])
     assert hooked["snapshot"] == 0

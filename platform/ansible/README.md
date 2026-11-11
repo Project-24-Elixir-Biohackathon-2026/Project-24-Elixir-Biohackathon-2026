@@ -103,7 +103,12 @@ job it needs.
 `archive.yml` writes `<spe_runs_root>/<UTC time>_<instance>/` (default
 `/data-share/runs`): parameters, the canary record, every Open WebUI chat with its
 tags, the notes, and every AG-UI session journal with the agent's run log, rendered
-like Open WebUI chats. Run on its own it stops nothing. `destroy.yml` runs it first
+like Open WebUI chats. On a `spe_experiments` build, `~/spe-eval/reports/` (every
+`spe-eval run`, each arm's `controls.json`, `agent.json`, `hardening.json`,
+`run.json`), `~/spe-eval/promptfoo/` and `windows.jsonl` go into the run directory's
+`evals/` (`roles/run_archive/tasks/export_spe_eval.yml`, `write_spe_eval.yml`;
+experiments spec part 03, decision 13); a `spe` build has no `~/spe-eval`, and this
+copies nothing. Run on its own it stops nothing. `destroy.yml` runs it first
 as the final archive (`spe_archive_final: true`): chat-ui, then the agent, are
 stopped so no run is half written. If the archive fails nothing is deleted;
 `-e spe_archive_skip=true` skips it. The file layout: `../coder/README.md`.
@@ -258,6 +263,34 @@ experiment's `vars` into the build, in Terraform, not here
 (a `Ln` selected without every `L1`..`L<n-1>`) each refuse the build, naming the offending id(s). `hardening.json`
 records `mitigations` and `experiment` (`[]`/`""` when experiments are off), read by the controls suite and
 `run.sh`.
+
+### Evaluating in the workspace (`spe-eval`)
+
+Under `spe_experiments`, `create.yml` also sets up measuring an experiment on the workspace's own VM
+(experiments spec part 03, `../../docs/specs/2026-11-10-experiments-design/03-evaluation-in-workspace.md`):
+
+- **The VM-local hand-off**, written to `spe_eval_dir` (`~/spe-eval`, mode 0700, owned by the workspace user:
+  `roles/handoff/tasks/vm_handoff.yml`, run once at build time under the `handoff` tag): a second copy of
+  everything the suites read from the controller's own hand-off (`canaries.json`, `injections.json`,
+  `trs-installed.json`, `drs-inventory.json`, `ca.crt`, the agent and LLM key files) plus a `hosts.yml` with
+  `provision: existing` and `ssh_target: localhost`, so `isolation.vm_runner` runs commands locally. None of it
+  is mounted into any container (decision 8: the agent's own sandbox reaches neither this nor
+  `instances/local.yml`, from which the same canaries follow). `hardening.json` alone is rewritten on the VM for
+  whichever arm was just applied (`roles/handoff/tasks/vm_hardening.yml`, tagged `frontend`, one of
+  `spe-apply all`'s own tags, so a later re-apply keeps it current).
+- **The toolchain** (role `spe_eval`, tagged `eval_toolchain`, run once at build time, never one of
+  `spe-apply all`'s tags): Node (`spe_eval_node_version`, pinned at or above
+  `platform/promptfoo-evals/package-lock.json`'s own `engines.node` floor for the promptfoo
+  package itself -- `test_spe_eval_node_version.py` checks the pin against that file -- from
+  nodejs.org, checksum-verified) and `uv` (Astral's release binary, checksum-verified) on the host directly
+  (never in a container, for the same reason as the hand-off), `npm ci` and `uv sync --group dev` in the
+  clone's `platform/promptfoo-evals`, and lingering enabled for the workspace user (so a detached
+  `spe-eval run --detach`'s `systemd --user` unit outlives a logged-out session).
+- **`/usr/local/bin/spe-eval`**, a link into the clone (`roles/repo/tasks/main.yml`, as `spe-apply` above),
+  only with `spe_experiments`.
+
+`platform/instance/README.md` has the commands (`spe-eval arm`/`run`/`status`/`wait`/`runs`) and the
+`~/spe-eval` layout.
 
 ## The chats and the agent
 

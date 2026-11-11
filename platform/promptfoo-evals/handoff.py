@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -41,6 +42,8 @@ from canary_record import (  # noqa: E402
 SWITCHES = ("spe_harden_trs_readonly", "spe_harden_data_tiers", "spe_harden_egress", "spe_agent_tool_surface",
             "spe_harden_airlock")
 FIXTURES = Path("platform/ansible/catalog/injections/fixtures.json")  # under the repo root
+MITIGATIONS = Path("mitigations")  # under the repo root
+MITIGATION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
 
 
 class ManifestError(ConfigError):
@@ -77,18 +80,53 @@ def api_host(dir: Path | str) -> str:
     return _required(read_hosts(dir), "api_host")
 
 
+def mitigation_probes(mitigation_id: str, repo_root: Path | None = None) -> frozenset[str]:
+    """The `probes` list of mitigations/<id>.yml (experiments spec part 03, *The gate learns the
+    arm*): every mitigation file writes `probes` as one flow-style list on its own line (`probes:
+    [a, b, c]`, `probes: []` for none), so reading just that line is enough; this module stays
+    standard library only, unlike validate.py's fuller pyyaml read, which lints the files
+    themselves. An id outside mitigations/*.yml, or not a bare filename, is a configuration error.
+    """
+    if not MITIGATION_ID.fullmatch(mitigation_id):
+        raise ConfigError(f"mitigations/{mitigation_id}.yml: not a mitigation id")
+    root = repo_root or REPO_ROOT
+    path = Path(root) / MITIGATIONS / f"{mitigation_id}.yml"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as e:
+        raise ConfigError(f"mitigations/{mitigation_id}.yml: {e}") from None
+    for line in text.splitlines():
+        key, sep, raw = line.partition(":")
+        if key.strip() != "probes" or not sep:
+            continue
+        raw = raw.strip()
+        if not (raw.startswith("[") and raw.endswith("]")):
+            raise ConfigError(f"mitigations/{mitigation_id}.yml: probes must be a flow list")
+        return frozenset(item.strip().strip("'\"") for item in raw[1:-1].split(",") if item.strip())
+    return frozenset()
+
+
 def check_hardening(record: object) -> dict:
     """The shape of hardening.json version 1 (plan README, Shared interfaces).
 
     `injections` says whether the injection fixtures were planted: true (all three spe_inject_* on) is
     the injected condition, false (all off) the clean one (spec part 06, *Clean and injected runs*),
-    which the matrix shows as "L<n> clean"; the role writes "mixed" for anything else, refused here.
+    which the matrix shows as "L<n> clean"; the role writes "mixed" for anything else (an experiment's
+    arm plants only some fixtures), accepted here but refused by `condition`, which is the ladder's
+    own route (experiments spec part 03, decision 9 / R4).
 
     Also checks that `level` equals the number of leading ladder controls switched on, in ladder
     order L1 spe_harden_trs_readonly, L2 spe_harden_data_tiers (on when a non-empty list), L3
     spe_harden_egress, L4 spe_agent_tool_surface == "typed", L5 spe_harden_airlock: the count
     stops at the first switch that is off, so a non-contiguous pattern never matches a level > 0
-    beyond its unbroken leading run.
+    beyond its unbroken leading run. This holds for an experiment's arm too (spec part 03, *An arm
+    is its mitigation set, not a level*): a participant mitigation adds no level of its own.
+
+    `mitigations` (an experiment's arm: every mitigation on, ladder ids and the one under test) and
+    `experiment` (its id), when present, are checked only for shape: a list of non-empty strings, and a
+    string (empty for a `spe_experiments` build with no experiment selected: `platform/ansible/README.md`'s
+    `[]`/`""` defaults). Neither is required, so the ladder's own hand-off (which carries neither,
+    `spe_experiments` off) still passes.
     """
     if not isinstance(record, dict) or record.get("schema_version") != 1:
         raise ConfigError("hardening.json: schema_version must be 1")
@@ -117,11 +155,20 @@ def check_hardening(record: object) -> dict:
         counted += 1
     if level != counted:
         raise ConfigError(f"hardening.json: level {level} does not match {counted} leading switches on")
-    if not isinstance(record.get("injections"), bool):
-        raise ConfigError("hardening.json: injections must be true (every spe_inject_* on) or false (all off)")
+    injections = record.get("injections")
+    if not (isinstance(injections, bool) or injections == "mixed"):
+        raise ConfigError("hardening.json: injections must be true (every spe_inject_* on), false (all off) "
+                          "or \"mixed\" (an experiment's arm)")
     restore = record.get("restore_seconds")
     if restore is not None and (isinstance(restore, bool) or not isinstance(restore, (int, float))):
         raise ConfigError("hardening.json: restore_seconds must be a number or null")
+    mitigations = record.get("mitigations")
+    if mitigations is not None and (not isinstance(mitigations, list)
+                                     or not all(isinstance(m, str) and m for m in mitigations)):
+        raise ConfigError("hardening.json: mitigations must be a list of non-empty strings")
+    experiment = record.get("experiment")
+    if experiment is not None and not isinstance(experiment, str):
+        raise ConfigError("hardening.json: experiment must be a string (empty for none selected)")
     return record
 
 
@@ -160,17 +207,26 @@ def canaries_digest(dir: Path | str) -> str:
     return hashlib.sha256(body.encode()).hexdigest()
 
 
-def condition(dir: Path | str, repo_root: Path | None = None) -> str:
+def condition(dir: Path | str, repo_root: Path | None = None, allow_mixed: bool = False) -> str:
     """The run's condition, "injected" or "clean", once the hand-off is consistent with it.
 
     injected: injections.json is valid (load_injections) and lists at least one placement. clean:
     injections.json is absent or empty, and every fixture's canary_file in the catalogue
     (FIXTURES under repo_root) still holds a file canary, so removing the injections removed no
-    target (spec part 02, *Matched builds*). "mixed" is refused by load_hardening.
+    target (spec part 02, *Matched builds*). "mixed" (`check_hardening` now accepts it, for an
+    experiment's arm that plants only some fixtures) is refused by default: this is the ladder's
+    own route, which only ever builds clean or fully injected (experiments spec part 03, R4).
+    `allow_mixed=True` (the experiment route, `run.sh`'s non-default path: `spe-eval run` on an
+    experiment naming only some of the catalogue's injections) instead treats "mixed" the same as
+    `true`: `load_injections` must still list at least one placement, exactly as for a fully
+    injected build, and the result is "injected" either way (fix round 1, cross-task gap).
     """
     directory = Path(dir)
     root = repo_root or REPO_ROOT
-    if load_hardening(directory)["injections"]:
+    hardening = load_hardening(directory)
+    if hardening["injections"] == "mixed" and not allow_mixed:
+        raise ConfigError("hardening.json: injections is \"mixed\", not a ladder condition (true or false)")
+    if hardening["injections"]:
         if not load_injections(directory, root):
             raise ManifestError("injections.json lists no injection, but hardening.json says injections: true")
         return "injected"

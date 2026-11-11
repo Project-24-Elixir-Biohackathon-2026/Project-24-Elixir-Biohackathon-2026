@@ -142,6 +142,24 @@ spe_injection_fixtures: "{{ (lookup('ansible.builtin.file', spe_catalog_dir ~ '/
 spe_experiments: false
 spe_experiment: ""
 spe_mitigations: []
+# Everything spe-eval keeps on the VM (experiments spec part 03, *The hand-off on the VM*):
+# the VM-local hand-off, reports and the promptfoo config dir. Mirrors spe_eval.spe_eval_home()'s
+# default (platform/instance/spe_eval.py: Path.home() / "spe-eval") so the Ansible and Python sides
+# agree without a shared variable; both assume the workspace user's home is /home/<spe_ssh_user>,
+# as spe_frontend_dir and spe_repo_dir already do.
+spe_eval_dir: "/home/{{ spe_ssh_user }}/spe-eval"
+# Toolchain for spe-eval, installed on the host (not in a container) under spe_experiments: Node (a
+# version promptfoo 0.125.1 requires -- its own package-lock.json pins `engines.node: ">=22.22.0"`
+# for the promptfoo package itself, checked by test_spe_eval_node_version.py against that same
+# file, so a promptfoo bump can't silently drift below this pin again) from nodejs.org,
+# checksum-verified against its own published SHASUMS256.txt, and uv (Astral's release binary),
+# checksum-verified against its own .sha256 file. Bump either version freely (Node upward only,
+# staying at or above package-lock.json's floor); a wrong one fails loudly at download time (role
+# spe_eval), caught by the real check on de.NBI (task 7), never silently. Node 24 for its npm 11:
+# package-lock.json is written by npm 11, and npm 10 (Node 22) refuses it in `npm ci` ("Missing:
+# gcp-metadata@7.0.1 from lock file"), so the pin follows the npm that writes the lock.
+spe_eval_node_version: "24.21.0"
+spe_eval_uv_version: "0.5.11"
 
 # --- test receiver (spec part 04, *The test receiver*; on in every instances/L<n>.example.yml) --
 # An evaluation fixture standing for a host outside the SPE (role eval_sink): logs every
@@ -234,6 +252,11 @@ spe_local_vars:
   - spe_harden_data_tiers
   - spe_harden_egress
   - spe_harden_airlock
+  # The host's layout as the build checked it: a local re-apply re-runs the preflight, which
+  # otherwise checks the defaults (/data-share, 15 GB) on a host the instance file overrode.
+  - spe_data_root
+  - spe_min_free_gb
+  - spe_manage_docker
 spe_local_vars_extra: []     # instance files add their own overrides here
 spe_frontend_webui_image: ghcr.io/open-webui/open-webui:v0.13.0
 spe_frontend_terminal_image: spe-open-terminal:0.16.1

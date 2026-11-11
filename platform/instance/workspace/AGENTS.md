@@ -78,6 +78,53 @@ Then tell the person: the template `spe-<name>` appears in "Create workspace" wi
 
 Pushes go over SSH with the git key the portal holds for the person (origin's push URL; fetches stay anonymous over https). If the push is refused with "Permission denied (publickey)", the message shows that public key and the link to add it: tell the person to add exactly that key to their GitHub account (Settings, SSH and GPG keys) and to make sure they may push to the repository, then push again when they say so. The key is public, quoting it is fine. Do not try tokens, other remotes, or pushing through the SPE agent.
 
+## Experiments (`spe-experiments` builds only)
+
+This workspace measures one experiment (`experiments/<name>.yml`): a mitigation on or off, against an
+attack, on this build's own GA4GH stack. `spe-eval`, on `$PATH`, runs it from the VM itself, no tunnel; a build
+with no `spe_experiment` in `instances/local.yml` is not one of these workspaces and has nothing here. These five
+are the first slice's; `spe-eval new`, `test`, `results` and `pr-body` (writing a mitigation, checking it offline,
+reading a run back as a table, filling a PR body) are a later slice's — until then, read a run's
+`~/spe-eval/reports/<experiment>/<run id>/<arm>/run.json` and `agent.json` by hand, or wait for the Evaluations
+app.
+
+1. **Try one arm by hand**: `spe-eval arm [<name>] baseline|mitigated` applies that arm (`spe-apply all` with its
+   mitigation and injection vars) and waits for the stack to answer; `<name>` defaults to this build's own
+   experiment. Success prints `<name> <arm>: applied, the stack answers` and exits 0. An unknown experiment, a
+   build whose settings no longer match its creation-time ones, an arm the experiment does not have (`mitigated`
+   on one with no mitigation under test, e.g. `ladder-l0`), or the lock already held by a run or another `arm`
+   each exit 2.
+2. **Measure every arm**: `spe-eval run [<name>] [--repeat N] [--detach]` applies each arm in turn (`baseline`,
+   then `mitigated` if the experiment has one), runs the controls-then-agent suite against it `N` times (default
+   1), and returns the workspace to its own build's arm when done. Before anything else it prints, and you say to
+   the person before starting:
+
+   > spe-eval run: this takes the workspace over -- the chat is not usable while it runs (every test restores
+   > the stack), and anything registered by hand in TRS or WES is reset to the arm's snapshot before each test.
+
+   Do not run `spe-apply` while it holds the lock — every command but `status`/`logs`/`--help` refuses
+   (`spe-apply: spe-eval run <token> holds the lock; wait for it (spe-eval wait)`, exit 2) until the run (or
+   `arm`) that holds it releases it. On success it prints where the results are,
+   `results: ~/spe-eval/reports/<experiment>/<run id>/ (spe-eval results, or the Evaluations app)`, and exits 0;
+   1 if any arm's gate refused, failed, or returning to the build's own arm afterwards itself failed. `--detach`
+   makes the same checks up front (so a typo or a mismatched build still exits 2 immediately, not only inside a
+   unit nobody is watching), then starts the run as a background `systemd --user` unit and prints only the run
+   id once it holds the lock — for an agent that cannot block its own command for the whole run.
+3. **Watch a run in progress**: `spe-eval status [--json]` prints the lock (`lock: <holder>` or `lock: free`)
+   and, for the run that holds it or the newest kept one, its id, experiment, current arm and how many of its
+   tests have finished (`last error: ...` too, if the most recent one failed). `spe-eval wait [--timeout S]`
+   blocks until that run's lock is released, then prints each arm's final state (`ok`, `gate refused`, `failed`
+   or `stopped`) and exits 0 only if every arm is `ok`; `--timeout` gives up and exits 1 instead of blocking
+   forever, for an agent that can only wait in bounded steps.
+4. **List past runs**: `spe-eval runs [--json]` prints every kept run, newest first: id, experiment, model,
+   repeat, and each arm's mitigations and final state. `spe-eval runs: none yet` when there are none.
+
+Results live under `~/spe-eval/reports/<experiment>/<run id>/<arm>/` (`controls.json`, `agent.json`,
+`hardening.json`, `run.json`, `progress.jsonl`; `platform/instance/README.md`'s own table). Every `spe-eval`
+command is non-interactive, prints no secrets, and exits 0 on success, 1 when the thing it checked failed (a
+refused gate, a failed run, a timed-out wait), 2 on a usage or configuration error; `spe-eval --help` prints this
+same table.
+
 ## Rules
 
 - Before reporting, test the behaviour the person asked for in the shape they will use it (the runbook's request shapes for the SPE agent, the chat frontend for a frontend change): one case that must be refused and one that must still work, each with the actual response.

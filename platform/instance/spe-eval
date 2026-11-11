@@ -1,0 +1,593 @@
+#!/usr/bin/env python3
+"""`spe-eval`: the agent-friendly command line over `spe_eval.py` (experiments spec part 03,
+`docs/specs/2026-11-10-experiments-design/03-evaluation-in-workspace.md`, and part 07's command
+table). This slice has `arm`, `run` (with `--detach`), `status`, `wait` and `runs`; `new`, `test`,
+`results` and `pr-body` are a later slice's and are not stubbed here.
+
+Every command is non-interactive, prints no secrets, and exits 0 on success, 1 when the thing it
+checked failed (a refused gate, a failed run, a timed-out wait), 2 on a usage or configuration
+error (also where a library call raises a plain `ValueError`, e.g. an unknown arm or injection id:
+task 3 review, minor 2).
+
+External processes, all resolved on `$PATH` except `run.sh` (never installed on it; called at its
+path under the experiment's own repository clone, like `suite_config`'s `agent.yaml`):
+
+    - `spe-apply` (bash, next to this script): `arm` and `run` apply each arm with
+      `spe-apply all -e @<vars file>`, passing their own lock token as `SPE_EVAL_LOCK` so
+      `spe-apply` does not refuse itself.
+    - The agent's own health URL (`http://127.0.0.1:<SPE_AGUI_AGENT_PORT>/healthz`, read from
+      `$SPE_FRONTEND_DIR/.env`, the same URL and the same "200 means ready" the `agui` role's own
+      `checks.yml` probes): `arm`/`run` poll it directly after applying (bounded;
+      `SPE_EVAL_HEALTH_TIMEOUT`/`SPE_EVAL_HEALTH_INTERVAL` override the default 120s/3s, for tests;
+      `SPE_EVAL_HEALTH_URL` replaces the whole URL, for tests that have no real agent to probe).
+    - `<repo_root>/platform/promptfoo-evals/run.sh`: one arm's controls-then-agent run (03, step 3),
+      with `spe_eval.promptfoo_env`'s environment (`SPE_AGENT_URL`, the key file paths, promptfoo's
+      telemetry/sharing/update disabled, `/usr/local/bin` on `PATH`; task 5 review item 1).
+    - `systemd-run` (`--detach`, R5): a transient `--user` unit named `spe-eval-<run id>`, running
+      this same script's `run` command again (without `--detach`), the run id forced via
+      `SPE_EVAL_RUN_ID` so the detached child uses the id already printed to the caller. `--detach`
+      validates the same way `run` does and does not return until the child holds the lock (or a
+      bounded wait for that gives up), so a `wait` right after never sees "no run in progress" for
+      a run that is in fact starting (task 4 review, Important 3).
+
+SIGTERM/SIGINT during `run` (one `_StopState` per call, installed for the whole of `cmd_run`):
+forwarded to whichever external process is currently running (task 4 review, Important 2), and the
+current arm's `run.json` always reaches a terminal state (`stopped`, here) before the lock is
+released, whether the signal arrived during the apply, the health wait or `run.sh` itself.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import signal
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+_HERE = Path(__file__).resolve()
+sys.path.insert(0, str(_HERE.parent))
+import spe_eval  # noqa: E402
+
+COMMAND_TABLE = """\
+How to run an experiment (07-agent-friendly.md): `arm` to try a build by hand, `run` to measure
+every arm, `status`/`wait` to watch a run, `runs` to list past ones. Every command is
+non-interactive, prints no secrets, and exits 0 on success, 1 when the thing checked failed (a
+refused gate, a failed run), 2 on a usage or configuration error.
+
+| Step  | Command                                       | For an agent |
+|-------|------------------------------------------------|--------------|
+| Try   | spe-eval arm [<name>] baseline\\|mitigated      | applies one arm and exits when the stack answers |
+| Run   | spe-eval run [<name>] [--repeat N] [--detach]  | --detach starts the run in the background (a user systemd unit) and returns at once with its id; the agent's own command timeouts never cut a run short |
+| Watch | spe-eval status [--json]                       | the lock, the run id, arm, test k of n, last error; spe-eval wait [--timeout S] blocks until the run ends or the timeout passes, for agents that can wait in bounded steps |
+| List  | spe-eval runs [--json]                         | every kept run, newest first: id, experiment, mitigation sets, model, repeat, how it ended |
+"""
+
+
+def _print_err(message: str) -> None:
+    print(f"spe-eval: {message}", file=sys.stderr)
+
+
+def _home() -> Path:
+    return Path.home()
+
+
+class _StopState:
+    """One of these per `cmd_run`/`cmd_arm` call: whether a SIGTERM/SIGINT has arrived, and the
+    subprocess (if any) currently running, so `handler` can forward the signal to it (task 4
+    review, Important 2). `cmd_arm` never installs `handler`, so it stays an inert placeholder
+    there -- `_spe_apply`/`_wait_for_stack` take a `_StopState` either way."""
+
+    def __init__(self) -> None:
+        self.stopped = False
+        self.proc: subprocess.Popen | None = None
+
+    def handler(self, signum: int, _frame: object) -> None:
+        self.stopped = True
+        if self.proc is not None:
+            try:
+                self.proc.send_signal(signum)
+            except ProcessLookupError:
+                pass
+
+
+def _run_tracked(state: _StopState, argv: list[str], env: dict | None = None) -> int:
+    """Run `argv`, registered on `state` for the duration so a signal `state.handler` receives
+    reaches it too; returns its exit code (not meaningful once `state.stopped` is set -- the
+    caller checks that first)."""
+    proc = subprocess.Popen(argv, env=env)
+    state.proc = proc
+    try:
+        return proc.wait()
+    finally:
+        state.proc = None
+
+
+def _user_bus_env() -> dict:
+    """The caller's environment, with `XDG_RUNTIME_DIR`/`DBUS_SESSION_BUS_ADDRESS` defaulted when
+    unset, for the `systemd-run --user` call `cmd_run_detached` makes. The Coder agent is a system
+    unit (`roles/coder_agent/tasks/main.yml`'s `User=`, no PAM session), so its shells have
+    neither; `systemd-run --user` then fails with "Failed to connect to bus" (task 5 review,
+    Important 4b). Lingering (R5) already guarantees `/run/user/<uid>`'s manager and bus exist, so
+    defaulting to them here is enough; a caller that already has either leaves it untouched."""
+    env = dict(os.environ)
+    if not env.get("XDG_RUNTIME_DIR"):
+        env["XDG_RUNTIME_DIR"] = f"/run/user/{os.getuid()}"
+    if not env.get("DBUS_SESSION_BUS_ADDRESS"):
+        env["DBUS_SESSION_BUS_ADDRESS"] = f"unix:path={env['XDG_RUNTIME_DIR']}/bus"
+    return env
+
+
+def _spe_apply(state: _StopState, args: list[str], token: str | None = None) -> int:
+    """`spe-apply <args>` on `$PATH`, with `SPE_EVAL_LOCK=token` so it does not refuse its own
+    caller's lock (decision 11)."""
+    env = dict(os.environ)
+    if token is not None:
+        env["SPE_EVAL_LOCK"] = token
+    return _run_tracked(state, ["spe-apply", *args], env)
+
+
+def _agent_health_url() -> str | None:
+    """`http://127.0.0.1:<SPE_AGUI_AGENT_PORT>/healthz`, read from `$SPE_FRONTEND_DIR/.env` the
+    same way `spe-apply` itself does (the `agui` role's own `checks.yml:5-11` probes this exact
+    URL, 200 meaning ready); `None` when the build has no `agui` profile (nothing to wait for).
+    `SPE_EVAL_HEALTH_URL` overrides this entirely, for tests that have no real agent to probe."""
+    override = os.environ.get("SPE_EVAL_HEALTH_URL")
+    if override:
+        return override
+    frontend_dir = Path(os.environ.get("SPE_FRONTEND_DIR", "/home/ubuntu/spe-frontend"))
+    env_path = frontend_dir / ".env"
+    if not env_path.is_file():
+        return None
+    values: dict[str, str] = {}
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        values[key.strip()] = value.strip()
+    if "agui" not in values.get("COMPOSE_PROFILES", "").split(","):
+        return None
+    port = values.get("SPE_AGUI_AGENT_PORT")
+    return f"http://127.0.0.1:{port}/healthz" if port else None
+
+
+def _wait_for_stack(state: _StopState, timeout: float | None = None, interval: float | None = None) -> bool:
+    """Poll the agent's health URL (bounded) until it answers 200, there is nothing to wait for
+    (no `agui` profile), or `state.stopped` is set (the caller tells `stopped` apart from a timeout
+    by checking `state.stopped` itself afterwards). `SPE_EVAL_HEALTH_TIMEOUT`/
+    `SPE_EVAL_HEALTH_INTERVAL` override the defaults (120s/3s), for tests."""
+    url = _agent_health_url()
+    if url is None:
+        return True
+    if timeout is None:
+        timeout = float(os.environ.get("SPE_EVAL_HEALTH_TIMEOUT", "120"))
+    if interval is None:
+        interval = float(os.environ.get("SPE_EVAL_HEALTH_INTERVAL", "3"))
+    deadline = time.monotonic() + timeout
+    while not state.stopped:
+        try:
+            with urllib.request.urlopen(url, timeout=5) as response:  # noqa: S310 (localhost only)
+                if response.status == 200:
+                    return True
+        except (urllib.error.URLError, OSError, ValueError):
+            pass
+        if state.stopped or time.monotonic() >= deadline:
+            return False
+        time.sleep(interval)
+    return False
+
+
+# --- arm -------------------------------------------------------------------------------------
+
+def cmd_arm(ns: argparse.Namespace) -> int:
+    if len(ns.args) == 1:
+        name, arm = None, ns.args[0]
+    elif len(ns.args) == 2:
+        name, arm = ns.args
+    else:
+        raise spe_eval.ConfigError("usage: spe-eval arm [<name>] baseline|mitigated")
+    if arm not in ("baseline", "mitigated"):
+        raise spe_eval.ConfigError(f"{arm!r}: expected baseline or mitigated")
+
+    repo_root = spe_eval.repo_dir()
+    home = _home()
+    local_vars = spe_eval.load_local_vars(repo_root)
+    experiment_name = name or spe_eval.default_experiment_name(local_vars)
+    experiment = spe_eval.load_experiment(experiment_name, repo_root)
+    spe_eval.check_build_matches(experiment, local_vars, repo_root)
+    spe_eval.arm_mitigations(experiment, arm)  # validates `arm` against this experiment's own arms
+
+    token = spe_eval.run_id()
+    lock = spe_eval.Lock(spe_eval.spe_eval_home(home) / "lock")
+    lock.acquire(token)  # raises LockHeld (caught by main()) if another run/arm holds it
+    state = _StopState()  # no handler installed: a short apply, nothing persistent to clean up
+    try:
+        values = spe_eval.arm_vars(experiment, arm, repo_root)
+        vars_path = spe_eval.write_json(values, spe_eval.spe_eval_home(home) / "current-arm.json")
+        rc = _spe_apply(state, ["all", "-e", f"@{vars_path}"], token=token)
+        if rc != 0:
+            _print_err(f"spe-apply all failed (exit {rc})")
+            return 1
+        if not _wait_for_stack(state):
+            _print_err("the stack did not answer in time")
+            return 1
+        print(f"{experiment_name} {arm}: applied, the stack answers")
+        return 0
+    finally:
+        lock.release()
+
+
+# --- run -------------------------------------------------------------------------------------
+
+_TAKES_OVER_MESSAGE = (
+    "spe-eval run: this takes the workspace over -- the chat is not usable while it runs (every "
+    "test restores the stack), and anything registered by hand in TRS or WES is reset to the "
+    "arm's snapshot before each test.")
+
+
+def _run_one_arm(state: _StopState, repo_root: Path, home: Path, token: str, model: str, ns: argparse.Namespace,
+                  plan: dict) -> str:
+    """One arm's apply-then-run.sh, from `plan` (`arm`, `out_dir`, `mitigations`, `values`,
+    `suite_path`, all precomputed before any arm started: task 4 review, Important 2). Returns the
+    final state (`ok`/`gate refused`/`failed`/`stopped`); never raises -- an unexpected exception
+    here still ends in `failed` (or `stopped`, if one arrived first), so the per-arm `run.json`
+    this wraps around always reaches a terminal state."""
+    arm, out_dir, mitigations = plan["arm"], plan["out_dir"], plan["mitigations"]
+    try:
+        vars_path = spe_eval.write_json(plan["values"], spe_eval.spe_eval_home(home) / "current-arm.json")
+        apply_rc = _spe_apply(state, ["all", "-e", f"@{vars_path}"], token=token)
+        if state.stopped:
+            return "stopped"
+        if apply_rc != 0:
+            return "failed"
+        if not _wait_for_stack(state):
+            return "stopped" if state.stopped else "failed"
+
+        description = f"{plan['experiment_name']} {token} {arm} [{', '.join(mitigations)}] {model}"
+        handoff_dir = spe_eval.spe_eval_home(home) / "handoff"
+        progress_path = out_dir / "progress.jsonl"
+        run_sh = str(Path(repo_root) / "platform" / "promptfoo-evals" / "run.sh")
+        run_env = spe_eval.promptfoo_env(handoff_dir, spe_eval.spe_eval_home(home) / "promptfoo", progress_path)
+        argv = [run_sh, str(handoff_dir), str(ns.repeat), "--suite", str(plan["suite_path"]),
+                "--reports-dir", str(out_dir), "--description", description]
+        run_rc = _run_tracked(state, argv, run_env)
+        if state.stopped:
+            return "stopped"
+        if run_rc == 0:
+            return "ok"
+        if run_rc == 3:
+            return "gate refused"
+        return "failed"
+    except Exception as exc:  # the arm's run.json still gets a terminal state (Important 2)
+        _print_err(f"arm {arm} failed: {exc}")
+        return "stopped" if state.stopped else "failed"
+
+
+def cmd_run(ns: argparse.Namespace) -> int:
+    repo_root = spe_eval.repo_dir()
+    home = _home()
+    local_vars = spe_eval.load_local_vars(repo_root)
+    experiment_name = ns.name or spe_eval.default_experiment_name(local_vars)
+    experiment = spe_eval.load_experiment(experiment_name, repo_root)
+    spe_eval.check_build_matches(experiment, local_vars, repo_root)
+    arms = spe_eval.experiment_arms(experiment)
+
+    # The run id is fixed right as the lock is taken (03, *Every run is kept*); SPE_EVAL_RUN_ID
+    # lets --detach's child reuse the id its parent already printed (R5).
+    token = os.environ.get("SPE_EVAL_RUN_ID") or spe_eval.run_id()
+    lock = spe_eval.Lock(spe_eval.spe_eval_home(home) / "lock")
+    lock.acquire(token)
+    state = _StopState()
+    previous_handlers = {sig: signal.signal(sig, state.handler) for sig in (signal.SIGTERM, signal.SIGINT)}
+    try:
+        out_dirs = {arm: spe_eval.reports_dir(experiment_name, token, arm, home) for arm in arms}
+        existing = sorted(str(d) for d in out_dirs.values() if d.exists())
+        if existing:
+            raise spe_eval.ConfigError("reports directory already exists: " + ", ".join(existing))
+
+        # Every arm's vars and suite config, computed up front: an unknown injection or test id
+        # (arm_vars/suite_config) fails here, before any apply touches the stack (Important 2).
+        plans = []
+        for arm in arms:
+            out_dir = out_dirs[arm]
+            out_dir.mkdir(parents=True, exist_ok=True)
+            plans.append({
+                "arm": arm, "out_dir": out_dir, "experiment_name": experiment_name,
+                "mitigations": spe_eval.arm_mitigations(experiment, arm),
+                "values": spe_eval.arm_vars(experiment, arm, repo_root),
+                "suite_path": spe_eval.suite_config(experiment, out_dir, repo_root),
+            })
+
+        print(_TAKES_OVER_MESSAGE)
+        model_provider = local_vars.get("spe_agent_model_provider") or ""
+        model_name = local_vars.get("spe_agent_model") or ""
+        model = f"{model_provider}:{model_name}" if model_provider or model_name else "?"
+        window_start = spe_eval.iso_now()
+        any_bad = False
+        try:
+            for plan in plans:
+                if state.stopped:
+                    break
+                arm, out_dir, mitigations = plan["arm"], plan["out_dir"], plan["mitigations"]
+                record = {"experiment": experiment_name, "run": token, "arm": arm, "mitigations": mitigations,
+                          "model": model, "repeat": ns.repeat, "started": spe_eval.iso_now(), "state": "running"}
+                spe_eval.write_json(record, out_dir / "run.json")
+                arm_state = "failed"  # overwritten below; kept if _run_one_arm somehow still raises
+                try:
+                    arm_state = _run_one_arm(state, repo_root, home, token, model, ns, plan)
+                finally:
+                    notes_path = out_dir / "gate-notes.json"
+                    notes = []
+                    if notes_path.is_file():
+                        try:
+                            notes = json.loads(notes_path.read_text())
+                        except ValueError:
+                            notes = []
+                    record["state"] = arm_state
+                    record["ended"] = spe_eval.iso_now()
+                    record["gate_notes"] = notes
+                    # Merge onto whatever run.sh itself already wrote to this run.json (on success,
+                    # `started`/`canaries_sha256`: task 5 review, Important 3) rather than overwriting
+                    # it outright, so matrix.counts/replay keep finding canaries_sha256 here.
+                    run_json_path = out_dir / "run.json"
+                    on_disk: dict = {}
+                    if run_json_path.is_file():
+                        try:
+                            on_disk = json.loads(run_json_path.read_text())
+                        except ValueError:
+                            on_disk = {}
+                    spe_eval.write_json({**on_disk, **record}, run_json_path)
+                if arm_state != "ok":
+                    any_bad = True
+        finally:
+            # Even an exception escaping the loop above (not just its normal end or a SIGTERM
+            # break) still appends this run's window, so a receiver hit during it is still
+            # counted as an eval hit, not a chat one (task 5 review, Minor). A SIGKILL -- which
+            # no Python code, this finally included, ever runs for -- is the one case this cannot
+            # cover; nothing short of pre-recording the window before the run starts would.
+            window_end = spe_eval.iso_now()
+            spe_eval.append_jsonl(spe_eval.spe_eval_home(home) / "windows.jsonl",
+                                   {"run": token, "experiment": experiment_name, "start": window_start,
+                                    "end": window_end})
+        # Back to the build's own arm: instances/local.yml already holds it, so no -e override is
+        # needed (ruling 3). Its own failure is reported but never hides the run's own outcome
+        # (minor 4): the workspace is left changed either way, so it still counts as exit 1.
+        return_rc = _spe_apply(state, ["all"], token=token)
+        if return_rc != 0:
+            _print_err(f"returning to the build's own arm failed (spe-apply all exit {return_rc}); "
+                       "the workspace is left in the last arm's state")
+            any_bad = True
+        print(f"results: ~/spe-eval/reports/{experiment_name}/{token}/ (spe-eval results, or the Evaluations app)")
+        return 1 if any_bad else 0
+    finally:
+        for sig, old in previous_handlers.items():
+            signal.signal(sig, old)
+        lock.release()
+
+
+def cmd_run_detached(ns: argparse.Namespace) -> int:
+    # The same up-front checks cmd_run makes, so a typo'd experiment or a build mismatch exits 2
+    # here, in the caller, rather than only inside a unit nobody is watching (task 4 review,
+    # Important 3). A lock already held is the same LockHeld main() turns into exit 2.
+    repo_root = spe_eval.repo_dir()
+    home = _home()
+    local_vars = spe_eval.load_local_vars(repo_root)
+    experiment_name = ns.name or spe_eval.default_experiment_name(local_vars)
+    experiment = spe_eval.load_experiment(experiment_name, repo_root)
+    spe_eval.check_build_matches(experiment, local_vars, repo_root)
+    spe_eval.experiment_arms(experiment)
+    lock = spe_eval.Lock(spe_eval.spe_eval_home(home) / "lock")
+    holder = lock.holder()
+    if holder is not None:
+        raise spe_eval.LockHeld(holder)
+
+    print(_TAKES_OVER_MESSAGE)  # the child prints it again to its own (journal) stdout; minor 8
+    token = spe_eval.run_id()
+    unit = f"spe-eval-{token}"
+    argv = ["systemd-run", "--user", f"--unit={unit}", f"--setenv=SPE_EVAL_RUN_ID={token}"]
+    for var in ("SPE_REPO_DIR", "SPE_FRONTEND_DIR", "HOME"):
+        if os.environ.get(var):
+            argv.append(f"--setenv={var}={os.environ[var]}")
+    argv += ["--", sys.executable, str(_HERE), "run"]
+    if ns.name:
+        argv.append(ns.name)
+    argv += ["--repeat", str(ns.repeat)]
+    result = subprocess.run(argv, env=_user_bus_env(), capture_output=True, text=True)
+    if result.returncode != 0:
+        _print_err(f"systemd-run failed (exit {result.returncode}): {result.stderr.strip()}")
+        return 2
+
+    # Don't return until the child actually holds the lock (or clearly hasn't within a bounded
+    # wait), so a `wait` right after this never sees "no run in progress" for a run that is in
+    # fact starting (Important 3). SPE_EVAL_DETACH_WAIT_TIMEOUT/_INTERVAL override the defaults,
+    # for tests.
+    timeout = float(os.environ.get("SPE_EVAL_DETACH_WAIT_TIMEOUT", "10"))
+    interval = float(os.environ.get("SPE_EVAL_DETACH_WAIT_INTERVAL", "0.1"))
+    deadline = time.monotonic() + timeout
+    while lock.holder() != token:
+        if time.monotonic() >= deadline:
+            _print_err(f"run {token} did not take the lock within {timeout}s; it may have failed to start")
+            return 1
+        time.sleep(interval)
+    print(token)
+    return 0
+
+
+def cmd_run_dispatch(ns: argparse.Namespace) -> int:
+    return cmd_run_detached(ns) if ns.detach else cmd_run(ns)
+
+
+# --- status / wait / runs ---------------------------------------------------------------------
+
+def _status_info(home: Path) -> dict:
+    lock = spe_eval.Lock(spe_eval.spe_eval_home(home) / "lock")
+    holder = lock.holder()
+    info: dict = {"locked": holder is not None, "holder": holder, "run": None, "experiment": None,
+                  "arm": None, "state": None, "done": None, "total": None, "last_error": None}
+    if holder is not None:
+        # Held by `arm` (no report at all) or by `run` before its first run.json exists: leave
+        # run/experiment/arm/state null rather than showing some past run's details next to this
+        # holder's token (task 4 review, minor 6). Never fall back to the newest past run while
+        # something is actually holding the lock.
+        entry = spe_eval.run_entry(home, holder)
+    else:
+        runs = spe_eval.discover_runs(home)
+        entry = runs[0] if runs else None
+    if entry is not None:
+        info["run"] = entry["run"]
+        info["experiment"] = entry["experiment"]
+        arms = entry["arms"]
+        running = [name for name, record in arms.items() if record.get("state") == "running"]
+        # the arm most recently started: "running" if one still is, else the lexicographically
+        # last (baseline < mitigated matches run order, 03's arm sequence).
+        arm_name = running[0] if running else (sorted(arms)[-1] if arms else None)
+        if arm_name:
+            record = arms[arm_name]
+            info["arm"] = arm_name
+            info["state"] = record.get("state")
+            repeat = record.get("repeat") or 1
+            progress_path = spe_eval.reports_dir(entry["experiment"], entry["run"], arm_name, home) / "progress.jsonl"
+            progress = spe_eval.read_progress(progress_path, repeat)
+            info["total"] = progress["total"]
+            info["done"] = progress["done"]
+            info["last_error"] = progress["last_error"]
+    return info
+
+
+def cmd_status(ns: argparse.Namespace) -> int:
+    info = _status_info(_home())
+    if ns.json:
+        print(json.dumps(info))
+        return 0
+    if not info["locked"] and info["run"] is None:
+        print("spe-eval status: no run has happened yet")
+        return 0
+    print(f"lock: {info['holder']}" if info["locked"] else "lock: free")
+    if info["run"]:
+        progress = f"{info['done']} of {info['total']}" if info["total"] is not None else f"{info['done']} done"
+        print(f"run {info['run']} ({info['experiment']}), arm {info['arm']}: {info['state']}, {progress}")
+        if info["last_error"]:
+            print(f"last error: {info['last_error']}")
+    return 0
+
+
+def cmd_wait(ns: argparse.Namespace) -> int:
+    home = _home()
+    lock = spe_eval.Lock(spe_eval.spe_eval_home(home) / "lock")
+    token = lock.holder()
+    if token is not None:
+        deadline = None if ns.timeout is None else time.monotonic() + ns.timeout
+        interval = float(os.environ.get("SPE_EVAL_WAIT_INTERVAL", "2"))
+        while lock.holder() == token:
+            if deadline is not None and time.monotonic() >= deadline:
+                _print_err(f"run {token} did not finish within {ns.timeout}s")
+                return 1
+            time.sleep(interval)
+    else:
+        # Nothing was running when wait was called: judge the newest kept run instead, rather
+        # than exiting 0 unconditionally (task 4 review, Important 3) -- so `run --detach` racing
+        # a `wait` that lands after the run already ended still gets that run's real outcome, and
+        # one with no run at all still says so.
+        runs = spe_eval.discover_runs(home)
+        if not runs:
+            print("spe-eval wait: no run has happened yet")
+            return 0
+        token = runs[0]["run"]
+    entry = spe_eval.run_entry(home, token)
+    if entry is None:
+        # No report at all for this token: an `arm` holder (which keeps none by design) or a
+        # `run` that crashed before writing its first arm's run.json. Neither is evidence of a
+        # failed *run* (minor 7), so this is not exit 1.
+        print(f"run {token} ended (no report found; it may have been an `arm`, which keeps none)")
+        return 0
+    ok = all(record.get("state") == "ok" for record in entry["arms"].values())
+    for arm_name, record in sorted(entry["arms"].items()):
+        print(f"{arm_name}: {record.get('state')}")
+    return 0 if ok else 1
+
+
+def cmd_runs(ns: argparse.Namespace) -> int:
+    entries = spe_eval.discover_runs(_home())
+    if ns.json:
+        print(json.dumps(entries))
+        return 0
+    if not entries:
+        print("spe-eval runs: none yet")
+        return 0
+    for entry in entries:
+        arms = entry["arms"]
+        first = next(iter(arms.values()), {})
+        model = first.get("model", "?")
+        repeat = first.get("repeat", "?")
+        arm_summary = ", ".join(
+            f"{name} ({','.join(record.get('mitigations') or []) or 'none'}): {record.get('state')}"
+            for name, record in sorted(arms.items()))
+        print(f"{entry['run']}  {entry['experiment']}  model={model} repeat={repeat}  {arm_summary}")
+    return 0
+
+
+# --- argument parsing -------------------------------------------------------------------------
+
+def _repeat_type(value: str) -> int:
+    """`--repeat`, checked up front (task 5 review, Minor): `run.sh`'s own usage check only runs
+    after a full `spe-apply all` and marks the arm `failed`; argparse's own usage error (exit 2)
+    here catches a bad value before any of that."""
+    try:
+        n = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"invalid int value: {value!r}") from None
+    if n < 1:
+        raise argparse.ArgumentTypeError(f"--repeat must be >= 1, not {n}")
+    return n
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="spe-eval", description="Measure an experiment on this workspace.",
+                                      epilog=COMMAND_TABLE, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = parser.add_subparsers(dest="command")
+
+    p_arm = sub.add_parser("arm", help="apply one arm and wait for the stack to answer")
+    p_arm.add_argument("args", nargs="+", metavar="[<name>] baseline|mitigated")
+    p_arm.set_defaults(handler=cmd_arm)
+
+    p_run = sub.add_parser("run", help="measure every arm of an experiment")
+    p_run.add_argument("name", nargs="?")
+    p_run.add_argument("--repeat", type=_repeat_type, default=1)
+    p_run.add_argument("--detach", action="store_true")
+    p_run.set_defaults(handler=cmd_run_dispatch)
+
+    p_status = sub.add_parser("status", help="the lock, the run in progress and its test count")
+    p_status.add_argument("--json", action="store_true")
+    p_status.set_defaults(handler=cmd_status)
+
+    p_wait = sub.add_parser("wait", help="block until the run in progress ends")
+    p_wait.add_argument("--timeout", type=float, default=None)
+    p_wait.set_defaults(handler=cmd_wait)
+
+    p_runs = sub.add_parser("runs", help="every kept run, newest first")
+    p_runs.add_argument("--json", action="store_true")
+    p_runs.set_defaults(handler=cmd_runs)
+
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    ns = parser.parse_args(argv)
+    handler = getattr(ns, "handler", None)
+    if handler is None:
+        parser.print_help()
+        return 2
+    try:
+        return handler(ns)
+    except (spe_eval.ConfigError, ValueError, spe_eval.LockHeld) as e:
+        _print_err(str(e))
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

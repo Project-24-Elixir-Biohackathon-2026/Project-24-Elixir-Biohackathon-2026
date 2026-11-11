@@ -106,3 +106,16 @@ def test_an_experiment_build_persists_its_keys_through_spe_local_vars_extra(tmp_
     assert values["spe_mitigations"] == ["L1", "L2"]
     assert values["spe_harden_trs_readonly"] is True
     assert values["spe_eval_sink"] is True
+
+
+def test_the_hosts_layout_persists_even_when_an_experiment_sets_spe_local_vars_extra(tmp_path):
+    # A VM-local spe-apply re-runs create.yml's preflight: without the build's data root, free-disk
+    # floor and Docker ownership it checked the group_vars defaults (/data-share, 15 GB) and refused
+    # an instance built on agent-service-1 (task 7 bug 2). An experiment's spe_local_vars_extra
+    # replaces an instance file's, so these must sit in spe_local_vars itself.
+    values = run(tmp_path, {
+        "spe_data_root": "/srv/spe-data", "spe_min_free_gb": 5, "spe_manage_docker": False,
+        "spe_local_vars_extra": ["spe_experiment"], "spe_experiment": "ladder-l1"})
+    assert values["spe_data_root"] == "/srv/spe-data"
+    assert values["spe_min_free_gb"] == 5
+    assert values["spe_manage_docker"] is False

@@ -202,6 +202,15 @@
         name: repo
       tags: [frontend]
 
+    # Node, uv and this clone's promptfoo/Python dependencies for spe-eval (task 5): installed once,
+    # at build time only. Tagged on its own, never one of stack/drs/trs/frontend, so spe-apply all
+    # (which only ever passes those four) never re-runs it on an arm's re-apply.
+    - name: spe-eval's toolchain (experiments)
+      ansible.builtin.import_role:
+        name: spe_eval
+      tags: [eval_toolchain]
+      when: spe_experiments
+
     - name: Certificate and trust anchor
       ansible.builtin.import_role:
         name: tls
@@ -303,6 +312,18 @@
       ansible.builtin.import_role:
         name: handoff
       tags: [handoff]
+
+    # hardening.json alone, rewritten on the VM for whichever arm's -e values spe-apply all just
+    # applied (experiments spec part 03, decision 9 / R4): tagged frontend (one of spe-apply all's
+    # own tags: stack, drs, trs, frontend), unlike "Hand-off files" above (tag handoff, which
+    # spe-apply all never passes, so vm_handoff.yml's arm-invariant files are written once, at
+    # build time, and never touched again).
+    - name: VM-local hardening.json (experiments; this arm)
+      ansible.builtin.import_role:
+        name: handoff
+        tasks_from: vm_hardening
+      tags: [frontend]
+      when: spe_experiments
 
     - name: Verification
       ansible.builtin.import_role:

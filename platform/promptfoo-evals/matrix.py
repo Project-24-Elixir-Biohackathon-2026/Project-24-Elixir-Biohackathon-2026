@@ -200,6 +200,12 @@ def counts(level_dir: Path) -> dict:
     except handoff.ConfigError as e:
         # The contract promises MatrixError; a caller catching only that must not see a bare ConfigError.
         raise MatrixError(str(e)) from e
+    if record["injections"] == "mixed":
+        # check_hardening accepts "mixed" for an experiment's arm (decision 9 / R4), but the ladder
+        # matrix only ever has true/false columns: render()'s own sort key, (level, injections),
+        # would mix a bool and a str the moment one counts file is mixed (task 5 review, Minor).
+        raise MatrixError(f"{directory / 'hardening.json'}: injections is \"mixed\", not a ladder "
+                          "condition (true or false); the ladder matrix has no column for it")
     run = _run(directory)
     return {"schema_version": 1, "instance": record["instance"], "level": record["level"],
             "injections": record["injections"], "started": run["started"],

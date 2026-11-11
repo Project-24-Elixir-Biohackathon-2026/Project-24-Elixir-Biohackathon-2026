@@ -23,3 +23,5 @@ spe-apply ansible --tags trs   # one stage of the playbook
 It reads `~/spe-frontend/.env`, builds images from `~/sperange`, runs `docker compose up -d` on `~/spe-frontend/docker-compose.yml` and waits until the frontend answers. It prints what it built and which containers it recreated; secrets never appear in its output. A failed build leaves the running containers as they are.
 
 Do not use `docker compose up --build` by hand: the compose file has no build sections, so it rebuilds nothing. Do not restart the workspace to apply a change: that destroys the VM.
+
+On a `spe-experiments` build, every command here except `status`, `logs` and `--help`/`-h`/`help` refuses (exit 2, `spe-apply: spe-eval run <token> holds the lock; wait for it (spe-eval wait)`) while `spe-eval run` or `arm` holds `~/spe-eval/lock`. Wait for it to finish (`spe-eval wait`) or check `spe-eval status` before running any other `spe-apply` step.

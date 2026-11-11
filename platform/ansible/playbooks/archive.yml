@@ -2,7 +2,9 @@
 # Save one instance's run to <spe_runs_root>/<UTC time>_<instance>/: parameters,
 # canary record and the frontend's chats: with openwebui chats and notes (incl.
 # the run report), with agui every journal (hidden and deleted sessions included)
-# and the agent's run log. Works for OpenStack and existing-VM instances.
+# and the agent's run log; a spe-experiments build's own ~/spe-eval reports,
+# promptfoo database and windows.jsonl go into evals/ (decision 13), nothing on a
+# `spe` build. Works for OpenStack and existing-VM instances.
 #   ansible-playbook playbooks/archive.yml -e @instances/<name>.yml
 # Run on its own it is live: the agui services keep running, so it can be run at
 # any time as a backup. destroy.yml runs it first as the final archive

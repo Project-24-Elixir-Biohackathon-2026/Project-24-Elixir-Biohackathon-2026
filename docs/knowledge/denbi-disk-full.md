@@ -24,3 +24,8 @@ the compose dir are in `/data-share/backups/agent-stack-2026-11-08/` (root-only,
 `spe-open-terminal:0.16.1`, 7.3 GB) 9.3 GB were left; removing the unused 0.12.4 terminal images freed no more
 (layers shared with 0.16.1). To restore `agent-stack`:
 untar the volumes into new `agent-stack_*` volumes and the dir into `~`, then `docker compose up -d` there.
+
+**2026-11-10: the build cache came back.** An L1 rebuild for the experiments slice 3 (`spe-eval`) was refused
+at 4 GB free (`spe_min_free_gb: 5`). `docker builder prune -af` (7.2 GB) and `sudo apt-get clean` got it to
+15 GB; `docker image prune -f` freed only 42 MB. Each `create.yml` or `spe-apply build` refills the cache:
+prune it before a run of rebuilds.

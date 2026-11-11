@@ -8,11 +8,14 @@
 #                          until they answer
 #   spe-apply status       containers and health
 #   spe-apply logs [svc]   follow the logs
-#   spe-apply stack        run the Ansible roles of the GA4GH stack on this VM
+#   spe-apply stack [ARGS] run the Ansible roles of the GA4GH stack on this VM
 #                          (tags stack,drs,trs: services, configs, images, catalog
 #                          installers, registrations); a few minutes
-#   spe-apply all          stack plus the frontend roles (tags ...,frontend)
+#   spe-apply all [ARGS]   stack plus the frontend roles (tags ...,frontend)
 #   spe-apply ansible ARGS the playbook with your own arguments, e.g. --tags trs
+#
+# stack, all and ansible all pass any extra arguments through to ansible-playbook
+# (e.g. spe-apply all -e foo=bar), as ansible already did.
 #
 # What needs which step: the runbook and helper scripts (roles/sandbox/files/agent),
 # the agent's prompt (roles/sandbox/files/system_prompt.txt) and the agent's Python
@@ -35,9 +38,18 @@
 # platform/instance/compose.yml in the clone. SPE_COMPOSE_OVERLAYS in .env (absent by
 # default) names the Compose overlays a ladder level adds, platform/instance/compose.<name>.yml
 # in the clone, each passed with -f after the compose file. Secrets never appear in the output.
+#
+# On a spe-experiments build, every command here except the read-only status, logs and
+# --help/-h/help refuses (exit 2) while an `spe-eval run` or `arm` holds ~/spe-eval/lock
+# (decision 11; a spe build never has that file, so a plain build is unaffected), unless
+# SPE_EVAL_LOCK in the environment equals the token the holder wrote into it -- spe-eval sets
+# it only for its own calls. status and logs stay available during a run (spe-eval's own "wait
+# until the stack answers" probes the agent's /healthz directly, never spe-apply status), and
+# --help never touches the stack.
 set -euo pipefail
 
 dir=${SPE_FRONTEND_DIR:-/home/ubuntu/spe-frontend}
+lock_file=$HOME/spe-eval/lock
 [[ -f $dir/.env ]] || { echo "spe-apply: $dir/.env not found (is this an SPE instance?)" >&2; exit 2; }
 set -a; . "$dir/.env"; set +a
 : "${SPE_REPO_DIR:?.env lacks SPE_REPO_DIR}" "${COMPOSE_PROFILES:?.env lacks COMPOSE_PROFILES}"
@@ -107,7 +119,17 @@ up() {
   # agent.yaml is a bind mount: its hash is a container label, so a change recreates the agent.
   SPE_AGENT_CONFIG_HASH=$(sha256sum "$dir/agent.yaml" 2>/dev/null | cut -c1-16 || true)
   export SPE_AGENT_CONFIG_HASH
-  "${compose[@]}" up -d --remove-orphans
+  # Compose 5.3 (Docker 29) recreates a network whose config changed (the egress overlay gives
+  # tools its own subnet) but reconnects a container on two networks without its service alias
+  # there: the sandbox could no longer resolve `agent`. So when the networks differ from the last
+  # up's, or that is unknown, every container is recreated.
+  local networks networks_file=$dir/.compose-networks recreate=()
+  networks=$("${compose[@]}" config --format json \
+    | python3 -c 'import json, sys; print(json.dumps(json.load(sys.stdin).get("networks", {}), sort_keys=True))' \
+    | sha256sum | cut -c1-16)
+  [[ -f $networks_file && $(<"$networks_file") == "$networks" ]] || recreate=(--force-recreate)
+  "${compose[@]}" up -d --remove-orphans "${recreate[@]}"
+  echo "$networks" > "$networks_file"
   echo "== waiting for the frontend"
   if has_profile openwebui; then
     wait_http "http://127.0.0.1:${SPE_WEBUI_PORT}/health"
@@ -141,16 +163,34 @@ status() {
   fi
 }
 
+# One spe-eval run or arm at a time per VM (decision 11): refuse while ~/spe-eval/lock is held
+# (flock -n fails), unless SPE_EVAL_LOCK equals the token its holder wrote into it. A missing
+# lock file is "not held" (also true before flock would even get the chance to open it under a
+# directory that does not exist yet, e.g. a spe build with no ~/spe-eval at all).
+check_lock() {
+  [[ -f $lock_file ]] || return 0
+  if flock -n "$lock_file" -c true 2>/dev/null; then return 0; fi
+  local held_token
+  held_token=$(cat "$lock_file" 2>/dev/null || true)
+  if [[ -n ${SPE_EVAL_LOCK:-} && $SPE_EVAL_LOCK == "$held_token" ]]; then return 0; fi
+  echo "spe-apply: spe-eval run ${held_token:-?} holds the lock; wait for it (spe-eval wait)" >&2
+  exit 2
+}
+
 cmd=${1:-}; shift || true
+case $cmd in
+  status|logs|-h|--help|help) ;;  # read-only: let through even while the lock is held
+  *)       check_lock ;;
+esac
 case $cmd in
   "")      build; up ;;
   build)   build "$@" ;;
   up)      up ;;
   status)  status ;;
   logs)    "${compose[@]}" logs -f --tail=100 "$@" ;;
-  stack)   run_ansible --tags stack,drs,trs ;;
-  all)     run_ansible --tags stack,drs,trs,frontend ;;
+  stack)   run_ansible --tags stack,drs,trs "$@" ;;
+  all)     run_ansible --tags stack,drs,trs,frontend "$@" ;;
   ansible) run_ansible "$@" ;;
-  -h|--help|help) sed -n '2,38p' "$0" ;;
+  -h|--help|help) sed -n '2,47p' "$0" ;;
   *) echo "spe-apply: unknown command '$cmd' (build, up, status, logs, stack, all, ansible)" >&2; exit 2 ;;
 esac

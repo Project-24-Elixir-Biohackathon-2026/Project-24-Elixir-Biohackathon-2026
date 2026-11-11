@@ -1,0 +1,28 @@
+---
+# Unpack export_spe_eval.yml's fetched bundle into the run directory's evals/ (decision 13):
+# absent when the build had no ~/spe-eval (a `spe` build) or there was nothing to pack. Own file,
+# for the same reason export_spe_eval.yml is (platform/dev/tests/test_spe_eval_archive.py).
+- name: spe-eval reports bundle present
+  ansible.builtin.stat:
+    path: "{{ spe_output_dir }}/archive-bundle-spe-eval.tar.gz"
+  register: spe_eval_bundle
+
+- name: Unpack into evals/
+  when: spe_eval_bundle.stat.exists
+  block:
+    - name: evals/ directory
+      ansible.builtin.file:
+        path: "{{ spe_run_dir }}/evals"
+        state: directory
+        mode: "0755"
+
+    - name: Unpack reports/, promptfoo/ and windows.jsonl
+      ansible.builtin.unarchive:
+        src: "{{ spe_output_dir }}/archive-bundle-spe-eval.tar.gz"
+        dest: "{{ spe_run_dir }}/evals"
+        remote_src: true
+
+    - name: Remove the staged bundle
+      ansible.builtin.file:
+        path: "{{ spe_output_dir }}/archive-bundle-spe-eval.tar.gz"
+        state: absent

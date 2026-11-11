@@ -107,6 +107,15 @@
     force: true
   become: true
 
+- name: spe-eval on the PATH (a link into the clone, as spe-apply above; experiments only)
+  ansible.builtin.file:
+    src: "{{ spe_repo_dir }}/platform/instance/spe-eval"
+    dest: /usr/local/bin/spe-eval
+    state: link
+    force: true
+  become: true
+  when: spe_experiments
+
 - name: Skills directory for Coder Agents
   ansible.builtin.file:
     path: "/home/{{ spe_ssh_user }}/.agents"

@@ -19,3 +19,11 @@ Converge and check, from the main checkout's `platform/ansible` (the key from `~
 First run at `e858c09`: create `ok=156 failed=0`; the verify smoke used `run_command` and `get_process_status`,
 ended `RUN_FINISHED` with a 218-character answer (75 events). It needed the disk freed first
 (`denbi-disk-full.md`, 2026-11-08).
+
+**Destroying it from this guest** (`spe_provision: existing`, 2026-11-11): `destroy.yml` archives the run on the
+controller first and failed there, before any reset, with `There was an issue creating /data-share as requested:
+[Errno 13] Permission denied: b'/data-share'` (`spe_runs_root` defaults to `/data-share/runs`, which this guest
+lacks). Point it into the main checkout's git-ignored output:
+
+    ansible-playbook playbooks/destroy.yml -e @instances/denbi.yml -e spe_confirm_reset=denbi-agui-01 \
+      -e spe_runs_root=$PWD/output/runs </dev/null

@@ -220,3 +220,6 @@
             path: "{{ item }}"
             state: absent
           loop: "{{ [agui_export_dir.path | default(''), agui_archive_dir.path | default('')] | select | list }}"
+
+- name: spe-eval's reports, promptfoo database and windows.jsonl (experiments spec part 03, decision 13)
+  ansible.builtin.include_tasks: export_spe_eval.yml

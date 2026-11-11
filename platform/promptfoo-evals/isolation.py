@@ -2,10 +2,19 @@
 
     extensions: [file://isolation.py:extension_hook]
 
-Spec part 05. Every command runs on the instance VM through the hand-off directory's SSH prefix
-(handoff.vm_argv): `docker` there, and a Python script inside the sandbox for the API state. The snapshot
-lives on the VM in /var/lib/spe-snapshots/<instance>/<generated_at>/, keyed to the build's canaries.json,
-so a re-provisioned instance never restores an older build. Standard library only.
+Spec part 05 and part 03 (*Snapshots per arm*). Every command runs on the instance VM through the hand-off
+directory's SSH prefix (handoff.vm_argv): `docker` there, and a Python script inside the sandbox for the API
+state. The snapshot lives on the VM in /var/lib/spe-snapshots/<instance>/<key>/, keyed to the build's
+canaries.json plus the arm's mitigation set (hardening.json's `mitigations`, sorted): <generated_at> for an
+empty set (today's single-arm builds, and older hand-offs with none), <generated_at>+<id1>+<id2> otherwise
+(snapshot_key). Taking a snapshot replaces only its own key's directory, so a re-provisioned instance never
+restores an older build, and two arms of the same build keep their own snapshot and restore from only their
+own. Standard library only.
+
+With SPE_EVAL_PROGRESS set, the promptfoo hook also appends one JSON line per beforeAll/afterEach: beforeAll's
+{"total": ...} is the suite's test count alone, not tests x repeat (promptfoo does not forward the CLI/global
+--repeat into the testSuite the hook sees); a caller that wants tests x repeat multiplies total by the repeat
+it already knows (e.g. spe-eval status, by the repeat it invoked run.sh with).
 
 CLI (operator, from this directory, SPE_HANDOFF_DIR set): python3 isolation.py snapshot|exists|restore|sh
 """
@@ -47,12 +56,24 @@ LABELS_FMT = "|".join(["{{.Name}}"] + [f'{{{{index .Config.Labels "com.docker.co
                                        ("project", "project.working_dir", "project.config_files", "service")])
 API_CHECK = ('for u in "$TRS_BASE/service-info" "$WES_BASE/service-info" "$DRS_BASE/service-info"; do '
              'curl -s -o /dev/null -w "%{http_code} " "$u"; done')
-SNAP_SH = ('set -eu; d="/s/$1/$2"; rm -rf "/s/$1"; mkdir -p "$d"; '
-           'for v in /v/*; do tar -cf "$d/$(basename "$v").tar" -C "$v" .; done; echo "$2" > "$d/COMPLETE"')
+SNAP_SH = ('set -eu; i="$1"; k="$2"; stamp="${k%%+*}"; '
+           # Prune siblings from an older build (a different stamp) before taking this one's
+           # snapshot (task 5 review, Minor: a rebuild in place must not pile up every earlier
+           # build's directory forever); a sibling of the SAME build (this stamp, another arm's
+           # mitigation suffix) stays, so two arms keep their own snapshot (Snapshots per arm).
+           'if [ -d "/s/$i" ]; then for sib in "/s/$i"/*; do '
+           '[ -e "$sib" ] || continue; '
+           'b=$(basename "$sib"); '
+           'case "$b" in "$stamp") ;; "$stamp"+*) ;; *) rm -rf "$sib" ;; esac; '
+           'done; fi; '
+           'd="/s/$i/$k"; rm -rf "$d"; mkdir -p "$d"; '
+           'for v in /v/*; do tar -cf "$d/$(basename "$v").tar" -C "$v" .; done; echo "$k" > "$d/COMPLETE"')
 RESTORE_SH = ('set -eu; d="/s/$1/$2"; for v in /v/*; do n=$(basename "$v"); test -f "$d/$n.tar"; '
               'find "$v" -mindepth 1 -delete; tar -xpf "$d/$n.tar" -C "$v"; done')
 _INSTANCE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,62}")
 _STAMP = re.compile(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ")
+# Mirrors validate.py's MITIGATION_ID_PATTERN: L<n> for ladder levels, else kebab-case.
+_MITIGATION_ID = re.compile(r"L\d+|[a-z0-9]+(?:-[a-z0-9]+)*")
 
 Runner = Callable[..., subprocess.CompletedProcess]
 
@@ -95,7 +116,34 @@ def _ok(proc: subprocess.CompletedProcess, what: str, error=RestoreError) -> sub
     return proc
 
 
+def _mitigation_set(directory: Path) -> tuple[str, ...]:
+    """The arm's mitigation ids, sorted, from the hand-off's hardening.json (`mitigations`, decision 9).
+
+    Absent, missing (an older hand-off) or empty means no arm: the key of today's single-arm builds
+    (`Snapshots per arm`). A present but malformed `mitigations` is a configuration error, never silently
+    dropped, so a typo in the role's output does not silently merge two arms' snapshots.
+    """
+    path = Path(directory) / "hardening.json"
+    try:
+        record = json.loads(path.read_text())
+    except FileNotFoundError:
+        return ()
+    except ValueError:
+        raise ConfigError(f"{path} is not JSON") from None
+    if not isinstance(record, dict):
+        raise ConfigError(f"{path}: not a JSON object")
+    ids = record.get("mitigations")
+    if ids is None:
+        return ()
+    if not isinstance(ids, list) or not all(isinstance(i, str) and _MITIGATION_ID.fullmatch(i) for i in ids):
+        raise ConfigError(f"{path}: mitigations must be a list of mitigation ids")
+    return tuple(sorted(set(ids)))
+
+
 def snapshot_key(directory: Path) -> tuple[str, str]:
+    """(instance, key). The key is the build's stamp plus the arm's mitigation set, sorted (decision 9), so
+    each arm's snapshot lives in its own directory under the instance (`Snapshots per arm`): `<stamp>` for an
+    empty set, `<stamp>+<id1>+<id2>` otherwise."""
     path = Path(directory) / "canaries.json"
     try:
         record = json.loads(path.read_text())
@@ -108,7 +156,11 @@ def snapshot_key(directory: Path) -> tuple[str, str]:
         raise ConfigError(f"{path}: invalid instance name")
     if not isinstance(stamp, str) or not _STAMP.fullmatch(stamp):
         raise ConfigError(f"{path}: invalid generated_at")
-    return instance, stamp.replace(":", "")
+    key = stamp.replace(":", "")
+    mitigations = _mitigation_set(directory)
+    if mitigations:
+        key += "+" + "+".join(mitigations)
+    return instance, key
 
 
 def _mounts(mode: str) -> list[str]:
@@ -410,18 +462,19 @@ def _log(message: str) -> None:
 
 # The stack may hold a test's state: written after beforeEach's restore, removed by a full restore no test follows
 # (afterAll's, the CLI's) and by a snapshot. create.yml does not wipe the volumes, so a rebuild in place over a dirty
-# stack would snapshot the previous run's leftovers as its clean state; this marker lets beforeAll refuse that.
+# stack would snapshot the previous run's (or arm's) leftovers as its clean state; this marker lets beforeAll
+# refuse that. It records the full snapshot key (stamp plus mitigation set), so a marker left by one arm is a
+# mismatch for another arm of the same build, exactly as it is for an earlier build (`Snapshots per arm`).
 DIRTY_MARKER = "stack_dirty.json"
 ACCEPT_DIRTY = "SPE_ISOLATION_ACCEPT_DIRTY"
 
 
 def _build(directory: Path) -> str:
-    snapshot_key(directory)  # validates the record
-    return json.loads((Path(directory) / "canaries.json").read_text())["generated_at"]
+    return snapshot_key(directory)[1]  # the full key: stamp plus mitigation set; validates canaries.json too
 
 
 def mark_dirty(directory: Path) -> None:
-    (Path(directory) / DIRTY_MARKER).write_text(json.dumps({"generated_at": _build(directory)}))
+    (Path(directory) / DIRTY_MARKER).write_text(json.dumps({"key": _build(directory)}))
 
 
 def mark_clean(directory: Path) -> None:
@@ -429,19 +482,21 @@ def mark_clean(directory: Path) -> None:
 
 
 def refuse_dirty_rebuild(directory: Path) -> None:
-    """Before a snapshot: the stack must not hold state from an earlier build's run that was never restored."""
+    """Before a snapshot: the stack must not hold state from an earlier build or arm's run that was never
+    restored. Compares the full key (stamp plus mitigation set), so a mismatch catches another arm's dirty
+    stack as surely as an earlier build's."""
     try:
-        left = json.loads((Path(directory) / DIRTY_MARKER).read_text()).get("generated_at")
+        left = json.loads((Path(directory) / DIRTY_MARKER).read_text()).get("key")
     except FileNotFoundError:
         return
     except (ValueError, AttributeError):
         left = "unknown"
     if left == _build(directory) or os.environ.get(ACCEPT_DIRTY) == "1":
         return
-    raise IsolationError(f"the run of the previous build ({left}) was not restored before this rebuild, so a "
-                         "snapshot now would hold its state: rebuild from a clean stack (destroy.yml, then "
-                         "create.yml), or restore before rebuilding next time; set "
-                         f"{ACCEPT_DIRTY}=1 to snapshot anyway")
+    raise IsolationError(f"the run of the previous build or arm ({left}) was not restored before this rebuild, so "
+                         "a snapshot now would hold its state: restore before rebuilding next time, or rebuild "
+                         "from a clean stack -- on the controller, destroy.yml then create.yml; in a workspace "
+                         f"(no destroy.yml here), a new workspace; set {ACCEPT_DIRTY}=1 to snapshot anyway")
 
 
 def guarded_snapshot(directory: Path) -> None:
@@ -450,10 +505,64 @@ def guarded_snapshot(directory: Path) -> None:
     mark_clean(directory)
 
 
+# "While a run is going": spe-eval status reads this file's last line while a run holds the workspace. One
+# JSON line per write, each hook call its own process (no shared counter), so `done` is read back from what is
+# already on disk rather than kept in memory.
+PROGRESS_ENV = "SPE_EVAL_PROGRESS"
+
+
+def _progress_path() -> Path | None:
+    value = os.environ.get(PROGRESS_ENV)
+    return Path(value) if value else None
+
+
+def _append_progress(line: dict) -> None:
+    path = _progress_path()
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a") as f:
+        f.write(json.dumps(line) + "\n")
+
+
+def _progress_total(suite: dict) -> None:
+    """beforeAll (R3): the run's total, written first. promptfoo does not forward the CLI/global `--repeat`
+    into the testSuite the hook sees (checked against promptfoo 0.125.1's evaluator: `beforeAll` gets exactly
+    `{suite: testSuite}`, and `options.repeat` lives on the separate evaluate() options, never copied onto
+    testSuite), so this is the test count alone, not tests x repeat."""
+    try:
+        _append_progress({"total": len(suite.get("tests") or [])})
+    except Exception as e:  # never break a test over a progress line
+        _log(f"progress total not written: {type(e).__name__}: {e}")
+
+
+def _progress_done(test: dict, result: dict) -> None:
+    """afterEach (R3): one line per finished test. `done` counts the `done` lines already on disk, plus this
+    one, since each hook call is a fresh process."""
+    path = _progress_path()
+    if path is None:
+        return
+    try:
+        done = 1
+        if path.exists():
+            for raw in path.read_text().splitlines():
+                try:
+                    if "done" in json.loads(raw):
+                        done += 1
+                except ValueError:
+                    continue
+        label = test.get("description") or (test.get("metadata") or {}).get("id") or ""
+        _append_progress({"done": done, "test": label, "pass": bool(result.get("success")),
+                          "error": result.get("error")})
+    except Exception as e:  # never break a test over a progress line
+        _log(f"progress line not written: {type(e).__name__}: {e}")
+
+
 def extension_hook(hook_name: str, context: dict) -> None:
     """promptfoo hook (legacy convention: called for every hook). Raising in beforeAll/beforeEach aborts the eval;
     raising in afterAll only gets logged by promptfoo."""
     if hook_name == "beforeAll":
+        _progress_total(context.get("suite") or {})
         directory = handoff_dir()
         if snapshot_exists(directory):
             _log("snapshot of this build present")
@@ -469,6 +578,7 @@ def extension_hook(hook_name: str, context: dict) -> None:
         write_baseline(baseline(directory))
         _log(f"restored in {seconds:.1f}s (median {median:.1f}s)")
     elif hook_name == "afterEach":
+        _progress_done(context.get("test") or {}, context.get("result") or {})
         try:
             diff = state_diff(handoff_dir(), read_baseline())
             _log("state diff: " + ", ".join(f"{k}={'-' if v is None else len(v)}" for k, v in diff.items()))

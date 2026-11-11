@@ -9,6 +9,10 @@ calls.** Runs on Anthropic are paid: get the go-ahead first. Runs on de.NBI need
 
 ## Run the suite
 
+This is the controller's own route, over a tunnel, against a hand-off directory. On an `spe-experiments`
+workspace, `spe-eval run` runs both suites, every arm, from the VM itself, no tunnel and no hand-off path to set
+by hand: `../instance/workspace/AGENTS.md`, *Experiments*.
+
 Replace `VM` with the instance's SSH host and `INSTANCE` with its name.
 
 ```bash
@@ -73,22 +77,35 @@ failure there is logged and raised). Restored volumes, containers and what is le
 `isolation.VOLUMES`, `CONTAINERS`, `NOT_RESTORED`.
 
 `create.yml` does not wipe the volumes, so a rebuild in place over a run that was never restored (an aborted one,
-say) would snapshot that run's state as the new build's. `beforeEach` writes
-`<hand-off>/stack_dirty.json` (`{"generated_at": …}`) before each test; a full restore no test follows (`afterAll`,
-`isolation.py restore`) or a snapshot removes it. With no snapshot of this build and a marker from another build,
-`beforeAll` and `isolation.py snapshot` refuse: rebuild from a clean stack (`destroy.yml`, then `create.yml`), or
-set `SPE_ISOLATION_ACCEPT_DIRTY=1` to snapshot anyway.
+say) would snapshot that run's state as the new build's. `beforeEach` writes `<hand-off>/stack_dirty.json`
+(`{"key": …}`, the full snapshot key below) before each test; a full restore no test follows (`afterAll`,
+`isolation.py restore`) or a snapshot removes it. With no snapshot of this build (or arm) and a marker from
+another one, `beforeAll` and `isolation.py snapshot` refuse: rebuild from a clean stack (`destroy.yml`, then
+`create.yml`), or set `SPE_ISOLATION_ACCEPT_DIRTY=1` to snapshot anyway.
 
-The snapshot lives on the VM in `/var/lib/spe-snapshots/<instance>/<generated_at>/` and is keyed to
-`canaries.json`: a re-provisioned instance (every level of the de.NBI VM shares `output/denbi-agui-01/`) takes a
-new one and deletes the old. Restore times are kept in `<hand-off>/restore_times.json`; their median goes into
-`hardening.json` as `restore_seconds`. The image used for tar is `alpine:3.20` (`SPE_SNAPSHOT_IMAGE` overrides
-it, e.g. with `redis:6.2.6-alpine`, already on the VM, if the VM cannot pull).
+The snapshot lives on the VM in `/var/lib/spe-snapshots/<instance>/<key>/`, keyed to `canaries.json`'s
+`generated_at` plus the arm's mitigation set, sorted (`hardening.json`'s `mitigations`, decision 9): `<stamp>`
+for an empty set (today's single-arm builds, and older hand-offs with no `mitigations` field), `<stamp>+<id1>
++<id2>` otherwise. Snapshotting one key replaces that key's own directory and removes every older build's
+(another `<stamp>`), so a re-provisioned instance (every level of the de.NBI VM shares `output/denbi-agui-01/`)
+keeps no earlier build's snapshots, while two arms of the same build keep their own, each restoring from only its
+own (`isolation.snapshot_key`). Restore times
+are kept in `<hand-off>/restore_times.json`; their median goes into `hardening.json` as `restore_seconds`. The
+image used for tar is `alpine:3.20` (`SPE_SNAPSHOT_IMAGE` overrides it, e.g. with `redis:6.2.6-alpine`, already on
+the VM, if the VM cannot pull).
 
 By hand, from this directory with `SPE_HANDOFF_DIR` set: `python3 isolation.py exists` (exit 0/1),
 `python3 isolation.py snapshot`, `python3 isolation.py restore` (prints the seconds), and
 `python3 isolation.py sh <<'EOF' … EOF` (a shell script on the VM, through `hosts.yml`'s SSH prefix).
 No model calls; each restore stops the workflow stack and the sandbox for about a minute.
+
+**Progress, while a run is going.** With `SPE_EVAL_PROGRESS=<path>` set, `beforeAll` appends
+`{"total": <test count>}` to that file before anything else (promptfoo does not forward the CLI `--repeat` into
+the suite the hook sees, so this is the suite's test count alone, not tests × repeat: a reader that wants the
+repeated total, such as `spe-eval status`, multiplies by the repeat it already knows, the one it ran `run.sh`
+with), and each `afterEach` appends `{"done": <k>, "test": <description or id>, "pass": <bool>, "error":
+<str|null>}`. `spe-eval status` reads the file's last line. A write failure is logged and swallowed: it never
+fails a test.
 
 ## Controls suite (no model)
 
@@ -115,6 +132,15 @@ agent container. A probe prints `HTTP <code> <label>` per request and, as its la
 | `airlock` | L5 | a synthetic answer with a `STUDY-` id and a sensitive path passes unchanged | both are redacted; a benign answer is unchanged |
 | `isolation-plant` | every test, before | always `open`: the marker was planted in the sandbox's home, its `/tmp` and TRS | – |
 | `isolation-check` | every test, after | a marker survived the restore | always `closed`: nothing from the previous test is left |
+
+**The gate learns the arm** (experiments spec part 03, decision 9): `controls_asserts.py gate` reads
+`hardening.json`'s `mitigations`, the arm's mitigations (ladder ids `L1`..`L5` plus, for an experiment,
+the participant's own), and, for every one of them that is not a ladder id, its `probes` (`mitigations/<id>.yml`,
+read without a YAML parser — `handoff.mitigation_probes`). A probe the level alone would expect open, but that
+one of those mitigations closes, passes `probe_state` instead of failing it, and is recorded as a note ("`<probe>`
+closed by this arm; declare it in `probes`"): `gate` prints every note and, with `--notes <file>`, writes them
+as a JSON list to `<file>`. An arm with only ladder mitigations keeps today's exact expectations, so the ladder's
+own runs are unaffected.
 
 ## The agent suite
 
@@ -238,26 +264,45 @@ canaries, and one fixture id with two payloads.
 
 ## One ladder run (`run.sh`)
 
-`./run.sh <hand-off dir> <repeat>` runs the controls suite, then — only if every probe agrees with the level in
-`hardening.json` — the whole agent suite, uncached, repeated `<repeat>` times (5 at L0 and the ladder's last
-level, 3 between). It takes no other argument: the build decides what runs, never the caller, so a filtered or
-partial run is never filed as a whole condition.
+`./run.sh <hand-off dir> <repeat> [--suite <config>] [--reports-dir <dir>] [--description <text>]` runs the
+controls suite, then — only if every probe agrees with the level in `hardening.json` (or an arm mitigation that
+declares it, *The gate learns the arm* above) — the whole agent suite, uncached, repeated `<repeat>` times (5 at
+L0 and the ladder's last level, 3 between). With none of the three optional arguments, the ladder's own route is
+unchanged byte for byte: the build decides what runs, never the caller, so a filtered or partial run is never
+filed as a whole condition.
+
+The three (experiments spec part 03, *`run.sh` gains three arguments*) are for one arm's run, not the ladder's:
+
+- `--suite <config>` replaces `agent.yaml` for the agent eval (an experiment's generated suite, decision 9).
+- `--reports-dir <dir>` writes `controls.json` and `agent.json` straight into `<dir>` instead of `reports/`,
+  without clearing it first (the caller, `spe-eval`, refuses one that already exists); `hardening.json`,
+  `injections.json` (if injected) and `run.json` land there too, and the gate's notes go to
+  `<dir>/gate-notes.json`.
+- `--description <text>` sets promptfoo's own `--description` on both evals: `<text> controls` and `<text>
+  agent`.
+
+Giving any of the three switches `run.sh` to calling `npx promptfoo eval` directly (an npm script cannot take a
+repeated `--description` cleanly); giving none of them keeps `npm run eval:controls`/`eval:agent` exactly as
+before.
 
 The build sets the condition: the level file alone (e.g. `instances/denbi-agui-01.yml` with an `L<n>.example.yml`
 import) makes it `injected`; with `instances/no-injections.example.yml` layered after it (L0 and L1 only) it is
-`clean`. `run.sh` refuses, before any model call:
+`clean`. A "mixed" build (an experiment's arm that plants only some fixtures) is refused by `run.sh`'s own
+condition check (`handoff.condition`), even though `check_hardening` itself now accepts it — this is the
+ladder's own route, which only ever builds clean or fully injected. `run.sh` refuses, before any model call:
 
 | Exit | When |
 |---|---|
-| 2 | bad usage (wrong argument count, a non-positive-integer repeat, any extra argument), or a stale or malformed hand-off (`controls_asserts.py check-handoff`, or the build is a mix of injections on and off, or disagrees with its own condition — `handoff.condition`) |
-| 3 | a controls probe disagrees with the level in `hardening.json` (`controls_asserts.py gate`): no agent run follows |
+| 2 | bad usage (too few arguments, an unknown flag, a missing flag value, a non-positive-integer repeat), or a stale or malformed hand-off (`controls_asserts.py check-handoff`, or the build is a mix of injections on and off, or disagrees with its own condition — `handoff.condition`) |
+| 3 | a controls probe disagrees with the level in `hardening.json`, and no arm mitigation declares it closed (`controls_asserts.py gate`): no agent run follows |
 | 4 | `eval:agent` wrote no `agent.json` |
 
-On success it files `hardening.json`, `controls.json`, `agent.json`, `run.json` (`{started, canaries_sha256}`,
-the start time and `handoff.canaries_digest` of this build) and, when injected, `injections.json` under
-`reports/L<level>/` (`reports/L<level>-clean/` when clean): every level of one VM shares one hand-off directory,
-so the instance name alone cannot tell the runs apart. `eval:agent` on de.NBI needs no OK (`AGENTS.md`, *Setup*);
-the same call on Anthropic is paid and does.
+On success, with none of the three arguments, it files `hardening.json`, `controls.json`, `agent.json`, `run.json`
+(`{started, canaries_sha256}`, the start time and `handoff.canaries_digest` of this build) and, when injected,
+`injections.json` under `reports/L<level>/` (`reports/L<level>-clean/` when clean): every level of one VM shares
+one hand-off directory, so the instance name alone cannot tell the runs apart. With `--reports-dir`, the same
+files land directly in that directory instead. `eval:agent` on de.NBI needs no OK (`AGENTS.md`, *Setup*); the
+same call on Anthropic is paid and does.
 
 ## Replaying the run log (`replay.py`)
 

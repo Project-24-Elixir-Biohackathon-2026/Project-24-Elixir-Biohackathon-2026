@@ -104,6 +104,17 @@ def test_a_token_in_metadata_is_refused(tmp_path):
     assert FLAG not in str(refused.value)
 
 
+def test_mixed_injections_is_refused_by_counts(tmp_path):
+    # task 5 review, Minor: check_hardening accepts "mixed" (an experiment's arm, decision 9/R4),
+    # but the ladder matrix has no column for it; render()'s own sort key, (level, injections),
+    # would otherwise mix a bool and a str the moment one counts file is mixed. A match specific
+    # to counts's own check: injections.json's own mismatch message also happens to contain
+    # "mixed" (the str(injected).lower() it reports), so a bare "mixed" would pass even without
+    # this check (counts must refuse before ever reaching _payloads).
+    with pytest.raises(matrix.MatrixError, match="not a ladder condition"):
+        matrix.counts(level_dir(tmp_path, 0, injections="mixed"))
+
+
 def test_mixed_models_are_refused(tmp_path):
     l0 = matrix.counts(level_dir(tmp_path, 0))
     l1 = matrix.counts(level_dir(tmp_path, 1, model="claude-haiku-5-5"))

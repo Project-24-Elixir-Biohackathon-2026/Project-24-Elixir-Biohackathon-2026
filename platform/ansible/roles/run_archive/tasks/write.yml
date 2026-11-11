@@ -147,6 +147,9 @@
     - "{{ spe_output_dir }}/archive-bundle-agui.tar.gz"
     - "{{ spe_output_dir }}/archive-bundle-agui"
 
+- name: spe-eval's reports, promptfoo database and windows.jsonl (experiments spec part 03, decision 13)
+  ansible.builtin.include_tasks: write_spe_eval.yml
+
 - name: Archived
   ansible.builtin.debug:
     msg: >-

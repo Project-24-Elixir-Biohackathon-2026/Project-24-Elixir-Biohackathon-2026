@@ -178,6 +178,10 @@
 - name: Hardening record (hardening.json)
   ansible.builtin.include_tasks: hardening.yml
 
+- name: VM-local hand-off (experiments spec part 03, *The hand-off on the VM*)
+  ansible.builtin.include_tasks: vm_handoff.yml
+  when: spe_experiments
+
 - name: Summary
   ansible.builtin.template:
     src: summary.md.j2

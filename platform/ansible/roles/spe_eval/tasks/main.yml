@@ -1,0 +1,115 @@
+---
+# Node, uv and this clone's own dependencies for spe-eval (experiments spec part 03, *The hand-off
+# on the VM*): the workspace user's promptfoo run happens on the host itself, not in a container
+# (the sandbox container is what is being evaluated), so these are installed on the VM directly.
+# Runs once, at build time (tag eval_toolchain, never one of spe-apply all's own tags), under
+# spe_experiments only. Downloads are checksum-verified against each project's own published
+# checksum file, so neither version here needs its hash hand-copied and kept in sync; a wrong
+# version or url fails loudly here rather than silently, and is caught for real on de.NBI (task 7:
+# unit tests cannot exercise a network download, only render and check these tasks).
+- name: Node already extracted
+  ansible.builtin.stat:
+    path: "/opt/node-v{{ spe_eval_node_version }}-linux-x64/bin/node"
+  register: spe_eval_node_present
+
+- name: Node.js tarball, checksum-verified against nodejs.org's own SHASUMS256.txt
+  ansible.builtin.get_url:
+    url: "https://nodejs.org/dist/v{{ spe_eval_node_version }}/node-v{{ spe_eval_node_version }}-linux-x64.tar.xz"
+    checksum: "sha256:https://nodejs.org/dist/v{{ spe_eval_node_version }}/SHASUMS256.txt"
+    dest: "/opt/node-v{{ spe_eval_node_version }}-linux-x64.tar.xz"
+    mode: "0644"
+  become: true
+  when: not spe_eval_node_present.stat.exists
+
+- name: Node.js extracted
+  ansible.builtin.unarchive:
+    src: "/opt/node-v{{ spe_eval_node_version }}-linux-x64.tar.xz"
+    dest: /opt
+    remote_src: true
+    creates: "/opt/node-v{{ spe_eval_node_version }}-linux-x64/bin/node"
+  become: true
+  when: not spe_eval_node_present.stat.exists
+
+- name: node, npm and npx on the PATH
+  ansible.builtin.file:
+    src: "/opt/node-v{{ spe_eval_node_version }}-linux-x64/bin/{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
+    state: link
+    force: true
+  loop: [node, npm, npx]
+  become: true
+
+- name: uv already extracted
+  ansible.builtin.stat:
+    path: "/opt/uv-{{ spe_eval_uv_version }}/uv"
+  register: spe_eval_uv_present
+
+- name: uv release tarball, checksum-verified against Astral's own .sha256 file
+  ansible.builtin.get_url:
+    url: "https://github.com/astral-sh/uv/releases/download/{{ spe_eval_uv_version }}/uv-x86_64-unknown-linux-gnu.tar.gz"
+    checksum: >-
+      sha256:https://github.com/astral-sh/uv/releases/download/{{ spe_eval_uv_version }}/uv-x86_64-unknown-linux-gnu.tar.gz.sha256
+    dest: "/opt/uv-{{ spe_eval_uv_version }}.tar.gz"
+    mode: "0644"
+  become: true
+  when: not spe_eval_uv_present.stat.exists
+
+# fix round 1, Minor 2 -- no rename step: a run that dies between extract and rename, or a stale
+# generic-named directory an earlier version left behind, can no longer get renamed into the new
+# version's own name.
+- name: uv extracted straight into its own pinned-version directory
+  when: not spe_eval_uv_present.stat.exists
+  become: true
+  block:
+    - name: Pinned-version directory
+      ansible.builtin.file:
+        path: "/opt/uv-{{ spe_eval_uv_version }}"
+        state: directory
+        mode: "0755"
+
+    - name: Extract (--strip-components=1 drops the tarball's own uv-x86_64-unknown-linux-gnu/ directory)
+      ansible.builtin.unarchive:
+        src: "/opt/uv-{{ spe_eval_uv_version }}.tar.gz"
+        dest: "/opt/uv-{{ spe_eval_uv_version }}"
+        remote_src: true
+        extra_opts: ["--strip-components=1"]
+        creates: "/opt/uv-{{ spe_eval_uv_version }}/uv"
+
+- name: uv and uvx on the PATH
+  ansible.builtin.file:
+    src: "/opt/uv-{{ spe_eval_uv_version }}/{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
+    state: link
+    force: true
+  loop: [uv, uvx]
+  become: true
+
+- name: npm ci (platform/promptfoo-evals; the pinned promptfoo, package-lock.json)
+  ansible.builtin.command:
+    argv: [npm, ci]
+    chdir: "{{ spe_repo_dir }}/platform/promptfoo-evals"
+  environment:
+    PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
+  changed_when: true
+
+- name: uv sync --group dev (platform/promptfoo-evals; the provider, assertions, metrics' own tests)
+  ansible.builtin.command:
+    argv: [uv, sync, --group, dev]
+    chdir: "{{ spe_repo_dir }}/platform/promptfoo-evals"
+  environment:
+    PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
+  changed_when: true
+
+# R5: spe-eval run --detach starts a transient systemd --user unit (systemd-run --user), which
+# needs the workspace user's systemd --user instance to keep running without an active login
+# session (SSH tunnels and Coder's own session come and go while a run is in progress).
+- name: Lingering already enabled
+  ansible.builtin.stat:
+    path: "/var/lib/systemd/linger/{{ spe_ssh_user }}"
+  register: spe_eval_linger
+
+- name: Lingering enabled for the workspace user (systemd --user units outlive logout; R5)
+  ansible.builtin.command:
+    argv: [loginctl, enable-linger, "{{ spe_ssh_user }}"]
+  become: true
+  when: not spe_eval_linger.stat.exists

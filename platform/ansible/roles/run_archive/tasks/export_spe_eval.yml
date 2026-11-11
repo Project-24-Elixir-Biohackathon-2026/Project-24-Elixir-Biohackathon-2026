@@ -1,0 +1,50 @@
+---
+# ~/spe-eval's reports, promptfoo database and windows.jsonl (experiments spec part 03, decision
+# 13): packed and fetched to the controller exactly as the AG-UI journals above are, so a `spe`
+# build (no ~/spe-eval) or a spe-experiments one with no run yet copies nothing and still passes.
+# Own file (rather than inline in export.yml), so this can be exercised on its own
+# (platform/dev/tests/test_spe_eval_archive.py), without the docker-backed AG-UI/OpenWebUI blocks.
+- name: ~/spe-eval present
+  ansible.builtin.stat:
+    path: "{{ spe_eval_dir }}"
+  register: spe_eval_present
+
+- name: Pack and fetch ~/spe-eval/{reports,promptfoo} and windows.jsonl
+  when: spe_eval_present.stat.exists
+  block:
+    - name: windows.jsonl present (absent until a run has happened)
+      ansible.builtin.stat:
+        path: "{{ spe_eval_dir }}/windows.jsonl"
+      register: spe_eval_windows
+
+    - name: Archive directory on the VM
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: spe-eval-archive-
+      register: spe_eval_archive_dir
+
+    - name: Pack reports/, promptfoo/ (always present, made by vm_handoff.yml) and windows.jsonl (if any)
+      # --warn=no-file-changed quiets tar's warning for "file changed as we read it" (a detached
+      # run still writing progress.jsonl or its sqlite database while this archive is being
+      # packed, e.g. on a workspace stop while an eval is in flight); that case alone is tar's
+      # exit 1, a real error (a missing file, a write failure) still exits >1 (task 5 review,
+      # Minor), so failed_when keeps catching those.
+      ansible.builtin.command:
+        argv: >-
+          {{ ['tar', '--warn=no-file-changed', '-czf', spe_eval_archive_dir.path ~ '/spe-eval-export.tar.gz',
+              '-C', spe_eval_dir, 'reports', 'promptfoo'] +
+             (['windows.jsonl'] if spe_eval_windows.stat.exists else []) }}
+      register: spe_eval_tar
+      changed_when: true
+      failed_when: spe_eval_tar.rc > 1
+
+    - name: Fetch the archive
+      ansible.builtin.fetch:
+        src: "{{ spe_eval_archive_dir.path }}/spe-eval-export.tar.gz"
+        dest: "{{ spe_output_dir }}/archive-bundle-spe-eval.tar.gz"
+        flat: true
+
+    - name: Remove the archive from the VM
+      ansible.builtin.file:
+        path: "{{ spe_eval_archive_dir.path }}"
+        state: absent

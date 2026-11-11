@@ -1,0 +1,77 @@
+---
+# hardening.json, rewritten on the VM itself for whichever arm was just applied (experiments spec
+# part 03, decision 9 / R4): unlike vm_handoff.yml's files, this one genuinely differs between arms
+# (level, switches and mitigations), so it must be rewritten every time spe-apply all re-applies an
+# arm's -e values, not only once at build time.
+#
+# Included a second time from playbooks/create.yml, tagged "frontend" (one of spe-apply all's tags:
+# stack, drs, trs, frontend), so a later spe-apply all -e @<arm file> runs this file again without
+# the "data"-tagged spe_data role (spe_seed_result), which this file never needs: every value below
+# comes from a plain var (an -e override, instances/local.yml, or group_vars/all.yml) or from
+# spe_repo_dir's own `git rev-parse HEAD`, never from a registered fact of another role. Mirrors
+# hardening.yml's own computation (the controller's hardening.json, unchanged by this file) rather
+# than reusing it directly, since hardening.yml's controller write assumes spe_output_dir already
+# exists (made by main.yml's own "Output directory on the controller" task, itself only reachable
+# under the "handoff" tag) and this file must stand alone under "frontend" alone.
+- name: This repository's commit, read from the VM's own clone
+  ansible.builtin.command: git -C {{ spe_repo_dir | quote }} rev-parse HEAD
+  register: spe_vm_repo_head
+  changed_when: false
+
+- name: Ladder controls, L1..L5 in order (mirrors hardening.yml)
+  ansible.builtin.set_fact:
+    spe_vm_hardening_ladder:
+      - "{{ spe_harden_trs_readonly | bool }}"
+      - "{{ spe_harden_data_tiers | length > 0 }}"
+      - "{{ spe_harden_egress | bool }}"
+      - "{{ spe_agent_tool_surface != 'shell' }}"
+      - "{{ spe_harden_airlock | bool }}"
+
+- name: Level = leading controls on (mirrors hardening.yml)
+  ansible.builtin.set_fact:
+    spe_vm_hardening_level: >-
+      {%- set ns = namespace(n=0, on=true) -%}
+      {%- for c in spe_vm_hardening_ladder -%}
+      {%- if ns.on and (c | bool) -%}{%- set ns.n = ns.n + 1 -%}{%- else -%}{%- set ns.on = false -%}{%- endif -%}
+      {%- endfor -%}{{ ns.n }}
+
+- name: Injection fixtures planted (mirrors hardening.yml)
+  ansible.builtin.set_fact:
+    spe_vm_injections_planted: >-
+      {{ {spe_injection_switch_total: true, 0: false}.get(
+          spe_injection_switches_on_json | from_json | select | list | length, 'mixed') }}
+  vars:
+    spe_injection_switch_names: "{{ spe_injection_fixtures | map(attribute='switch') | unique | list }}"
+    spe_injection_switch_total: "{{ spe_injection_switch_names | length }}"
+    spe_injection_switches_on_json: >-
+      {%- set ns = namespace(list=[]) -%}
+      {%- for sw in spe_injection_switch_names -%}
+      {%- set _ = ns.list.append(lookup('vars', sw, default=false) | bool) -%}
+      {%- endfor -%}
+      {{ ns.list | to_json }}
+
+- name: Hardening record (VM copy, this arm)
+  ansible.builtin.copy:
+    content: "{{ record | to_nice_json }}\n"
+    dest: "{{ spe_eval_dir }}/handoff/hardening.json"
+    owner: "{{ spe_ssh_user }}"
+    mode: "0600"
+  vars:
+    record:
+      schema_version: 1
+      instance: "{{ spe_instance }}"
+      level: "{{ spe_vm_hardening_level | int }}"
+      switches:
+        spe_harden_trs_readonly: "{{ spe_harden_trs_readonly | bool }}"
+        spe_harden_data_tiers: "{{ spe_harden_data_tiers }}"
+        spe_harden_egress: "{{ spe_harden_egress | bool }}"
+        spe_agent_tool_surface: "{{ spe_agent_tool_surface }}"
+        spe_harden_airlock: "{{ spe_harden_airlock | bool }}"
+      frontend: "{{ spe_frontends | join(',') }}"
+      model_provider: "{{ spe_agent_model_provider }}"
+      model: "{{ spe_agent_model }}"
+      commit: "{{ spe_vm_repo_head.stdout | trim }}"
+      restore_seconds: null
+      injections: "{{ spe_vm_injections_planted }}"
+      mitigations: "{{ spe_mitigations }}"
+      experiment: "{{ spe_experiment }}"

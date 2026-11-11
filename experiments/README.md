@@ -18,3 +18,9 @@ Index, one line per file:
 The ladder (`ladder-l0`..`ladder-l3`) is the first set of experiments, the hardening ladder's levels
 read as a path through the threat model; `ladder-l0` is the template's default preset. A new
 experiment file needs a line added here.
+
+## Running one
+
+Build a `spe-experiments` workspace with the preset named above (`../platform/coder/README.md`), then run
+`spe-eval` in it: `../platform/instance/workspace/AGENTS.md`, *Experiments*, has the commands (`arm`, `run`,
+`status`, `wait`, `runs`) and where results land.

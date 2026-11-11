@@ -29,12 +29,15 @@ Slices 3 and 4 together give the early output (README). `spe-eval`'s `--detach`,
 ## For the plan to settle
 
 - The writes `promptfoo view` 0.125.1's reading UI needs (04, *Read-only*), from its routes, with a test.
-- How the generated experiment suite config is built (a file `spe-eval` writes, or `agent.yaml` filtered by
-  promptfoo's `--filter-pattern`/metadata filter) and that the utility group runs in it.
-- Whether `spe-apply all` is the narrowest apply that switches every ladder mitigation (L3's compose overlay is
-  written by the frontend roles) or a tag set suffices.
-- The progress line source (the `afterEach` hook appending to a file `spe-eval` tails).
+- How the generated experiment suite config is built: settled by #88. `spe-eval` writes `suite.yaml` into the
+  arm's reports directory, `agent.yaml`'s settings with its tests replaced by the named ones plus the utility
+  group; an experiment with `tests: []` runs `agent.yaml` unchanged.
+- Whether `spe-apply all` is the narrowest apply: settled by #88, each arm is applied with `spe-apply all`; a tag
+  set is a later optimisation.
+- The progress line source: settled by #88, `isolation.py`'s `afterEach` hook appends one JSON line per test to
+  `$SPE_EVAL_PROGRESS` (the total first), and `spe-eval status` reads its last line.
 - Slice 3, from slices 1–2 (#85, #86): an experiment's `injections` ids map to `spe_inject_*` in the template
-  (Terraform, settled by #86); `spe-eval` needs the same mapping in Python (`injections_schema.switches`) to read
-  an arm. Still open: `hardening.json`'s `injections` stays true/false/"mixed" over every fixture, so a fourth
-  fixture makes ladder builds "mixed": settle it when `run.sh`/`spe-eval` read the arms.
+  (Terraform, settled by #86) and in Python (`injections_schema.switches`, settled by #88). The "mixed" question:
+  settled by #88, `injections.json` is written once at build with the experiment's own switches, the
+  creation-time gate compares them (a mismatched build refuses), and `run.sh` accepts `"mixed"` only on its
+  experiment path, not the ladder's.
