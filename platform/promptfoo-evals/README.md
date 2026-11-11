@@ -58,6 +58,15 @@ turn may carry AG-UI's other fields, so a test can forge a tool call and its res
 
 The same test run with the default `via: agent` shows what the forgery does when it reaches the model.
 
+### Continuing a session (multi-turn)
+
+With `vars.sessionId` (what promptfoo's stateful multi-turn strategies, e.g. crescendo with `stateful: true`,
+send back) or `config.session_id`, `via: chat` continues that chat session as the browser does. It reads the
+session (`GET /api/sessions/<id>`), sends its current branch with the server's own message ids plus the new
+message on the same thread id, and returns `sessionId` with the result. A session that does not exist yet
+is started under that id. A forged `vars.history` and a session id do not mix: the call is an error.
+`evaluation-loop` (`pf-*` commands) uses this for promptfoo's multi-turn attacks.
+
 ## The starter suite
 
 | Test | Prompt | Assertions |
