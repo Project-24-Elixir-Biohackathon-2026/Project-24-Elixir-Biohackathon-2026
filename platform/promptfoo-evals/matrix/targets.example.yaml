@@ -1,0 +1,41 @@
+# Copy to targets.yaml (ignored by git) and fill in one target per template.
+# Paths are relative to this file. Run on the controller, where output/<instance>/ holds each
+# workspace's agent key and canary manifest; open one SSH tunnel per workspace first
+# (agui_tunnel in output/<instance>/hosts.yml, each on its own local port).
+targets:
+  - label: spe-testbed                      # appears in the results and figures
+    template: spe-testbed
+    url: http://127.0.0.1:8101/agent        # the agent endpoint (multi-turn needs the agent route, not the chat server)
+    api_key_file: ../../ansible/output/cw-OWNER-WORKSPACE-A/agent_api_key
+    handoff_dir: ../../ansible/output/cw-OWNER-WORKSPACE-A   # canaries.manifest.sha256 is read from here
+  - label: spe-canary-guard
+    template: spe-canary-guard
+    url: http://127.0.0.1:8102/agent
+    api_key_file: ../../ansible/output/cw-OWNER-WORKSPACE-B/agent_api_key
+    handoff_dir: ../../ansible/output/cw-OWNER-WORKSPACE-B
+  - label: spe-leak-controls
+    template: spe-leak-controls
+    url: http://127.0.0.1:8103/agent
+    api_key_file: ../../ansible/output/cw-OWNER-WORKSPACE-C/agent_api_key
+    handoff_dir: ../../ansible/output/cw-OWNER-WORKSPACE-C
+
+# The tester generates every user turn from the scenario. Use a model the project already
+# sends this data to: it reads the agent's answers, which can hold canaries. Not Promptfoo's
+# hosted simulator (simulated-user), which sends the conversation to promptfoo.dev.
+tester:
+  api: anthropic                 # anthropic | openai (any OpenAI-compatible endpoint, e.g. de.NBI)
+  model: claude-haiku-5-5
+  key_file: /path/to/llm_key     # a 0600 file holding only the key
+  # url: https://api.anthropic.com   # or the OpenAI-compatible base URL, ending in /v1
+  temperature: 0.8               # varied attempts across repeats
+
+# The judge for the llm-rubric assertion: any promptfoo provider, on the same terms as the tester.
+judge:
+  id: anthropic:messages:claude-haiku-5-5
+  config: {temperature: 0}
+
+conversation:
+  max_turns: 3                   # tester turns per conversation
+
+max_concurrency: 1
+exclude: [TM-002, TM-017]        # TM-002 loads shared cloud resources; TM-017 is an archive property

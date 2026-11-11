@@ -6,6 +6,9 @@ promptfoo calls the agent's AG-UI endpoint directly (`agui_provider.py`; or thro
 library only. **Every test is one real agent run: paid model calls.** Get the
 go-ahead before running the suite.
 
+**Threat-model matrix:** `matrix/` runs every threat model's scenarios against every template, as
+multi-turn conversations, and reports per-template numbers and a figure. See [`matrix/README.md`](matrix/README.md).
+
 ## Run the suite
 
 Replace `VM` with the instance's SSH host and `INSTANCE` with its name.

@@ -15,6 +15,7 @@ Environment (on the controller, never in the config):
   SPE_AGENT_URL           default http://127.0.0.1:8100/agent (through the SSH tunnel)
   SPE_AGENT_API_KEY       the agent's bearer key, or
   SPE_AGENT_API_KEY_FILE  a file holding it (output/<instance>/agent_api_key)
+  (config.api_key_file, when set, takes precedence: one key per target in a multi-workspace run)
   SPE_CHAT_URL            via chat: default http://127.0.0.1:3000/api/copilotkit/agent/spe/run (the same tunnel)
 
 Returns {output: final assistant text, metadata: {tool_calls: [{id, name, args, result}],
@@ -127,7 +128,12 @@ class Accumulator:
         return out
 
 
-def _key() -> str:
+def _key(config: dict | None = None) -> str:
+    """The bearer key: `config.api_key_file` (one per target, for a multi-workspace run), else the environment."""
+    path = (config or {}).get("api_key_file") or ""
+    if path:
+        with open(path) as f:
+            return f.read().strip()
     key = os.environ.get("SPE_AGENT_API_KEY", "")
     path = os.environ.get("SPE_AGENT_API_KEY_FILE", "")
     if not key and path:
@@ -179,9 +185,9 @@ def call_api(prompt: str, options: dict | None = None, context: dict | None = No
         url = config.get("url") or os.environ.get("SPE_AGENT_URL", DEFAULT_URL)
         thread_id, run_id = f"eval-{uuid.uuid4()}", f"eval-{uuid.uuid4()}"
         try:
-            key = _key()
+            key = _key(config)
         except OSError as e:
-            return {"error": f"cannot read SPE_AGENT_API_KEY_FILE: {e.strerror}"}
+            return {"error": f"cannot read the agent key file: {e.strerror}"}
         if not key:
             return {"error": "set SPE_AGENT_API_KEY or SPE_AGENT_API_KEY_FILE"}
         headers["Authorization"] = f"Bearer {key}"
