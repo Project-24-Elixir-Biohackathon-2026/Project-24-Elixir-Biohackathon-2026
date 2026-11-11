@@ -205,7 +205,7 @@ is open (`docs/guides/contributing-upstream.md`, step 6).
 
 - **Experiments** (spec `docs/specs/2026-11-10-experiments-design/`, merged; no plan, slices from its
   `inputs-for-plan.md`): slices 1–3/7 merged (#85, #86, #88); next slice 4/7, the viewer
-  and apps; handoff `docs/handoffs/2026-11-11T1012Z-experiments-slice-4.md`.
+  and apps; handoff `docs/handoffs/2026-11-11T1031Z-experiments-slice-4-start.md`.
 - **Upstream PR kraatz #28** (`contrib/agui-archive-markdown`): archive Markdown wording, autolinks, refusal
   reason, bad timestamps; waits on upstream's review.
 - **Upstream PR kraatz #29** (`contrib/agui-chat-ui-polish`): reopened sessions land on their end, menu focus;
