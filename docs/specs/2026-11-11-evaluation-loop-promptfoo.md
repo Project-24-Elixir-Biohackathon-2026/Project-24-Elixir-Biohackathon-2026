@@ -59,3 +59,16 @@ roles: {judge: litellm, attacker: litellm, grader: litellm}   # missing roles us
 - An inline key is refused unless `lab.yaml` is git-ignored.
 - The key goes only into the request header or a subprocess environment. It never appears in
   provenance, logs, `plan.json` or generated configs.
+
+## 5. As built (2026-11-11)
+
+- **Run modes.** `transport: http` (chat-ui's run route over HTTP, no browser; cloud or `agui_tunnel`) or
+  `transport: browser` (the same route on the logged-in browser's cookies; local). Both continue a session
+  as the chat page does: the server's branch plus the new message (`agui_provider.chat_body`). Any backend
+  works wherever it is reachable, so the tool runs locally with Claude Code as well as in the cloud with
+  LiteLLM.
+- **promptfoo's attacker and grader are `pf_model.py`.** It calls the role's backend and counts calls
+  against `promptfoo.max_model_calls`. It refuses paid backends unless `--allow-paid-models` is given.
+  promptfoo never sees an API key.
+- **Commands:** `pf-generate`, `pf-run`, `pf-evaluate`, `pf-confirm`, `pf-validate`, `pf-revise`, `pf-loop`,
+  `pf-view`, `doctor`. The user guide is `evaluation-loop/README.md`.
