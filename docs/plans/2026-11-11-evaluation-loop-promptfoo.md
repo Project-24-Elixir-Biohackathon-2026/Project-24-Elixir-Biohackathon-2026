@@ -180,13 +180,11 @@ roles: {proposer: denbi, translator: denbi, tester: denbi, repairer: denbi, rewr
 
 ## 9. Tasks
 
-Each task is one or more commits, with tests, in this worktree. The branch is rebased onto `main` once #49 and #47 are merged.
-T0 blocks the rest.
+Each task is one or more commits, with tests, on branch `evaluation-loop-promptfoo`.
 
-**T0. Prerequisites.**
-- PR #49 (evaluation-loop) and PR #47 (`via: chat`) merged; this branch rebased on `main`.
-- Separately and urgently: rotate the de.NBI key in the tracked `platform/ansible/instances/test-1.yml` and untrack that file
-  (its own PR).
+**T0. Prerequisites (done 2026-11-11).** This branch is built on both PRs, which become part of it (user):
+it starts from `evaluation-loop` (PR #49) and has PR #47 (`via: chat`, fork `thodkatz/...`, `pull/47/head`) merged in.
+Its PR against `main` supersedes #49 and #47.
 
 **T1. Model backends, config, paid guard.**
 - Files: `lab_llm.py` (`ClaudeCodeBackend` = today's `_call`; `OpenAICompatBackend` on stdlib `urllib`; `Generator` resolves a
