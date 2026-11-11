@@ -337,7 +337,9 @@ spe_agent_title_generation: true
 # The agent's guard (template/leak-controls): canaries and the masked files' names kept out of
 # tool calls, tool results (which go to the model), the answer and the run log. Same matcher
 # and hash manifest as the canary guard. disabled | observe (record only) | enforce.
-spe_agent_guard_mode: observe
+# Enforce: in observe on a fresh workspace, normal work (DRS listing, TRS descriptor, WES smoke
+# run) hit no canary falsely; only the masked names in the DRS listing, redacted by design.
+spe_agent_guard_mode: enforce
 spe_agent_guard_exempt_types: "{{ spe_canary_guard_exempt }}"
 
 spe_agent_api_key: "{{ (spe_seed | string ~ ':agent-api') | hash('sha256') }}"
