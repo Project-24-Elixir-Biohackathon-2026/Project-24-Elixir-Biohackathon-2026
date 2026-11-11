@@ -50,8 +50,8 @@ export async function updateSession(id: string, patch: MetaPatch, f?: Fetch): Pr
   return (await response.json()) as SessionMeta;
 }
 
-// The model-written title, asked for once after a new session's first finished run: the server reads the
-// first message and answer from the journal and writes a title only if none is set. The metadata either way.
+// The model-written title, asked for once as a new session's first run starts: the server reads that run's
+// question from the journal and writes a title only if none is set. The metadata either way.
 export async function askTitle(id: string, f?: Fetch): Promise<SessionMeta> {
   const response = await call(f)(`/api/sessions/${encodeURIComponent(id)}/title`, {
     method: "POST",

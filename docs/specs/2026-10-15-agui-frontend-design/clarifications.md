@@ -206,7 +206,8 @@ in the parts it amends.
     the two items left on the AG-UI chat minors backlog item, and a theme toggle was asked for alongside them.
     Both the title generation and the theme control are modelled on Open WebUI 0.11.3 (`ENABLE_TITLE_GENERATION`
     and its model request, and the sidebar's theme setting). *Amends:* §5 *Endpoints*, *Configuration*, *Run
-    log*; §6 *Sessions*, *The sidebar*; README decision 22. *Status:* folded.
+    log*; §6 *Sessions*, *The sidebar*; README decision 22. *Status:* folded; the title's timing (after the first
+    run, from its message and answer) superseded by clarification 26.
 
 17. **Tool-call cards after Open WebUI's `ToolCallDisplay`** (2026-11-04; the fork's PR #31). §6 *Tool calls
     are rendered* now gives the card a status icon and an "Executing `<name>`…" / "View Result from
@@ -220,7 +221,7 @@ in the parts it amends.
     calls still show one card each, as before; a result whose JSON has an unrelated top-level `error` string
     is shown as failed; when a message's second call streams in, its first card moves under the new group
     header and remounts, so a card opened while the calls stream in closes again. *Amends:* §6 *Tool calls
-    are rendered*. *Status:* folded.
+    are rendered*. *Status:* folded; its one-response grouping superseded by clarification 25.
 
 18. **A resent command message is compared by its parsed command, not its raw text; `forwardedProps` that is not
     a plain object is normalized before the command key is set; the focus limit counts code points; and step 4's
@@ -259,7 +260,7 @@ in the parts it amends.
     *Cost if wrong:* a finished card no longer says in words that it can be opened, only its chevron does; the
     group still covers one model response's calls, not Open WebUI's run of consecutive calls and reasoning
     across steps (clarification 17). *Amends:* §6 *Tool calls are rendered*; clarification 17's titles.
-    *Status:* folded.
+    *Status:* folded; its one-response grouping superseded by clarification 25.
 
 21. **The theme control becomes a toggle at the chat pane's top right** (2026-11-04). §6 *Look* and *Layout*: the
     sidebar footer's System / Light / Dark select is replaced by a pill switch (sun, moon, a sliding knob) pinned
@@ -292,3 +293,92 @@ in the parts it amends.
     AG-UI-only instance has its sessions one directory down, and a tool reading `<run>/agui-journals/` must read
     `<run>/agui/agui-journals/`. *Amends:* §1 *Goal*, §3's container table intro, §7's variables, §9's condition,
     §14 *Export* and *Write*, decisions 15's and 30's checks. *Status:* folded.
+
+24. **A click outside the row menu refocuses its `⋯` when it left focus nowhere; a reopened session opens on its
+    newest content** (2026-11-08, the user's choice; the fork's PR #46). After a press outside closes the row menu (or its tag
+    editor), in the sidebar and the chat header, the page waits for the press's own focus change and gives focus
+    back to the `⋯` only if it is then on the page itself (`body`, `<html>` or none), and not after a tap (a
+    touch press), so a press on a field, button or link keeps it; before, a click outside always left focus where it put it. Opening or reloading a session no longer
+    animates a scroll through its whole history (CopilotKit's scroll view, `initial: "smooth"`, about a second
+    with the newest content below the fold): it starts at the end at once; a live send still scrolls smoothly.
+    *Reason:* the refocus had waited only because it would take focus from what the click landed on; checking
+    where focus went after the press removes that, and a keyboard user is not dropped to the top of the tab
+    order by a stray click. The scroll was seen with `/compact`'s divider, below the fold right after a reload.
+    *Cost if wrong:* in Safari, which does not focus a button on click, a click on another button gives focus to
+    the `⋯` although the button acted; a click into chat text moves focus (not the selection) to the `⋯`; the
+    instant start relies on CopilotKit passing the scroll slot's props to `use-stick-to-bottom`, which its type
+    leaves out. *Amends:* §6 *Row menu*, *Opening a session*; reverses the chat sessions spec's clarification 7
+    (a click outside never refocusing the `⋯`). *Status:* folded.
+
+25. **Tool calls are grouped across model steps, by CopilotKit's own layout** (2026-11-08; the fork's PR #50).
+    §6 *Tool calls are rendered* now groups calls made in a row across successive assistant messages, until
+    assistant text, a user message or reasoning comes between them, instead of one assistant message's calls
+    only (clarifications 17 and 20); the header says "Exploring" also while the run may still add calls. Done by
+    registering our card with `useDefaultRenderTool({ …, group: true })` and passing our header as
+    `CopilotChatToolCallsView`'s `group` slot: CopilotKit 1.84.1's message view lays out such runs itself
+    (`toolCallDisplay`, default `"grouped"`, `getToolCallLayouts`), so no `groupMessages` function of ours.
+    *Reason:* asked for by the user (2026-11-04; testing on de.NBI 2026-11-08); on Anthropic `claude-haiku-5-5`,
+    which makes one call per model step, no call was ever grouped (a browser check of every chat feature: `groups=0 cards=4`).
+    Whether a stray text line beside a call ends a group is CopilotKit's rule: non-blank assistant text does. *Cost if wrong:* the grouping rule is CopilotKit's, so an
+    upgrade can change it, and no automated check in this repository covers grouping across steps; a model that narrates
+    between calls (qwen) gets several groups, as before; as in clarification 17, the first card remounts under
+    the header when a second call joins, so a card opened while calls stream in closes. *Amends:* §6 *Tool calls
+    are rendered*; supersedes the one-response limit of clarifications 17 and 20. *Status:* folded.
+
+26. **A New chat is titled as its first run starts, from its question alone** (2026-11-08, the user's choice).
+    §6 *Sessions* now has the browser fetch the list as a New chat's first run starts, so the
+    sidebar and header show the fallback title (first message, 60 characters) within a second of sending, and ask
+    for the model title at once; `POST /api/sessions/{id}/title` titles from the first run that added a user
+    message, whatever its status (running, finished, failed or stopped), with that question alone, instead of the
+    first completed run's message and answer. A session not listed in time (or a list fetch that fails) is asked
+    for once that run is recorded instead. The URL still names the session only once its first run is recorded;
+    the header's rename, tags, pin and hide now work on it while that run streams (delete stays disabled). *Reason:* the user, testing on de.NBI, saw no title until the answer had finished and expected one
+    while it streamed, as chatgpt.com shows. *Cost if wrong:* a title from the question alone can be less apt than
+    one that saw the answer; a first run the server refuses is never listed, so its title waits for the next run;
+    still one paid call per New chat, now made alongside the run, so a single shared model endpoint (de.NBI's) may
+    answer the first message slightly later. *Amends:* §6 *Sessions*, *Session API*, *Chat header*; §5 *Endpoints*
+    (`POST /title`'s caller sends one message); README decision 22; supersedes clarification 16's timing.
+    *Status:* folded.
+
+27. **A participant can leave a running chat; each session has its own agent in the page** (2026-11-08, the
+    user's choice; the fork's PR #55). §6 disabled switching session and *New chat* while a run was in progress,
+    because the page had one CopilotKit agent for whatever chat it showed, and a switch would have put another
+    session's history on the agent still streaming. Now each session the page shows or streams has a private
+    agent of its own (CopilotKit 1.79's thread-scoped `useAgent`, routed to the runtime's `spe`), held by a
+    component kept mounted while its run lasts: leaving a chat neither ends nor hides its run, and going back
+    shows it still streaming. A session whose run no agent in the page streams (a reload, another tab) rejoins it
+    through the runtime's `connect`. The list and `GET` one answer `running`, the sidebar marks running sessions,
+    Delete is disabled for them, and the list is fetched on regaining focus and every 2 s while it shows a run the page is not
+    streaming. *Approaches:* (1, the user's choice) an agent per session, kept in the page; (2) one shared agent
+    that lets go of the stream on a switch and rejoins through `connect` on every return: one mechanism, closest
+    to the old page, but every switch would depend on `connect`, whose replay of the past runs the runtime holds
+    in memory (`InMemoryAgentRunner.connect`) can add messages the page already loaded from the journal; (3) a
+    live feed of our own that tails the journal, dropped: CopilotKit's runtime already streams a run to whoever
+    connects. For the view on return the user chose the live stream over the saved part marked running and
+    filled in once the run ends; that view stays only as decision 42's fallback. *Reason:* asked for by the user
+    while testing on de.NBI (2026-11-04), as Open WebUI and ChatGPT allow: a run with several tool calls held
+    the whole chat until it ended. The server side was ready: a run is detached from the browser's request
+    (decision 24) and journaled to its end, the runtime admits runs on different threads at once, and
+    `Shared.running` already knows each run in progress. *Cost if wrong:* a page with many sessions running holds
+    an agent and a stream for each (no limit: one participant per instance, each run capped by §5's limits); if
+    `connect` cannot be made to show each message once, a session opened while running elsewhere shows its saved
+    part marked running and reloads at the run's end (decision 42's fallback); while another tab's run lasts the
+    page makes one list request every 2 s. *Amends:* §6 (the app's `page.tsx` line, *Session API*, *Layout*,
+    *Opening a session*, *During a run*, now *A session's agent* and *Leaving a running chat*, *Refresh*,
+    *Errors*), decision 26 (rewritten), README *Early output*; adds decisions 40–44, inputs for the plan, and
+    three out-of-scope items. *Status:* folded.
+
+28. **Leaving a running chat is built, live rejoin included; four details made precise** (2026-11-09; the fork's
+    PRs #57, #58 and #62). Decisions 26 and 40–44 are built as §6 states them, and decision 42 rejoins live
+    (replayed messages matched by id; its fallback was not needed, §12). §6 now names CopilotKit 1.84.1's
+    thread-scoped `useAgent`, the version built on, instead of 1.79's (the API is the one §6 describes). And:
+    a connect that fails leaves the chat on the journal's history with its error in the bar (*Opening a
+    session*); a left session's "this session could not be saved" is named by its title like its other run
+    errors (*Refresh*, *Errors*); a failed list fetch's error goes once a later list fetch succeeds, since the
+    polling fetches again on its own (*Errors*); only the first load waits for the runtime, so a connection
+    that drops after it disables no control (*Errors*). *Reason:* found while building: an unnamed save failure
+    shown while another chat is open would read as the open chat's; with polling, a list error would stay up
+    after the list recovered; and a drop from `Connected` re-disabled every button mid-session. *Cost if
+    wrong:* each is one line of the page (a message prefix, the error bar's clearing, the readiness flag).
+    *Amends:* §6 *A session's agent*, *Opening a session*, *Refresh*, *Errors*; §12 gains *Leaving a running
+    chat*. *Status:* folded.

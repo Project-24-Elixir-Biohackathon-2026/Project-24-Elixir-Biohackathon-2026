@@ -11,11 +11,12 @@ spe_instance: denbi-agui-01
 spe_seed: null                       # set a fresh integer in your copy
 spe_provision: existing
 spe_existing_host: null              # SSH alias or address of the VM (through the jump host)
-spe_existing_api_ip: null            # the VM's own private IPv4 address (certificate IP SAN)
+spe_existing_api_ip: null            # the VM's own private IPv4 address (certificate IP SAN): `hostname -I` on it
 spe_existing_ssh_key: null           # null: the ssh config decides
 spe_existing_ssh_args: "-F /home/agentvm/.ssh/config"   # the config that knows the jump host
 spe_manage_docker: true              # false if Docker on the VM belongs to someone else
 spe_source_data_root: /home/agentvm/spe-dummy-data      # on the controller
+spe_data_root: /srv/spe-data         # on the VM: /data-share on de.NBI VMs is often the shared Manila mount
 spe_workflows: [wes-drs-smoke]       # gatk-hc-chr20 needs real genomes
 spe_frontends: [agui]              # both frontends by default; this VM runs only the AG-UI one
 spe_agent_model_provider: openai_compatible   # the de.NBI endpoint, spe_llm_base_url

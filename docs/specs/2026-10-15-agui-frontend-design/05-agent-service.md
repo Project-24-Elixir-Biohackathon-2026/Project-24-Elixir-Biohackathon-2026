@@ -6,7 +6,8 @@
   key required (401 otherwise). A run whose `forwardedProps.spe_command` names a command is answered
   without the model loop (§15, `/compact`).
 - `POST /title` — a short, model-written title for a chat (`{thread_id, messages}`, one or two
-  `{role, content}` messages: the session's first user message and, if any, the first answer). Bearer key
+  `{role, content}` messages; `chat-ui` sends one, the session's first user message, so it can ask while the
+  first run is still going (§6 *Sessions*)). Bearer key
   required (401 otherwise); `404` when `title.enabled` is false; `422` when the model call fails or returns
   no usable title (the detail redacted and length-capped, as the run log's keys are below); otherwise `200`
   with `{"title": "…"}`. Every call is appended to the run log (below) whether it succeeds or not.

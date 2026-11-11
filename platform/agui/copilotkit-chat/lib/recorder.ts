@@ -15,7 +15,7 @@ import { commandOf } from "./command.ts";
 import type { Command, CommandField } from "./command.ts";
 import { isCompactionMarker } from "./compaction.ts";
 import type { Durability, NewLine, RunStatus } from "./journal.ts";
-import { codeOf, isSessionId, shared, withSession } from "./sessions.ts";
+import { codeOf, isSessionId, runKey, shared, withSession } from "./sessions.ts";
 import type { Journals, RunHandle } from "./sessions.ts";
 
 // The RUN_ERROR messages of a run the recorder refuses or ends itself. lib/reconcile.ts copies them.
@@ -43,12 +43,6 @@ function forwardedFor(sent: unknown, command: Command | null): unknown {
   if (typeof sent !== "object" || sent === null || Array.isArray(sent)) return spe_command ? { spe_command } : sent;
   const { spe_command: _client, ...rest } = sent as Record<string, unknown>;
   return spe_command ? { ...rest, spe_command } : rest;
-}
-
-// A run's key among the recorder's requests and in shared().running: its session and run id. The client
-// supplies the run id, so two sessions could send the same one; runs on one session may overlap.
-function runKey(threadId: string, runId: string): string {
-  return JSON.stringify([threadId, runId]);
 }
 
 function runKeyOf(body: unknown): string | undefined {

@@ -6,7 +6,7 @@ import { REFUSAL_MESSAGES } from "./recorder.ts";
 import type { SessionMeta } from "./sessions.ts";
 import {
   RECONCILE_DELAY_MS, REFUSED_RUN_MESSAGES, SAVE_FAILED_MESSAGE, TitleTrigger, clockOffset, fetchSessionList,
-  isRefusal, reconcile, serverRunStart, showsRun,
+  RECONCILE_RETRIES, isRefusal, reconcile, serverRunStart, showsRun, waitListed, waitNotRunning,
 } from "./reconcile.ts";
 
 const ID = "6f1c0d2e-4b1a-4c3d-8e9f-0a1b2c3d4e5f";
@@ -16,6 +16,7 @@ const BROWSER_START = START;
 // A session whose last recorded run ended at `ran`; `updated_at` as late as that, or later.
 const row = (ran: string | null, id = ID, updated = ran ?? "2026-10-29T08:00:00.000Z"): SessionMeta => ({
   id, title: "t", tags: [], pinned: false, hidden: false, created_at: updated, updated_at: updated, last_run_at: ran,
+  running: false,
 });
 
 test("showsRun: the session present with last_run_at not older than the run's start", () => {
@@ -115,11 +116,72 @@ test("fetchSessionList: list and offset from one GET; a non-200 throws", async (
   await assert.rejects(fetchSessionList(bad), /failed \(500\)/);
 });
 
-test("TitleTrigger: once per session started here, after its first finished run; never for other sessions", () => {
+test("TitleTrigger: once per session started here, at its first run's start; re-armed by started()", () => {
   const titles = new TitleTrigger();
   titles.started(ID);
-  assert.equal(titles.take("other", true), false); // a session from before this page load
-  assert.equal(titles.take(ID, false), false); // failed or stopped: the next run may still finish
-  assert.equal(titles.take(ID, true), true);
-  assert.equal(titles.take(ID, true), false); // at most once per page load
+  assert.equal(titles.take("other"), false); // a session from before this page load
+  assert.equal(titles.take(ID), true);
+  assert.equal(titles.take(ID), false); // at most once
+  titles.started(ID); // its run was never listed: the next run asks again
+  assert.equal(titles.take(ID), true);
+});
+
+test("waitListed: fetches until the list has the session, RECONCILE_DELAY_MS apart", async () => {
+  const answers = [[], [row(null, "other")], [row(null)]];
+  let calls = 0;
+  const sleeps: number[] = [];
+  const result = await waitListed(async () => ({ list: answers[calls++], serverOffsetMs: 0 }), ID,
+    async (ms) => { sleeps.push(ms); });
+  assert.equal(result.listed, true);
+  assert.equal(calls, 3);
+  assert.deepEqual(sleeps, [RECONCILE_DELAY_MS, RECONCILE_DELAY_MS]);
+  assert.equal(result.list[0].id, ID);
+});
+
+test("waitListed: gives up after RECONCILE_RETRIES more fetches, with the last list", async () => {
+  let calls = 0;
+  const result = await waitListed(async () => { calls++; return { list: [row(null, "other")], serverOffsetMs: 0 }; },
+    ID, async () => {});
+  assert.equal(result.listed, false);
+  assert.equal(calls, RECONCILE_RETRIES + 1);
+  assert.equal(result.list[0].id, "other");
+});
+
+// A rejoined run: its start is not known to this page, so it ends once the list shows it no longer running.
+const runningRow = (running: boolean, id = ID): SessionMeta => ({ ...row("2026-10-29T10:00:01.000Z", id), running });
+
+test("waitNotRunning: ends once the list shows the session not running", async () => {
+  const answers = [[runningRow(true)], [runningRow(true)], [runningRow(false)]];
+  const sleeps: number[] = [];
+  let calls = 0;
+  const result = await waitNotRunning(async () => ({ list: answers[calls++], serverOffsetMs: 0 }), ID,
+    async (ms) => { sleeps.push(ms); });
+  assert.equal(result.saved, true);
+  assert.equal(calls, 3);
+  assert.deepEqual(sleeps, [RECONCILE_DELAY_MS, RECONCILE_DELAY_MS]);
+  assert.equal(result.list[0].running, false);
+});
+
+test("waitNotRunning: saved false after 5 retries", async () => {
+  let calls = 0;
+  const sleeps: number[] = [];
+  const result = await waitNotRunning(async () => { calls++; return { list: [runningRow(true)], serverOffsetMs: 0 }; },
+    ID, async (ms) => { sleeps.push(ms); });
+  assert.equal(RECONCILE_RETRIES, 5);
+  assert.equal(result.saved, false);
+  assert.equal(calls, 1 + RECONCILE_RETRIES);
+  assert.equal(sleeps.length, RECONCILE_RETRIES);
+  assert.equal(result.list[0].running, true);
+});
+
+test("waitNotRunning: a list without the session ends at once, saved false (it left the list)", async () => {
+  let calls = 0;
+  const result = await waitNotRunning(async () => { calls++; return { list: [runningRow(false, "other")], serverOffsetMs: 0 }; },
+    ID, async () => { throw new Error("no sleep expected"); });
+  assert.equal(result.saved, false);
+  assert.equal(calls, 1);
+});
+
+test("waitNotRunning: a fetch that throws ends the loop", async () => {
+  await assert.rejects(waitNotRunning(async () => { throw new Error("down"); }, ID, async () => {}), /down/);
 });

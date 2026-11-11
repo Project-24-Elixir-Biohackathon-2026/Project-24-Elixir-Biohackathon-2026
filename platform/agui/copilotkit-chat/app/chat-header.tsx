@@ -12,6 +12,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import { renamePatch, tagSuggestions, withTag, withoutTag } from "../lib/client.ts";
+import { refocusIfLost } from "../lib/menu.ts";
 import type { MetaPatch, SessionMeta } from "../lib/sessions.ts";
 import { DeleteDialog } from "./delete-dialog";
 import { Ellipsis } from "./icons";
@@ -24,9 +25,10 @@ type Props = {
    * nothing is shown. `null`: a confirmed New chat, not yet recorded. */
   session: SessionMeta | null | undefined;
   knownTags: string[];
-  /** A run is in progress: Delete is disabled, as in the open session's row. */
-  running: boolean;
-  /** False until the page is safe to click: hydrated, the agent ready, and the page's own
+  /** Every session with a run in progress, open or not (lib/live-sessions.ts): if the open one is in it,
+   *  Delete is disabled here too, as in its row. */
+  runningIds: ReadonlySet<string>;
+  /** False until the page is safe to click: hydrated, the agent runtime connected, and the page's own
    *  first-load `startNew()`/`open()` has actually run. The actions button starts a menu of
    *  actions, so it stays disabled until then, as the sidebar's buttons do. */
   ready: boolean;
@@ -44,7 +46,7 @@ type Mode =
 
 const errorText = (e: unknown, fallback: string) => (e instanceof Error && e.message ? e.message : fallback);
 
-export function ChatHeader({ session, knownTags, running, ready, onPatch, onDelete, onError }: Props) {
+export function ChatHeader({ session, knownTags, runningIds, ready, onPatch, onDelete, onError }: Props) {
   const [open, setOpen] = useState<Mode | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const popover = useRef<HTMLDivElement>(null);
@@ -70,7 +72,8 @@ export function ChatHeader({ session, knownTags, running, ready, onPatch, onDele
     if (returnFocus) trigger.current?.focus();
   };
 
-  // A press outside ends it: outside the menu and its ⋯, or outside the title for a rename.
+  // A press outside ends it: outside the menu and its ⋯, or outside the title for a rename. The ⋯ gets
+  // focus back if the press left it nowhere (lib/menu.ts, `refocusIfLost`).
   useEffect(() => {
     if (!open || open.mode === "delete") return;
     const onDown = (e: PointerEvent) => {
@@ -81,6 +84,7 @@ export function ChatHeader({ session, knownTags, running, ready, onPatch, onDele
       }
       if (popover.current?.contains(target) || trigger.current?.contains(target)) return;
       end();
+      if (e.pointerType !== "touch") refocusIfLost(document, () => trigger.current);
     };
     document.addEventListener("pointerdown", onDown, true);
     return () => document.removeEventListener("pointerdown", onDown, true);
@@ -181,7 +185,7 @@ export function ChatHeader({ session, knownTags, running, ready, onPatch, onDele
             onTags={() => setOpen({ mode: "tags", draft: "", suggest: false, error: null })}
             onHide={() => choose({ hidden: !session.hidden })}
             onDelete={() => setOpen({ mode: "delete" })}
-            deleteDisabled={running}
+            deleteDisabled={runningIds.has(session.id)}
           />
         </Popover>
       )}

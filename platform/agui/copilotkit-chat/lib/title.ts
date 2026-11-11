@@ -1,14 +1,11 @@
 // A session's model-written title (POST /api/sessions/{id}/title, lib/api.ts): what the agent's POST /title
 // is sent, read from the journal (never from the browser), and the call itself. Node-only: the browser asks
 // for a title through lib/client.ts, never the agent.
-import type { Message } from "@ag-ui/client";
-import { isCompactionMarker } from "./compaction.ts";
-import { pathTo } from "./rebuild.ts";
 import type { Conversation } from "./rebuild.ts";
 import { messageText } from "./sessions.ts";
 
 export type TitleMessage = { role: "user" | "assistant"; content: string };
-/** Asks for a title for the session `threadId` from its first message and answer; throws when there is none. */
+/** Asks for a title for the session `threadId` from its first question; throws when there is none. */
 export type Titler = (threadId: string, messages: TitleMessage[]) => Promise<string>;
 
 export const TITLE_TIMEOUT_MS = 30_000;
@@ -23,25 +20,16 @@ export class TitleUnavailable extends Error {
   }
 }
 
-/** The first user message and the first answer: the first completed run's own user message, and the text of
- *  the assistant messages that run added (compaction markers and tool calls left out; none when it has no
- *  text). null when no run completed or the user message has no text. */
-export function firstExchange(conv: Conversation): TitleMessage[] | null {
-  const run = conv.runs.find((r) => r.status === "completed");
-  if (!run) return null;
-  const added = run.added.map((id) => conv.nodes.get(id)!.message);
-  // The run's own user message; a regenerate (no new user message) answers the last one on its path.
-  const user = added.find((m) => m.role === "user") ?? pathTo(conv, run.anchor).findLast((m) => m.role === "user");
-  const question = user ? messageText(user).trim() : "";
-  if (!question) return null;
-  const answer = added
-    .filter((m: Message) => m.role === "assistant" && !isCompactionMarker(m))
-    .map((m) => messageText(m).trim())
-    .filter(Boolean)
-    .join("\n");
-  const messages: TitleMessage[] = [{ role: "user", content: question }];
-  if (answer) messages.push({ role: "assistant", content: answer });
-  return messages;
+/** The session's first question: the user message of the first run that added one with text, whatever that
+ *  run's status (still running, finished, failed or stopped), so a title can be asked for as soon as the run
+ *  starts. Only the question: the answer may not exist yet. null when no run added a user message with text. */
+export function firstQuestion(conv: Conversation): TitleMessage[] | null {
+  for (const run of conv.runs) {
+    const user = run.added.map((id) => conv.nodes.get(id)!.message).find((m) => m.role === "user");
+    const question = user ? messageText(user).trim() : "";
+    if (question) return [{ role: "user", content: question }];
+  }
+  return null;
 }
 
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>;

@@ -15,9 +15,10 @@ export { isSessionId };
 
 // `last_run_at`: the latest run_end's time (null before the first), so a client can tell its run was
 // journaled apart from a metadata change, which also moves `updated_at` (the journal's last line).
+// `running`: a run of this session is in progress in this process (`shared().running`, below).
 export type SessionMeta = {
   id: string; title: string; tags: string[]; pinned: boolean; hidden: boolean;
-  created_at: string; updated_at: string; last_run_at: string | null;
+  created_at: string; updated_at: string; last_run_at: string | null; running: boolean;
 };
 export type SessionView = Omit<SessionMeta, "last_run_at"> & { messages: Message[] };
 export type MetaPatch = Partial<Pick<SessionMeta, "title" | "tags" | "pinned" | "hidden">>;
@@ -106,6 +107,20 @@ export function shared(): Shared {
   return g[QUEUE];
 }
 
+// A run's key in shared().running: its session and run id. The client supplies the run id, so two
+// sessions could send the same one; runs on one session may overlap.
+export function runKey(threadId: string, runId: string): string {
+  return JSON.stringify([threadId, runId]);
+}
+
+// Whether any run of session `id` is in shared().running, by parsing each key's session id.
+export function isRunning(id: string): boolean {
+  for (const key of shared().running.keys()) {
+    if ((JSON.parse(key) as [string, string])[0] === id) return true;
+  }
+  return false;
+}
+
 // Runs fn after every earlier fn for the same id has settled. The map holds only the tail of
 // each chain, which never rejects, and drops it once nothing is queued behind it.
 export function withSession<T>(id: string, fn: () => Promise<T>): Promise<T> {
@@ -182,7 +197,7 @@ function toMeta(e: Entry): SessionMeta {
   return {
     id: e.id, title: e.title ?? autoTitle(e.first_user ? [e.first_user] : []), tags: e.tags, pinned: e.pinned,
     hidden: e.hidden, created_at: e.created_at ?? e.first_at ?? "", updated_at: e.last_line_at ?? "",
-    last_run_at: e.last_run_at,
+    last_run_at: e.last_run_at, running: isRunning(e.id),
   };
 }
 

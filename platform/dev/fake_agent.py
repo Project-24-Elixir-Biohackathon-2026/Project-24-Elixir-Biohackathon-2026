@@ -7,7 +7,9 @@ The model runs one `run_command` per turn and then answers; a message containing
 "fail" makes the model raise, so the run ends in RUN_ERROR; a message containing
 "slow" streams its answer in SLOW_STEPS chunks, SLOW_STEP_SECONDS apart (1 s, or
 $SPE_FAKE_SLOW_STEP_SECONDS; about 10 s by default),
-for stopping, closing or archiving a run in progress; a message containing "compact"
+for stopping, closing or archiving a run in progress; a message containing "slow-fail" runs its
+command and streams the slow steps, then raises (a run error after a while, from a session left meanwhile);
+a message containing "compact"
 runs a command with a long output, so the history passes the scripted window
 (COMPACT_WINDOW tokens) and the agent compacts it with a scripted summary; it compacts
 every time it is sent, not once per session (the request right after a fresh compaction,
@@ -132,7 +134,8 @@ async def scripted(messages, info):
     if "echo-input" in last_user.lower():
         yield json.dumps(received(messages))
         return
-    if "fail" in last_user.lower():
+    slow_fail = "slow-fail" in last_user.lower()  # before "fail", which raises at once
+    if "fail" in last_user.lower() and not slow_fail:
         raise RuntimeError("scripted model failure (the message asked for it)")
     last = messages[-1].parts[-1]
     compacting = "compact" in last_user.lower()
@@ -151,6 +154,8 @@ async def scripted(messages, info):
             for step in range(1, SLOW_STEPS + 1):
                 await asyncio.sleep(SLOW_STEP_SECONDS)
                 yield f"Slow step {step} of {SLOW_STEPS}. "
+            if slow_fail:
+                raise RuntimeError("scripted model failure after the slow steps (the message asked for it)")
         for chunk in (f"Turn {len(users)}: ", "the command ran. ", "Its output was:\n\n", str(last.content)):
             yield chunk
     elif "multi-tool" in last_user.lower():

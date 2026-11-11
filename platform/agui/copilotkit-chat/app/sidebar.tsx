@@ -6,7 +6,8 @@
 // One owner for what a row is doing: `Sidebar` holds which row has its menu, rename, tag editor or
 // delete dialog open, so at most one row is ever busy, and opening a session, New chat, collapsing
 // or another row's menu ends it. The close and focus rules follow Open WebUI's sidebar: the menu
-// closes on a press outside it, Escape or a choice, and gives focus back to its ⋯; a rename is saved
+// closes on a press outside it, Escape or a choice, and gives focus back to its ⋯ (after a press outside,
+// only when the press left focus nowhere, so it never takes focus from a field or button); a rename is saved
 // by Enter or a press outside the row and cancelled by Escape; a tag typed but not added is dropped.
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
@@ -14,10 +15,11 @@ import type { MouseEvent } from "react";
 import { removeSession, renamePatch, tagSuggestions, updateSession, withTag, withoutTag } from "../lib/client.ts";
 import type { MetaPatch, SessionMeta } from "../lib/sessions.ts";
 import { DEFAULT as DEFAULT_WIDTH, MAX as MAX_WIDTH, MIN as MIN_WIDTH, clampWidth, maxFor, parseWidth, stepWidth } from "../lib/sidebar-width.ts";
+import { refocusIfLost } from "../lib/menu.ts";
 import { filterSessions, sections } from "../lib/sidebar-view.ts";
 import type { ViewFilter } from "../lib/sidebar-view.ts";
 import { DeleteDialog } from "./delete-dialog";
-import { Ellipsis, PencilSquare, SidebarToggle } from "./icons";
+import { Ellipsis, PencilSquare, SidebarToggle, Spinner } from "./icons";
 import { Popover } from "./popover";
 import { RenameInput, RowMenu } from "./row-menu";
 import { HiddenToggle, SearchBox } from "./session-filters";
@@ -32,13 +34,14 @@ type SidebarProps = {
   onChanged: () => Promise<unknown>; // resolves once the list is fetched again
   onDeleted: (id: string) => void;
   onError: (message: string) => void;
-  /** A run is in progress: switching session, New chat and the open session's Delete are disabled. */
-  running: boolean;
-  /** False until the page is safe to click: hydrated, the agent ready, and the page's own
+  /** Every session with a run in progress, open or not (lib/live-sessions.ts): each of their rows shows the
+   *  running mark and has its Delete disabled. Switching and New chat stay enabled during a run. */
+  runningIds: ReadonlySet<string>;
+  /** False until the page is safe to click: hydrated, the agent runtime connected, and the page's own
    *  first-load `startNew()`/`open()` has actually run (not just become due). Every button here
    *  starts an action, so each stays disabled until then rather than risk a click landing before
-   *  its handler is attached, before the agent can run anything, or in the sub-frame window
-   *  between the agent becoming ready and that first-load effect running. */
+   *  its handler is attached, before the runtime can run anything, or in the sub-frame window
+   *  between the runtime connecting and that first-load effect running. */
   ready: boolean;
 };
 
@@ -70,7 +73,7 @@ const writeStoredWidth = (width: number): void => {
 };
 
 
-export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChanged, onDeleted, onError, running, ready }: SidebarProps) {
+export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChanged, onDeleted, onError, runningIds, ready }: SidebarProps) {
   const [busy, setBusy] = useState<Busy | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   // DEFAULT_WIDTH on the server and on the first client render (so there is no hydration
@@ -133,6 +136,7 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
 
   // A press outside ends it: outside the menu and its ⋯ for the popover, outside the row for a rename.
   // Capture phase, so it runs before the press's own target acts (another row opens, another ⋯ toggles).
+  // The popover's ⋯ gets focus back if the press left it nowhere (lib/menu.ts, `refocusIfLost`).
   useEffect(() => {
     if (!busy || busy.mode === "delete") return;
     const onDown = (e: PointerEvent) => {
@@ -144,6 +148,8 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
       }
       if (popover.current?.contains(target) || trigger?.contains(target)) return;
       end();
+      const id = busy.id;
+      if (e.pointerType !== "touch") refocusIfLost(document, () => triggers.current.get(id));
     };
     document.addEventListener("pointerdown", onDown, true);
     return () => document.removeEventListener("pointerdown", onDown, true);
@@ -266,7 +272,7 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
         <button type="button" className="spe-icon-button" aria-label="Show sessions" title="Show sessions"
           onClick={() => setCollapsed(false)}><SidebarToggle /></button>
         <button type="button" className="spe-icon-button" aria-label="New chat" title="New chat"
-          disabled={running || !ready} onClick={newChat}><PencilSquare /></button>
+          disabled={!ready} onClick={newChat}><PencilSquare /></button>
       </nav>
     );
   }
@@ -274,13 +280,14 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
   const row = (s: SessionMeta) => {
     const mine = busy?.id === s.id ? busy : null;
     const popoverOpen = mine?.mode === "menu" || mine?.mode === "tags";
+    const running = runningIds.has(s.id);
     const classes = ["spe-row"];
     if (s.id === activeId) classes.push("spe-row-active");
     if (s.hidden) classes.push("spe-row-hidden");
     if (popoverOpen) classes.push("spe-row-menu-open");
     if (mine?.mode === "rename") classes.push("spe-row-renaming");
     return (
-      <li key={s.id} className={classes.join(" ")} data-session-id={s.id}>
+      <li key={s.id} className={classes.join(" ")} data-session-id={s.id} data-running={running || undefined}>
         {mine?.mode === "rename" ? (
           <RenameInput
             value={mine.draft}
@@ -291,11 +298,14 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
           />
         ) : (
           <button type="button" className="spe-row-open" aria-current={s.id === activeId ? "page" : undefined}
-            disabled={running || !ready} onClick={() => { end(); onOpen(s.id); }} onDoubleClick={() => startRename(s)}>
+            disabled={!ready} onClick={() => { end(); onOpen(s.id); }} onDoubleClick={() => startRename(s)}>
             {/* The Pinned section shows it; this tells a screen reader too. */}
             {s.pinned && <span className="spe-pin spe-sr-only">Pinned: </span>}
             <span className="spe-row-title">{s.title}</span>
           </button>
+        )}
+        {running && mine?.mode !== "rename" && (
+          <span className="spe-row-running"><Spinner /><span className="spe-sr-only">Running</span></span>
         )}
         <button
           type="button"
@@ -339,7 +349,7 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
         onDoubleClick={() => resizeTo(DEFAULT_WIDTH)}
       />
       <div className="spe-sidebar-actions">
-        <button type="button" className="spe-new" disabled={running || !ready} onClick={newChat}><PencilSquare />New chat</button>
+        <button type="button" className="spe-new" disabled={!ready} onClick={newChat}><PencilSquare />New chat</button>
         <SearchBox query={filter.query} knownTags={knownTags} onChange={(query) => setFilter({ ...filter, query })} />
       </div>
       <div className="spe-sidebar-list">
@@ -368,7 +378,7 @@ export function Sidebar({ sessions, knownTags, activeId, onNew, onOpen, onChange
             onTags={() => setBusy({ id: busySession.id, mode: "tags", draft: "", suggest: false, error: null })}
             onHide={() => choose(busySession, { hidden: !busySession.hidden })}
             onDelete={() => setBusy({ id: busySession.id, mode: "delete" })}
-            deleteDisabled={running && busySession.id === activeId}
+            deleteDisabled={runningIds.has(busySession.id)}
           />
         </Popover>
       )}
