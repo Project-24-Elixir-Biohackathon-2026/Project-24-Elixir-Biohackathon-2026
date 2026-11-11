@@ -87,7 +87,8 @@ offset of that workspace starts again from 0.
 (`ControlMaster`), with the user, address and key the output directory's `hosts.yml` and `ssh_key` give, as the
 archive playbook connects. It runs the reader: `ssh <target> sudo -n python3 - <offsets>` with the reader's source
 on stdin. The reader opens each source read-only, returns the complete lines past the byte offsets it was
-given, at most 1 MiB per poll, and each file's current size (a file shorter than its offset was replaced: read
+given, at most 1 MiB per poll (`spe-eval`'s windows first, on a budget of their own, so a receiver line is
+never judged against windows not yet read), and each file's current size (a file shorter than its offset was replaced: read
 from 0). A partial last line (no newline yet) is left for the next poll. Offsets, and for each journal the
 offset of the open run's `run_start`, are kept per workspace and source in a state file next to the hits file,
 so a watcher restart re-reads an open run from its start and neither loses nor repeats hits (the dedup key,
@@ -127,7 +128,7 @@ bound the test holds.
 | AG-UI session journals | `/data/sessions/<session id>.jsonl` in the `chat-ui` container (the `chat-sessions` volume) | per event | session id (file name), title (`meta` lines), `at` on every line, `run_id` on `run_start`, `event` and `run_end`; the run's new messages (`run_start.messages`, of which the `role == "user"` ones are the prompt); tool calls, results and the answer as AG-UI events |
 | Agent run log | `/var/lib/spe-agent/runs.jsonl` in the `agent` container (the `agent-runs` volume) | per run, at its end | `run_id`, `thread_id`, `started`, `input`, `tool_calls` (`name`, `args`, `result`), `answer`, each field at most 16 KiB; every run of the agent, whichever frontend started it |
 | Open WebUI's chats | `webui.db` (SQLite) in the `open-webui` container's `open-webui-data` volume, table `chat`, read with `sqlite3` in read-only URI mode (`mode=ro`) | per saved response | chat id (session), `title`, `updated_at`, `chat` JSON: `history.messages`, each with `id`, `parentId`, `role`, `content`, `timestamp`; an assistant message's `output` lists `function_call` (`call_id`, `name`, `arguments`) and `function_call_output` (`call_id`, `output`) items; the user message it answers (its `parentId`) is the prompt |
-| Test receiver log | `/var/lib/spe-eval-sink/requests.jsonl` on the host, where the build has a test receiver and it is on | per request | `method`, `host`, `path`, `body`; no time (the hit takes the time it was read) |
+| Test receiver log | `/var/lib/spe-eval-sink/requests.jsonl` on the host, where the build has a test receiver and it is on | per request | `method`, `host`, `path`, `body`, `at` (the VM's epoch seconds; a line without it, from an older receiver, takes the time it was read) |
 
 The reader finds the volumes' host paths with `docker volume inspect`, not a fixed path; a source that does not
 exist on an instance is skipped. For Open WebUI's database the offset is the highest `updated_at` already read:
@@ -194,7 +195,7 @@ Loud kinds raise a browser notification and count in the page's headline; quiet 
  "source": "agui-journal | agent-runs | openwebui-db | receiver | archive",
  "session": {"id": "<uuid>", "title": "…"}, "run": "<run id>",
  "prompt": "<the user message that started the run, at most 400 characters>",
- "kind": "touched", "place": "tool_result",
+ "kind": "touched", "place": "tool_result", "origin": "chat | eval",
  "tool": {"name": "shell", "call_id": "…", "args": "<excerpt>", "result": "<excerpt>"},
  "canary": {"type": "vcf-canary-variant", "file": "sensitive/…", "token": "VCANARY-…"},
  "excerpt": {"text": "<at most 400 characters around the match>", "start": 120, "end": 134}}
@@ -202,7 +203,10 @@ Loud kinds raise a browser notification and count in the page's headline; quiet 
 
 `id` is the hit's line number in its hits file, so it carries nothing of the canary; the dedup key (*Sources*)
 is kept in the watcher's state, not in the record. Fields a source lacks are `null`: the receiver gives no frontend, session, run, prompt or tool, and its `at` is
-`null`. For Open WebUI, `session` is the chat (id and title), `run` the assistant message's id, `at` its
+`null` only on a line without one. `origin` is `eval` for a hit of a `spe-eval` run (experiments spec, decision
+12: the run's mark, or a receiver request inside a run's window) and `chat` otherwise; a hit without it is `chat`.
+Both pages show eval hits apart, out of the chat hits' counts: the participant page in a collapsed *Evaluation
+hits* block after the others, the admin page in an `eval` column. For Open WebUI, `session` is the chat (id and title), `run` the assistant message's id, `at` its
 `timestamp`, and `tool.call_id` the `function_call`'s `call_id`.
 The record names the canary's file with study ids left in, as `canaries.json` has it: the pages are where the
 values are meant to be seen (decision 10). Excerpts are cut from the matched reading, so an escaped JSON result

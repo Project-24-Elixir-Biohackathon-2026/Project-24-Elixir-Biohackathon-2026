@@ -26,6 +26,10 @@ history, which the server is expected not to use (a user turn in a new session i
 A turn may carry AG-UI's other message fields (`toolCalls` on an assistant turn, `toolCallId` on a `tool`
 turn, its own `id`), sent as given.
 
+Every run carries `forwardedProps: {"spe_source": "eval"}`, on both ways in (the chat server passes it
+through to the agent and keeps it in the journal): the agent's run log then records `source: eval`, and the
+run report keeps the evaluation's canary hits apart from the participant's.
+
 With `config.state_diff: true` (agent.yaml) the provider, after the run, reads the
 baseline the beforeEach hook wrote (isolation.read_baseline()) and returns
 isolation.state_diff against it (hand-off directory: handoff.handoff_dir()) as
@@ -212,7 +216,7 @@ def _run(prompt: str, config: dict, context: dict | None) -> dict:
             return {"error": "set SPE_AGENT_API_KEY or SPE_AGENT_API_KEY_FILE"}
         headers["Authorization"] = f"Bearer {key}"
     body = {"threadId": thread_id, "runId": run_id, "state": {}, "tools": [],
-            "context": [], "forwardedProps": {}, "messages": _messages(prompt, context)}
+            "context": [], "forwardedProps": {"spe_source": "eval"}, "messages": _messages(prompt, context)}
     req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST", headers=headers)
     acc, parser = Accumulator(body["runId"], body["threadId"], via), SSEParser()
     try:

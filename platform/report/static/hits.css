@@ -112,12 +112,14 @@ mark { background: var(--mark-bg); color: var(--mark-fg); border-radius: 3px; pa
 .hit .trace .k { color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; margin-right: 0.3rem; }
 .hit .trace .args, .hit .trace code { word-break: break-all; }
 
-/* Quiet hits (seen, args, prompt, unknown kinds), collapsed under one "also seen (N)" */
-.also-seen > summary { cursor: pointer; list-style: none; padding: 0.6rem 1.25rem; color: var(--muted); font-size: 0.9rem; }
-.also-seen > summary::-webkit-details-marker { display: none; }
-.also-seen > summary::before { content: "\25B8"; margin-right: 0.6rem; }
-.also-seen[open] > summary::before { content: "\25BE"; }
-.also-seen .hit { padding-left: 2rem; }
+/* Quiet hits (seen, args, prompt, unknown kinds), collapsed under one "also seen (N)"; an evaluation's
+   hits, under one "Evaluation hits (N)" after them */
+.also-seen > summary, .eval-hits > summary { cursor: pointer; list-style: none; padding: 0.6rem 1.25rem; color: var(--muted); font-size: 0.9rem; }
+.also-seen > summary::-webkit-details-marker, .eval-hits > summary::-webkit-details-marker { display: none; }
+.also-seen > summary::before, .eval-hits > summary::before { content: "\25B8"; margin-right: 0.6rem; }
+.also-seen[open] > summary::before, .eval-hits[open] > summary::before { content: "\25BE"; }
+.eval-hits > .eval-note { margin: 0; padding: 0 1.25rem 0.6rem; font-size: 0.85rem; }
+.also-seen .hit, .eval-hits .hit { padding-left: 2rem; }
 
 /* The admin page (hits_view.admin_body, static/hits-admin.js): the workspace table, the banner and
    filters above the list, each hit headed by its workspace's name */
@@ -139,6 +141,6 @@ mark { background: var(--mark-bg); color: var(--mark-fg); border-radius: 3px; pa
   .card, .report-head { padding: 1rem; border-radius: 12px; }
   .hit { padding: 0.6rem 0.25rem; }
   .hit .trace { margin-left: 0.8rem; }
-  .also-seen > summary { padding: 0.6rem 0.25rem; }
-  .also-seen .hit { padding-left: 0.75rem; }
+  .also-seen > summary, .eval-hits > summary { padding: 0.6rem 0.25rem; }
+  .also-seen .hit, .eval-hits .hit { padding-left: 0.75rem; }
 }

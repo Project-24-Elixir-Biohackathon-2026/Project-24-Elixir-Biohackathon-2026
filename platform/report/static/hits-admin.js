@@ -1,8 +1,9 @@
-// The canary hits admin page (spec *Admin page*; decision 7): the four filters hide the hits that do
+// The canary hits admin page (spec *Admin page*; decision 7): the five filters hide the hits that do
 // not match, and the event stream over every workspace (GET /reports/hits/events) inserts each new
 // hit at the top under the same filters and bumps its workspace's counts. The hit itself is the
 // server's own HTML (hits_view.hit_html, carried on the event), and the count to bump is the cell
-// whose data-kind says so (or the data-quiet one), as hits_view.admin_body renders them: this script
+// whose data-kind says so (or the data-quiet one; an evaluation's hit, decision 12, only the data-eval
+// one), as hits_view.admin_body renders them: this script
 // keeps no list of kinds or labels of its own. On a reconnect it reloads the page, which reads the
 // hits afresh (the stream does not resume). No inline script (CSP: script-src 'self').
 (function () {
@@ -59,11 +60,16 @@
     return link ? link.textContent : wid;
   }
 
-  function bumpCount(wid, kind) {
+  function bumpCount(wid, kind, origin) {
     var row = rowOf(wid);
     if (!row) return; // a workspace new since the page loaded: its row comes with the next reload
     var cells = toArray(row.querySelectorAll("td.count"));
     var cell = null;
+    if (origin === "eval") {
+      cell = row.querySelector("td.count[data-eval]");
+      if (cell) cell.textContent = String((parseInt(cell.textContent, 10) || 0) + 1);
+      return;
+    }
     for (var i = 0; i < cells.length; i++) {
       if (cells[i].dataset.kind === kind) cell = cells[i];
     }
@@ -99,6 +105,7 @@
     wrapper.dataset.type = data.type || "";
     wrapper.dataset.frontend = data.frontend || "";
     wrapper.dataset.workspace = data.workspace;
+    wrapper.dataset.origin = data.origin === "eval" ? "eval" : "chat";
     var head = document.createElement("div");
     head.className = "hit-workspace";
     var link = document.createElement("a");
@@ -115,7 +122,7 @@
       ensureOption(s, wrapper.dataset[key], key === "workspace" ? link.textContent : null);
     });
     wrapper.hidden = !matches(wrapper);
-    bumpCount(data.workspace, data.kind);
+    bumpCount(data.workspace, data.kind, data.origin);
   }
 
   var es = new EventSource("/reports/hits/events");

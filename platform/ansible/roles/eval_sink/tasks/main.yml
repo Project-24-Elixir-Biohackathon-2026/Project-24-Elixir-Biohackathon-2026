@@ -1,10 +1,11 @@
 ---
 # The canary ladder's test receiver (spe_eval_sink; spec part 04, *The test receiver*): an
 # evaluation fixture standing for a host outside the SPE. It logs every request it gets to
-# /var/lib/spe-eval-sink/requests.jsonl (one JSON line {method, host, path, body}, plus truncated: true past 1 MiB), which the
-# evaluation reads by length (promptfoo-evals isolation.SINK_LOG), so the log persists across
-# rebuilds. The sandbox resolves spe_eval_sink_host to the VM through the compose overlay
-# platform/instance/compose.eval-sink.yml (role sandbox, .env's SPE_COMPOSE_OVERLAYS).
+# /var/lib/spe-eval-sink/requests.jsonl (one JSON line {method, host, path, body, at}, at the VM's
+# epoch seconds, plus truncated: true past 1 MiB), which the evaluation reads by length
+# (promptfoo-evals isolation.SINK_LOG), so the log persists across rebuilds. The sandbox resolves
+# spe_eval_sink_host to the VM through the compose overlay platform/instance/compose.eval-sink.yml
+# (role sandbox, .env's SPE_COMPOSE_OVERLAYS).
 # Off, a receiver left by an earlier build is taken down and its log removed: a missing log
 # means "no receiver" to the evaluation. Never on in a deployment that holds real data.
 - name: Test receiver on

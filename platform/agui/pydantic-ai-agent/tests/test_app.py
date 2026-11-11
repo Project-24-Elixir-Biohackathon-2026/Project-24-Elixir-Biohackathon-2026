@@ -496,6 +496,19 @@ async def test_run_log_records_a_completed_run(tmp_path):
     assert stat.S_IMODE(os.stat(tmp_path / "log" / "runs.jsonl").st_mode) == 0o600
 
 
+@pytest.mark.parametrize("props, source", [({}, "chat"), ({"spe_source": "eval"}, "eval"),
+                                           ({"spe_source": "other"}, "chat"), (None, "chat"), ("eval", "chat")])
+async def test_run_log_records_the_run_source(tmp_path, props, source):
+    body = run_body()
+    body["forwardedProps"] = props
+    app, _ = build(tmp_path)
+    async with running(app) as c:
+        await until_status(c, 200)
+        await post_body(c, body)
+    (rec,) = log_records(tmp_path)
+    assert rec["source"] == source
+
+
 async def test_run_log_records_a_failed_run(tmp_path):
     async def failing(messages, info):
         raise RuntimeError(f"boom {SANDBOX_KEY}")
@@ -1203,7 +1216,16 @@ async def test_command_run_log_record(tmp_path):
     await command_run(tmp_path, Script(summary="SUMMARY"), command_body(f"keep x {SANDBOX_KEY}"))
     (record,) = log_records(tmp_path)
     assert record["input"] == "/compact keep x [redacted]" and record["status"] == "completed"
+    assert record["source"] == "chat"
     (entry,) = record["compactions"]
     assert entry["trigger"] == "manual" and entry["focus"] == "keep x [redacted]"
     assert entry["next_input_tokens"] is None and entry["summary"] == "SUMMARY"
     assert entry["messages_cut"] == 4 and set(entry["usage"]) == {"input_tokens", "output_tokens"}
+
+
+async def test_command_run_log_record_source_eval(tmp_path):
+    body = command_body()
+    body["forwardedProps"]["spe_source"] = "eval"
+    await command_run(tmp_path, Script(summary="SUMMARY"), body)
+    (record,) = log_records(tmp_path)
+    assert record["source"] == "eval"

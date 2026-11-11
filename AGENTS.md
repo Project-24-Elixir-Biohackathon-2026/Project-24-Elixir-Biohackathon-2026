@@ -204,8 +204,8 @@ Each unit's PR updates its track's line; the last slice removes it. An open upst
 is open (`docs/guides/contributing-upstream.md`, step 6).
 
 - **Experiments** (spec `docs/specs/2026-11-10-experiments-design/`, merged; no plan, slices from its
-  `inputs-for-plan.md`): slices 1–4/7 merged (#85, #86, #88, #92); next slice 5/7, eval
-  runs apart in canary hits; handoff `docs/handoffs/2026-11-11T1513Z-experiments-slice-5.md`.
+  `inputs-for-plan.md`): slices 1–5/7 merged (#85, #86, #88, #92, #93); next slice 6/7,
+  contribution; handoff `docs/handoffs/2026-11-11T1643Z-experiments-slice-6.md`.
 - **Upstream PR kraatz #28** (`contrib/agui-archive-markdown`): archive Markdown wording, autolinks, refusal
   reason, bad timestamps; waits on upstream's review.
 - **Upstream PR kraatz #29** (`contrib/agui-chat-ui-polish`): reopened sessions land on their end, menu focus;

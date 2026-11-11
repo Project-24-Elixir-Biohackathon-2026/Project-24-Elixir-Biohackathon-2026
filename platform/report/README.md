@@ -68,7 +68,8 @@ Three forms:
   offsets, through the real SSH transport,
   appending new hits to `--out`; no report sidecar, no state or status file, nothing written under
   `<hits dir>`. Prints the sources the reader found, what is missing, any source errors and the hit
-  count per kind to stdout — never a token, an excerpt or a line of a source.
+  count per kind (an evaluation's hits counted apart, as `eval`) to stdout — never a token, an
+  excerpt or a line of a source.
 
 ## Canary hits pages
 

@@ -299,10 +299,14 @@ def test_run_two_arm_order_and_return_to_build_arm(setup):
     assert baseline["mitigations"] == []
     assert mitigated["mitigations"] == ["M1"]
 
-    windows = (home / "spe-eval" / "windows.jsonl").read_text().splitlines()
-    assert len(windows) == 1
-    window = json.loads(windows[0])
-    assert window["run"] == "20261110T100000Z" and window["experiment"] == "two-arm"
+    # An opening line when the run starts (end null), so a hit during a long run is already in a window,
+    # then the closing line at its end, with the same start.
+    windows = [json.loads(line) for line in (home / "spe-eval" / "windows.jsonl").read_text().splitlines()]
+    assert len(windows) == 2
+    opening, closing = windows
+    assert opening == {"run": "20261110T100000Z", "experiment": "two-arm", "start": closing["start"], "end": None}
+    assert closing["run"] == "20261110T100000Z" and closing["experiment"] == "two-arm"
+    assert closing["end"] and closing["start"] <= closing["end"]
 
 
 def test_run_gate_refused_is_recorded_and_exits_1(setup):
@@ -366,10 +370,9 @@ def test_run_sigterm_mid_run_sh_marks_stopped_and_still_cleans_up(setup):
     assert record["state"] == "stopped"
     assert record["ended"]
 
-    windows = (home / "spe-eval" / "windows.jsonl").read_text().splitlines()
-    assert len(windows) == 1
-    window = json.loads(windows[0])
-    assert window["run"] == "20261111T100000Z"
+    windows = [json.loads(line) for line in (home / "spe-eval" / "windows.jsonl").read_text().splitlines()]
+    assert [(w["run"], w["end"] is None) for w in windows] == [("20261111T100000Z", True),
+                                                                ("20261111T100000Z", False)]
 
     apply_calls = [c for c in calls(logs["apply"]) if c.startswith("all")]
     assert apply_calls[-1] == "all"  # the return-to-build-arm reapply still ran

@@ -19,7 +19,7 @@ CANARIES = canary_record.load_canaries(FIXTURES)
 API_HOST = canary_record.read_hosts(FIXTURES)["api_host"]
 
 RECORD_KEYS = {"id", "detected", "at", "workspace", "instance", "owner", "frontend", "source", "session", "run",
-               "prompt", "kind", "place", "tool", "canary", "excerpt"}
+               "prompt", "kind", "place", "tool", "canary", "excerpt", "origin"}
 WATCHER_KEYS = {"id", "detected", "workspace", "instance", "owner"}  # added by the watcher, not hits_for
 
 
@@ -228,6 +228,7 @@ def test_record_schema():
         assert set(hit["canary"]) == {"type", "file", "token"}
         assert set(hit["excerpt"]) == {"text", "start", "end"}
         assert hit["prompt"] is None or len(hit["prompt"]) <= 400
+        assert hit["origin"] == "chat"  # the fixtures' runs are all the chat's
         json.dumps(hit)  # a JSON line
     tool_places = [h for h in found if h["place"] in ("tool_args", "tool_result")]
     assert tool_places and all(h["tool"] is not None for h in tool_places)
@@ -417,3 +418,135 @@ def test_partial_last_line_after_crash(tmp_path, cut):
     assert lines[-1] == b"" and lines[1] == partial and json.loads(lines[2])["id"] == 3
     assert [h["id"] for h in canary_hits.HitsFile(str(path)).read()] == [1, 3]
     assert canary_hits.HitsFile(str(path)).append({"kind": "answer"}) == 4
+
+
+# Origin: an evaluation's runs apart from the chat's (decision 12)
+
+def _eval_run(run_id: str, forwarded: object) -> list[dict]:
+    return [
+        {"type": "run_start", "at": "a", "run_id": run_id, "messages": [{"role": "user", "content": f"say {FCANARY}"}],
+         "request": {"tools": [], "context": [], "state": None, "forwardedProps": forwarded}, "source": "chat"},
+        {"type": "event", "at": "b", "run_id": run_id, "event": {"type": "TEXT_MESSAGE_START", "messageId": "m"}},
+        {"type": "event", "at": "c", "run_id": run_id,
+         "event": {"type": "TEXT_MESSAGE_CONTENT", "messageId": "m", "delta": FCANARY}},
+        {"type": "run_end", "at": "d", "run_id": run_id},
+    ]
+
+
+def test_journal_eval_run_gives_eval_hits():
+    found = hits(journal_places(_eval_run("e1", {"spe_source": "eval"})))
+    assert sorted(h["place"] for h in found) == ["answer", "prompt"]
+    assert {h["origin"] for h in found} == {"eval"}
+
+
+@pytest.mark.parametrize("forwarded", [{}, {"spe_source": "chat"}, {"spe_source": ["eval"]}, "eval", None, ["eval"]])
+def test_journal_other_runs_are_chat(forwarded):
+    found = hits(journal_places(_eval_run("c1", forwarded)))
+    assert found and {h["origin"] for h in found} == {"chat"}
+
+
+@pytest.mark.parametrize("request_", [None, "x", [], {"forwardedProps": "eval"}])
+def test_journal_request_of_the_wrong_shape_is_chat(request_):
+    lines = _eval_run("c1", {})
+    lines[0]["request"] = request_
+    found = hits(journal_places(lines))
+    assert found and {h["origin"] for h in found} == {"chat"}
+
+
+def test_journal_run_read_from_the_middle_is_chat():
+    found = hits(journal_places(_eval_run("e1", {"spe_source": "eval"})[1:]))
+    assert [(h["place"], h["origin"]) for h in found] == [("answer", "chat")]
+
+
+def test_run_log_source_eval():
+    record = {"run_id": "e2", "thread_id": "t", "started": 1793714400.0, "input": f"say {FCANARY}",
+              "answer": FCANARY, "source": "eval"}
+    found = hits(canary_hits.agent_run_places(record, {}))
+    assert found and {h["origin"] for h in found} == {"eval"}
+    for source in ("chat", None, "EVAL", ["eval"]):
+        found = hits(canary_hits.agent_run_places(record | {"source": source}, {}))
+        assert {h["origin"] for h in found} == {"chat"}, source
+
+
+def test_openwebui_and_receiver_are_chat():
+    assert {h["origin"] for h in hits(openwebui_places() + receiver_places())} == {"chat"}
+
+
+def test_receiver_at_from_the_sink():
+    request = jsonl(FIXTURES / "requests.jsonl")[0]
+    [p] = canary_hits.receiver_places(request | {"at": 1793714400.5})
+    assert p.at == "2026-11-03T14:00:00Z" and p.epoch == 1793714400.5
+    assert hits([p])[0]["at"] == "2026-11-03T14:00:00Z"
+    for bad in (None, "1793714400", True, float("nan"), float("inf"), 1e300):
+        [p] = canary_hits.receiver_places(request | {"at": bad})
+        assert p.at is None and p.epoch is None, bad
+
+
+def test_eval_receiver_hit_has_its_own_key():
+    """A delivery during an evaluation does not hide the chat's later delivery of the same canary."""
+    [p] = canary_hits.receiver_places(jsonl(FIXTURES / "requests.jsonl")[0])
+    chat = hits([p])[0] | {"workspace": "w"}
+    p.origin = "eval"
+    ev = hits([p])[0] | {"workspace": "w"}
+    assert canary_hits.dedup_key(chat, "g") != canary_hits.dedup_key(ev, "g")
+    old = {k: v for k, v in chat.items() if k != "origin"}  # a hit line from before origin: chat's key
+    assert canary_hits.dedup_key(old, "g") == canary_hits.dedup_key(chat, "g")
+
+
+def _windows(*lines: dict) -> dict:
+    windows: dict = {}
+    for line in lines:
+        canary_hits.add_window(windows, line)
+    return windows
+
+
+def test_window_lines_closing_wins():
+    windows = _windows({"run": "a", "experiment": "x", "start": "2026-11-11T10:00:00Z", "end": None},
+                       {"run": "a", "experiment": "x", "start": "2026-11-11T10:00:00Z", "end": "2026-11-11T10:05:00Z"},
+                       {"run": "a", "experiment": "x", "start": "2026-11-11T10:00:00Z", "end": None})
+    assert windows == {"a": {"start": "2026-11-11T10:00:00Z", "end": "2026-11-11T10:05:00Z"}}
+
+
+@pytest.mark.parametrize("bad", [
+    None, [], "x", {}, {"run": 1, "start": "2026-11-11T10:00:00Z", "end": None},
+    {"run": "a", "start": "2026-11-11 10:00:00", "end": None}, {"run": "a", "start": 5, "end": None},
+    {"run": "a", "start": "2026-11-11T10:00:00Z", "end": 7}, {"run": "a", "start": "2026-11-11T10:00:00Z"},
+    {"run": "a" * 300, "start": "2026-11-11T10:00:00Z", "end": None},
+    {"run": "a", "start": "2026-13-11T10:00:00Z", "end": None},
+])
+def test_window_line_malformed_raises(bad):
+    with pytest.raises(ValueError):
+        canary_hits.add_window({}, bad)
+
+
+def test_windows_bounded():
+    windows: dict = {}
+    for n in range(canary_hits.WINDOWS_MAX + 5):
+        canary_hits.add_window(windows, {"run": f"r{n}", "start": "2026-11-11T10:00:00Z", "end": None})
+    assert len(windows) == canary_hits.WINDOWS_MAX and "r0" not in windows and f"r{n}" in windows
+
+
+def _epoch(text: str) -> float:
+    from datetime import datetime, timezone
+    return datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
+
+
+def test_in_eval_window():
+    windows = _windows({"run": "a", "start": "2026-11-11T10:00:00Z", "end": "2026-11-11T10:05:00Z"})
+    inside = canary_hits.in_eval_window
+    assert inside(_epoch("2026-11-11T10:00:00Z"), windows)
+    assert inside(_epoch("2026-11-11T10:05:00Z") + 0.999, windows)  # the end's whole second
+    assert not inside(_epoch("2026-11-11T10:05:01Z"), windows)
+    assert not inside(_epoch("2026-11-11T10:00:00Z") - 0.001, windows)
+    assert not inside(None, windows) and not inside(_epoch("2026-11-11T10:01:00Z"), {})
+
+
+def test_open_window_lasts_until_the_next_start():
+    windows = _windows({"run": "a", "start": "2026-11-11T10:00:00Z", "end": None},
+                       {"run": "b", "start": "2026-11-11T11:00:00Z", "end": "2026-11-11T11:10:00Z"},
+                       {"run": "c", "start": "2026-11-11T12:00:00Z", "end": None})
+    inside = canary_hits.in_eval_window
+    assert inside(_epoch("2026-11-11T10:59:59Z"), windows)  # a's, open until b starts
+    assert inside(_epoch("2026-11-11T11:05:00Z"), windows)
+    assert not inside(_epoch("2026-11-11T11:30:00Z"), windows)  # after b closed, before c
+    assert inside(_epoch("2026-11-12T00:00:00Z"), windows)  # c is still open: open-ended

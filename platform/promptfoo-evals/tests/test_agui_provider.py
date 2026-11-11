@@ -135,6 +135,7 @@ def test_call_api_posts_a_fresh_run_input(agent):
     inp = Agent.seen["input"]
     assert inp["messages"][-1] == {"id": inp["messages"][-1]["id"], "role": "user", "content": "list workflows"}
     assert inp["tools"] == [] and inp["threadId"] and inp["runId"]
+    assert inp["forwardedProps"] == {"spe_source": "eval"}  # the run log marks the run as the evaluation's
     assert a["metadata"]["run_id"] != b["metadata"]["run_id"]
 
 
@@ -379,6 +380,7 @@ def test_via_chat_posts_to_the_run_route_without_the_key(chat):
     assert Chat.seen["auth"] is None and Chat.seen["path"] == "/api/copilotkit/agent/spe/run"
     inp = Chat.seen["input"]
     assert re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", inp["threadId"])
+    assert inp["forwardedProps"] == {"spe_source": "eval"}
     meta = res["metadata"]
     assert meta["via"] == "chat" and meta["thread_id"] == inp["threadId"]
     assert [m["role"] for m in meta["sent"]] == ["user", "assistant", "user"]

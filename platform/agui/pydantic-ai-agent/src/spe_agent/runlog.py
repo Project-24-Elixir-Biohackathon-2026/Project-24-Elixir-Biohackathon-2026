@@ -29,6 +29,13 @@ from .compaction import MARKER_PREFIX
 from .sandbox import truncate
 
 REDACTED = "[redacted]"
+SOURCE_KEY = "spe_source"  # forwardedProps: "eval" marks a run the promptfoo provider started
+
+
+def _source(run_input: RunAgentInput) -> str:
+    """"eval" for a run the evaluation started, else "chat": the report keeps eval canary hits apart."""
+    props = run_input.forwarded_props
+    return "eval" if isinstance(props, dict) and props.get(SOURCE_KEY) == "eval" else "chat"
 
 
 def redact(value: Any, secrets: list[str]) -> Any:
@@ -92,6 +99,7 @@ class RunRecorder:
         self.record: dict[str, Any] = {
             "run_id": run_input.run_id,
             "thread_id": run_input.thread_id,
+            "source": _source(run_input),
             "started": time.time(),
             "ended": None,
             "status": None,

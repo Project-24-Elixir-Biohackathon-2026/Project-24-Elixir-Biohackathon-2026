@@ -161,6 +161,53 @@ def test_hostile_fields_escaped_everywhere():
         assert "<mark>FCANARY-TEST01</mark>" in doc
 
 
+# --- evaluation hits (decision 12): their own heading, out of the chat hits' counts ---
+
+def _eval_block(body: str) -> str:
+    start = body.index('<details class="eval-hits">')
+    end = body.index("</details></section>", start)
+    return body[start:end]
+
+
+def test_eval_hits_under_own_heading_not_counted():
+    hits = [hit("touched", "tool_result", id=1, run="rCHAT"),
+            hit("touched", "tool_result", id=2, run="rEVAL1", origin="eval"),
+            hit("answer", "answer", id=3, run="rEVAL2", origin="eval"),
+            hit("seen", "tool_result", id=4, run="rEVAL3", origin="eval")]
+    body = participant_body(META, hits, None)
+    assert "1 leak<" in body and "touched 1 &middot; answer 0" in body
+    assert "also seen" not in body  # the eval seen hit is not a chat quiet hit
+    block = _eval_block(body)
+    assert block.startswith('<details class="eval-hits"><summary>Evaluation hits (3)</summary>')
+    assert hits_view.EVAL_NOTE in block
+    for run in ("rEVAL1", "rEVAL2", "rEVAL3"):
+        assert body.count(f"run {run}") == 1 and f"run {run}" in block
+    assert "run rCHAT" not in block
+    assert body.index("run rCHAT") < body.index('<details class="eval-hits">')
+
+
+def test_eval_hits_after_also_seen_and_newest_first():
+    hits = [hit("seen", "tool_result", run="rQUIET"),
+            hit("touched", "tool_result", run="rOLD", origin="eval", at="2026-11-10T14:00:00Z"),
+            hit("touched", "tool_result", run="rNEW", origin="eval", at="2026-11-10T14:09:00Z")]
+    body = participant_body(META, hits, None)
+    assert body.index('<details class="also-seen">') < body.index('<details class="eval-hits">')
+    block = _eval_block(body)
+    assert block.index("run rNEW") < block.index("run rOLD")
+
+
+def test_only_eval_hits_keep_the_placeholder():
+    body = participant_body(META, [hit("touched", "tool_result", origin="eval")], {"state": "running"})
+    assert "0 leaks" in body
+    assert f'<p class="muted placeholder">{hits_view.NO_HITS}</p>' in body
+    assert '<details class="eval-hits">' in body
+
+
+def test_no_eval_block_without_eval_hits():
+    body = participant_body(META, [hit("touched", "tool_result", origin="chat"), hit("touched", "x")], None)
+    assert "eval-hits" not in body and "2 leaks" in body
+
+
 # --- hit_html, LOUD, status_line (the event stream renders each hit as the page does) ---
 
 import calendar  # noqa: E402
@@ -177,7 +224,9 @@ def test_hit_html_data_attributes_escaped():
     h = hit("touched", "tool_result", id=7, session={"id": 's"1<', "title": "t"}, run='r"&1')
     out = hits_view.hit_html(h)
     assert out.startswith('<details class="hit loud" data-id="7" data-kind="touched" '
-                          'data-session="s&quot;1&lt;" data-run="r&quot;&amp;1">')
+                          'data-session="s&quot;1&lt;" data-run="r&quot;&amp;1" data-origin="chat">')
+    assert 'data-origin="eval"' in hits_view.hit_html(h | {"origin": "eval"})
+    assert 'data-origin="chat"' in hits_view.hit_html(h | {"origin": "bogus"})
     assert hits_view.hit_html(hit("seen", "tool_result")).startswith('<details class="hit quiet"')
 
 

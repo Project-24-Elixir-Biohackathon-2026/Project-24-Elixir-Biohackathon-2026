@@ -9,11 +9,17 @@ run's archive once, writing each workspace's hits, state and status to the hits 
 
 The first form is the daemon (Watcher.run_forever). Per workspace id it keeps, in the hits directory,
 `<id>.jsonl` (the hits, 0640), `<id>.state.json` (0600: the generation and the hits line it began at, the reader's offsets, each
-journal's open run's start, the dedup keys, the run directories scanned, the run log's titles) and
+journal's open run's start, the dedup keys, the run directories scanned, the run log's titles, the evaluation
+windows read so far, the last WINDOWS_MAX runs') and
 `<id>.status.json` (0640: `state` running|stopped|unreachable|encrypted|capped, `since`, `last_poll`,
-`hits` per kind, `note`), which the pages read. What the reader returns is the participant's (root on
+`hits`: the chat's hits per kind plus `eval`, every evaluation hit whatever its kind, `note`), which the pages read. What the reader returns is the participant's (root on
 their instance): a line that does not parse or is malformed is dropped, a reply of the wrong shape is a
 failed poll, at most 200 hits are kept per poll and 10 MB per hits file.
+
+Each hit carries its `origin` (decision 12): a journal's or the run log's from the run's own mark, a
+receiver request's "eval" when its time falls inside an evaluation window (spe-eval's windows.jsonl, read
+before the receiver in each poll so a window and a delivery new in the same poll classify right), else
+"chat". While a poll has not read the windows to their end, the receiver's lines wait for the next one.
 
 The second form scans one archived run directory (/data-share/runs/<time>_<instance>/, as the
 run_archive role writes it) into a hits file.
@@ -21,7 +27,8 @@ run_archive role writes it) into a hits file.
 The scan reads the run's canaries.json, the AG-UI journals (agui/agui-journals/<session>.jsonl), the
 agent's run log (agui/agent-runs.jsonl) and Open WebUI's chats (openwebui-export.json in the run
 directory itself, never agui/openwebui-export.json, which is the journals reshaped and would repeat
-their hits under Open WebUI's ids). Journals go first, so their copy of a run wins the dedup.
+their hits under Open WebUI's ids). Journals go first, so their copy of a run wins the dedup. An archived
+run has no receiver log, so the scan needs no windows: its origins come from the journals and the run log.
 
 With --html, every hit now in the hits file (not only those appended this run) is also rendered as a
 standalone participant page (hits_view.standalone), written with mode 0640 like the hits file itself:
@@ -61,8 +68,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from canary_hits import (HITS_FILE_MAX, HitsFile, JournalReader, Place, agent_run_places, dedup_key,  # noqa: E402
-                         hits_for, openwebui_places, receiver_places)
+from canary_hits import (HITS_FILE_MAX, HitsFile, JournalReader, Place, add_window, agent_run_places,  # noqa: E402
+                         dedup_key, hits_for, in_eval_window, openwebui_places, receiver_places)
 from canary_record import RecordError, _scalar, load_canaries, read_hosts, vm_argv  # noqa: E402
 from hits_view import participant_body, standalone  # noqa: E402
 
@@ -438,7 +445,7 @@ READER = Path(__file__).resolve().parent / "canary_reader.py"
 SSH_OPTIONS = ["-o", "ControlMaster=auto", "-o", "ControlPath=~/.ssh/cm-%C", "-o", "ControlPersist=60",
                "-o", "BatchMode=yes"]
 SESSION_ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
-OFFSET_KEYS = ("journals", "agent_runs", "receiver", "openwebui")
+OFFSET_KEYS = ("journals", "agent_runs", "receiver", "windows", "openwebui")
 
 
 class PollError(Exception):
@@ -458,7 +465,7 @@ def _number(value: object) -> bool:
 
 
 def check_offsets(offsets: object) -> dict:
-    """The offsets the reader is handed, checked before they reach a command line: the four known keys,
+    """The offsets the reader is handed, checked before they reach a command line: the five known keys,
     journal keys session ids (lowercase UUIDs), byte offsets non-negative integers, Open WebUI's a finite
     number. Raises OffsetsError (a ValueError)."""
     if not isinstance(offsets, dict) or set(offsets) - set(OFFSET_KEYS):
@@ -469,7 +476,7 @@ def check_offsets(offsets: object) -> dict:
     for key, value in journals.items():
         if not (isinstance(key, str) and SESSION_ID.fullmatch(key) and _count(value)):
             raise OffsetsError("offsets: a journal key or offset is malformed")
-    for name in ("agent_runs", "receiver"):
+    for name in ("agent_runs", "receiver", "windows"):
         if name in offsets and not _count(offsets[name]):
             raise OffsetsError(f"offsets: {name} is not a byte offset")
     if "openwebui" in offsets and not _number(offsets["openwebui"]):
@@ -592,7 +599,7 @@ def check_reply(reply: object) -> dict:
     if not isinstance(reply, dict) or not isinstance(reply.get("files"), dict):
         raise PollError("reply: no files")
     for key, entry in reply["files"].items():
-        if key in ("agent_runs", "receiver") or (isinstance(key, str) and key.startswith("journal:")):
+        if key in ("agent_runs", "receiver", "windows") or (isinstance(key, str) and key.startswith("journal:")):
             _check_file(entry)
         else:
             raise PollError("reply: an unknown file key")
@@ -641,8 +648,8 @@ def _fresh_state(generation: str | None, generation_start: int = 0) -> dict:
     """`generation_start`: the hits file's line count when this generation began; the hits past it are
     this generation's (a hit records no generation of its own)."""
     return {"generation": generation, "generation_start": generation_start,
-            "offsets": {"journals": {}, "agent_runs": 0, "receiver": 0, "openwebui": 0},
-            "run_starts": {}, "archived": [], "titles": {}, "journal_titles": {}}
+            "offsets": {"journals": {}, "agent_runs": 0, "receiver": 0, "windows": 0, "openwebui": 0},
+            "run_starts": {}, "archived": [], "titles": {}, "journal_titles": {}, "windows": {}}
 
 
 def _str_map(value: object, kind: type) -> dict:
@@ -664,10 +671,24 @@ def _load_state(data: object) -> tuple[dict, set[str]]:
                            if SESSION_ID.fullmatch(k) and _count(v)}
     state["titles"] = _str_map(data.get("titles"), str)
     state["journal_titles"] = _str_map(data.get("journal_titles"), str)
+    for run, window in _str_map(data.get("windows"), dict).items():  # a state file from before windows: none
+        try:
+            add_window(state["windows"], {**window, "run": run})
+        except ValueError:
+            continue
     archived = data.get("archived")
     state["archived"] = [a for a in archived if isinstance(a, str)] if isinstance(archived, list) else []
     seen = data.get("seen")
     return state, {k for k in seen if isinstance(k, str)} if isinstance(seen, list) else set()
+
+
+def _count_key(hit: dict) -> str:
+    """The status file's `hits` key a hit counts under: "eval" for an evaluation's, else its kind."""
+    return "eval" if hit.get("origin") == "eval" else hit["kind"]
+
+
+def _count_keys(hits: list[dict]) -> list[str]:
+    return [_count_key(h) for h in hits if isinstance(h.get("kind"), str)]
 
 
 def _apply(w: _Watched, reply: dict, sent: dict, canaries: list[dict], now: float) -> tuple[int, int, int]:
@@ -677,7 +698,7 @@ def _apply(w: _Watched, reply: dict, sent: dict, canaries: list[dict], now: floa
     here, so the poll fails and its offsets are not committed (the re-read is deduplicated by `seen`,
     which gets a key only once its hit is written). Module-level (not Watcher's) so --once can call it on
     a one-shot `_Watched` with no Watcher."""
-    state = copy.deepcopy({k: w.state[k] for k in ("offsets", "run_starts", "titles", "journal_titles")})
+    state = copy.deepcopy({k: w.state[k] for k in ("offsets", "run_starts", "titles", "journal_titles", "windows")})
     offsets, run_starts = state["offsets"], state["run_starts"]
     tally = {"added": 0, "dropped": 0, "over": 0}
     detected = _iso(now)
@@ -708,7 +729,7 @@ def _apply(w: _Watched, reply: dict, sent: dict, canaries: list[dict], now: floa
             if w.hits.append(hit) is None:
                 continue
             w.seen.add(key)
-            w.kinds[hit["kind"]] += 1
+            w.kinds[_count_key(hit)] += 1
             tally["added"] += 1
 
     def each(entry: dict, handle) -> None:
@@ -761,13 +782,26 @@ def _apply(w: _Watched, reply: dict, sent: dict, canaries: list[dict], now: floa
             return []
         return agent_run_places(line, state["titles"])
 
+    def window_line(line: object, _start: int) -> list[Place]:
+        add_window(state["windows"], line)  # ValueError on a malformed line: dropped
+        return []
+
     def receiver_line(line: object, _start: int) -> list[Place]:
-        return receiver_places(line) if isinstance(line, dict) else []
+        places = receiver_places(line) if isinstance(line, dict) else []
+        for place in places:
+            if in_eval_window(place.epoch, state["windows"]):
+                place.origin = "eval"
+        return places
 
     if "agent_runs" in files:
         each(files["agent_runs"], run_log_line)
         offsets["agent_runs"] = files["agent_runs"]["end"]
-    if "receiver" in files:
+    windows_whole = True
+    if "windows" in files:  # before the receiver: a window and a delivery new in this poll
+        each(files["windows"], window_line)
+        offsets["windows"] = files["windows"]["end"]
+        windows_whole = files["windows"]["end"] >= files["windows"]["size"]
+    if "receiver" in files and windows_whole:  # else its lines wait, its offset unmoved, for the windows' rest
         each(files["receiver"], receiver_line)
         offsets["receiver"] = files["receiver"]["end"]
     if reply["openwebui"] is not None:
@@ -876,7 +910,7 @@ class Watcher:
             # canary only) would otherwise block the rebuilt instance's first delivered hit of that canary.
             seen |= {dedup_key(h, state["generation"]) for h in hits.read(after=state["generation_start"])
                      if isinstance(h.get("canary"), dict) and isinstance(h["canary"].get("token"), str)}
-        kinds = Counter(h["kind"] for h in existing if isinstance(h.get("kind"), str))
+        kinds = Counter(_count_keys(existing))
         status = {"state": status.get("state"), "since": status.get("since"), "last_poll": status.get("last_poll"),
                   "hits": dict(kinds), "note": status.get("note")}
         return _Watched(ws=ws, state=state, seen=seen, hits=hits, kinds=kinds, status=status, readers={},
@@ -985,14 +1019,14 @@ class Watcher:
                 logger.warning("%s: archived run not scanned (%s)", ws.id, type(e).__name__)
                 count = 0
             except OSError as e:  # writing its hits: not marked scanned, tried again (`seen` keeps what was written)
-                w.kinds.update(h["kind"] for h in w.hits.read(after=before) if isinstance(h.get("kind"), str))
+                w.kinds.update(_count_keys(w.hits.read(after=before)))
                 w.scan_retry, pending = now + BACKOFF, True
                 logger.warning("%s: archived run scan failed (%s), again in %d s", ws.id, type(e).__name__, BACKOFF)
                 continue
             except Exception as e:  # untrusted content: marked scanned all the same, never rescanned every tick
                 logger.warning("%s: archived run scan failed (%s)", ws.id, type(e).__name__)
                 count = w.hits.count - before
-            w.kinds.update(h["kind"] for h in w.hits.read(after=before) if isinstance(h.get("kind"), str))
+            w.kinds.update(_count_keys(w.hits.read(after=before)))
             w.state["archived"].append(entry.name)
             w.dirty = True
             if not past:
@@ -1040,8 +1074,8 @@ class Watcher:
             w.errors_seen = errors
 
 
-READER_SOURCES = ("sessions", "agent_runs", "receiver", "openwebui")  # the names `missing` and `errors` use
-READER_ERROR = re.compile(r"(?:agent_runs|receiver|openwebui|journal:" + SESSION_ID.pattern + r"): [A-Za-z]+")
+READER_SOURCES = ("sessions", "agent_runs", "receiver", "windows", "openwebui")  # the names `missing` and `errors` use
+READER_ERROR = re.compile(r"(?:agent_runs|receiver|windows|openwebui|journal:" + SESSION_ID.pattern + r"): [A-Za-z]+")
 
 
 def _shown_reply(reply: dict) -> tuple[list[str], list[str], list[str]]:
@@ -1077,7 +1111,7 @@ def once(output_dir: str, out: str, transport: Transport | None = None) -> int:
         print(f"canary_watch: {output_dir}: canary record is encrypted, not polled")
         return 1
     hits = HitsFile(out)
-    kinds = Counter(h["kind"] for h in hits.read() if isinstance(h.get("kind"), str))
+    kinds = Counter(_count_keys(hits.read()))
     seen = {dedup_key(h, ws.generation) for h in hits.read()
             if isinstance(h.get("canary"), dict) and isinstance(h["canary"].get("token"), str)}
     w = _Watched(ws=ws, state=_fresh_state(ws.generation), seen=seen, hits=hits, kinds=kinds, status={}, readers={})
@@ -1094,7 +1128,7 @@ def once(output_dir: str, out: str, transport: Transport | None = None) -> int:
     sources, missing, errors = _shown_reply(reply)
     print(f"canary_watch: sources {sources}, missing {missing}, errors {errors}")
     note = f" (dropped {dropped}, over the per-poll cap {over})" if dropped or over else ""
-    print(f"canary_watch: {added} new hits into {out}{note}; hits by kind: {dict(sorted(w.kinds.items()))}")
+    print(f"canary_watch: {added} new hits into {out}{note}; hits (chat by kind, evaluations as eval): {dict(sorted(w.kinds.items()))}")
     return 0
 
 

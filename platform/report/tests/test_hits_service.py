@@ -451,7 +451,7 @@ def test_new_line_reaches_stream_within_2s(service, streams):
     data = json.loads(event["data"])
     hit = HitsFile(str(hits_dir / f"{WID}.jsonl")).read()[0]
     assert data == {"id": 1, "kind": "touched", "loud": True, "type": hit["canary"]["type"],
-                    "frontend": "agui", "html": hits_view.hit_html(hit)}
+                    "frontend": "agui", "origin": "chat", "html": hits_view.hit_html(hit)}
 
 
 def test_events_resume_past_end(service, streams):
@@ -846,20 +846,55 @@ def test_workspace_rows_newest_first(tmp_path):
     assert rows[1]["status"] == "not watched yet"
 
 
+def test_workspace_rows_count_eval_apart(tmp_path):
+    """Decision 12: an evaluation's hits are counted in their own `eval` cell, never per kind or quiet."""
+    write_hits(tmp_path, WID, [_record(WID, _agui_hit()),
+                               _record(WID, _agui_hit()) | {"origin": "eval"},
+                               _record(WID, _agui_hit()) | {"origin": "eval", "kind": "seen"}])
+    row = hits_view.workspace_rows(str(tmp_path), {WID: None})[0]
+    assert row["touched"] == 1 and row["quiet"] == 0 and row["eval"] == 2
+    body = hits_view.admin_body([row], [], {})
+    assert '<td class="count" data-eval="1">2</td>' in body
+    assert "<th>eval</th>" in body
+
+
+def test_hit_event_carries_origin(service, streams):
+    base, hits_dir = service
+    s = streams(base, WID)
+    append(hits_dir, WID, _record(WID, _agui_hit()) | {"origin": "eval"})
+    data = json.loads(s.next(2.0)["data"])
+    assert data["origin"] == "eval" and data["loud"] is True
+    assert 'data-origin="eval"' in data["html"]
+
+
+def test_eval_hits_page_heading(service):
+    """Decision 12's acceptance: the hits page shows eval hits under their own heading, not in the
+    counts of chat hits."""
+    base, hits_dir = service
+    write_hits(hits_dir, WID, [_record(WID, _agui_hit()),
+                               _record(WID, _agui_hit()) | {"origin": "eval"}])
+    text = call(base, f"/reports/{WID}/hits", token="tok-anna")[2].decode()
+    assert '<span class="leaks">1 leak</span>' in text
+    assert "<summary>Evaluation hits (1)</summary>" in text
+    block = text[text.index('<details class="eval-hits">'):]
+    assert block.count('<details class="hit ') == 1 and 'data-origin="eval"' in block
+
+
 def test_filters_offer_present_values(service):
     base, hits_dir = service
     write_hits(hits_dir, WID, [_record(WID, _agui_hit()), _record(WID, _openwebui_hit())])
     text = call(base, "/reports/hits", token="tok-root")[2].decode()
     selects = dict(re.findall(r'<select [^>]*data-filter="(\w+)"[^>]*>(.*?)</select>', text, re.S))
-    assert set(selects) == {"kind", "type", "frontend", "workspace"}
+    assert set(selects) == {"kind", "type", "frontend", "workspace", "origin"}
     frontends = re.findall(r'<option value="([^"]*)"', selects["frontend"])
     assert frontends == ["", "agui", "openwebui"]
     assert re.findall(r'<option value="([^"]*)"', selects["workspace"]) == ["", WID]
     assert re.findall(r'<option value="([^"]*)"', selects["kind"]) == ["", "touched"]
     hit = HitsFile(str(hits_dir / f"{WID}.jsonl")).read()[0]
     wrapper = (f'data-kind="touched" data-type="{hit["canary"]["type"]}" data-frontend="agui" '
-               f'data-workspace="{WID}"')
+               f'data-workspace="{WID}" data-origin="chat"')
     assert wrapper in text
+    assert re.findall(r'<option value="([^"]*)"', selects["origin"]) == ["", "chat"]
 
 
 def test_admin_cap_500(service):
@@ -886,7 +921,8 @@ def test_admin_stream_ids(service, streams):
     data = json.loads(event["data"])
     hit = HitsFile(str(hits_dir / f"{OTHER}.jsonl")).read()[1]
     assert data == {"id": 2, "kind": "touched", "loud": True, "type": hit["canary"]["type"],
-                    "frontend": "openwebui", "html": hits_view.hit_html(hit), "workspace": OTHER}
+                    "frontend": "openwebui", "origin": "chat", "html": hits_view.hit_html(hit),
+                    "workspace": OTHER}
 
 
 def test_admin_stream_new_file(service, streams):

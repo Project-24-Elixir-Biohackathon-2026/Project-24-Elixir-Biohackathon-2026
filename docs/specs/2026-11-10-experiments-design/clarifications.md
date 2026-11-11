@@ -50,3 +50,13 @@ Numbered, append-only: why the design changed after approval.
    (the PR's final review). *Amends:* 04 (*Read-only*, rewritten), the README's decision 14 (named the wrong compose
    service: `promptfoo view` is `evals-promptfoo`, behind the `evals-view` proxy, not the other way round).
    *Status:* folded.
+4. **How an eval hit is told apart** (2026-11-11; PR #93, slice 5). The mark is `forwardedProps.spe_source:
+   "eval"`; the agent's run log writes `source: eval` or `source: chat` on every run; a hit's field is `origin`
+   (`eval` or `chat`, absent read as chat), since a hit's `source` already names where it was found (journal, run
+   log, receiver). The receiver now logs each request's time (`at`, epoch seconds): it had none, so a window could
+   not be matched. `spe-eval run` writes an opening window line (`end: null`) when it starts, as well as the closing
+   one, since a window written only at the end came after the hits a long run makes; a window never closed lasts
+   until the next run's start. An eval receiver hit is deduplicated apart from a chat one. *Reason:* each was what
+   the decision needed and the code lacked. *Cost if wrong:* a `spe-eval` killed outright leaves its window open
+   until the next run, so a participant's receiver hit in between counts as eval. *Amends:* 03 (*Canary hits*).
+   *Status:* folded.

@@ -63,7 +63,7 @@ import markdown
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from canary_hits import HitsFile  # noqa: E402
 from hits_view import (LOUD, UUID_RE, admin_body, empty_text, hit_html, newest_first,  # noqa: E402
-                       participant_body, read_all, read_status, scan_ids, status_line,
+                       origin as hit_origin, participant_body, read_all, read_status, scan_ids, status_line,
                        workspace_rows)
 
 PREFIX = "/reports"
@@ -756,7 +756,7 @@ class Handler(BaseHTTPRequestHandler):
         canary = hit.get("canary") if isinstance(hit.get("canary"), dict) else {}
         kind = hit.get("kind")
         data = {"id": n, "kind": kind, "loud": kind in LOUD, "type": canary.get("type"),
-                "frontend": hit.get("frontend"), "html": hit_html(hit)}
+                "frontend": hit.get("frontend"), "origin": hit_origin(hit), "html": hit_html(hit)}
         if workspace is None:
             return f"id: {n}\nevent: hit\ndata: {json.dumps(data)}\n\n"
         data["workspace"] = workspace

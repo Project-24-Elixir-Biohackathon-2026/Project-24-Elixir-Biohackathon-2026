@@ -307,6 +307,11 @@ def cmd_run(ns: argparse.Namespace) -> int:
         model_name = local_vars.get("spe_agent_model") or ""
         model = f"{model_provider}:{model_name}" if model_provider or model_name else "?"
         window_start = spe_eval.iso_now()
+        windows_path = spe_eval.spe_eval_home(home) / "windows.jsonl"
+        # The opening line, before any arm runs: a receiver hit during a long run is already in a window
+        # (end null: open) when the hit watcher reads it, and a run SIGKILLed past here still left one.
+        spe_eval.append_jsonl(windows_path, {"run": token, "experiment": experiment_name, "start": window_start,
+                                             "end": None})
         any_bad = False
         try:
             for plan in plans:
@@ -345,12 +350,11 @@ def cmd_run(ns: argparse.Namespace) -> int:
                     any_bad = True
         finally:
             # Even an exception escaping the loop above (not just its normal end or a SIGTERM
-            # break) still appends this run's window, so a receiver hit during it is still
-            # counted as an eval hit, not a chat one (task 5 review, Minor). A SIGKILL -- which
-            # no Python code, this finally included, ever runs for -- is the one case this cannot
-            # cover; nothing short of pre-recording the window before the run starts would.
+            # break) still appends this run's closing line, so its window gets its end (task 5
+            # review, Minor). A SIGKILL -- which no Python code, this finally included, ever runs
+            # for -- leaves only the opening line: the window stays open until the next run starts.
             window_end = spe_eval.iso_now()
-            spe_eval.append_jsonl(spe_eval.spe_eval_home(home) / "windows.jsonl",
+            spe_eval.append_jsonl(windows_path,
                                    {"run": token, "experiment": experiment_name, "start": window_start,
                                     "end": window_end})
         # Back to the build's own arm: instances/local.yml already holds it, so no -e override is

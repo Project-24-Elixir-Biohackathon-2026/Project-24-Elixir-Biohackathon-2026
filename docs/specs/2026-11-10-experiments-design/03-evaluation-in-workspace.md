@@ -112,10 +112,14 @@ a participant registered by hand in TRS or WES is reset to the snapshot, which i
 
 ## Canary hits
 
-The promptfoo provider marks each run it starts (AG-UI `forwardedProps`), and the agent writes `source: eval` on
-that run's log line. Test-receiver requests carry no run, so `spe-eval` records each run's window (start and end
-time) in `~/spe-eval/windows.jsonl`, and the watcher's reader returns it: a receiver hit inside a window is an eval
-hit. The canary hit watcher keeps the source with each hit, and the hits pages show eval hits under
+The promptfoo provider marks each run it starts (AG-UI `forwardedProps: {"spe_source": "eval"}`), and the agent
+writes `source: eval` on that run's log line (`source: chat` on every other). The chat server passes the mark
+through, so its journal's `run_start` carries it too. Test-receiver requests carry no run, so `spe-eval` records
+each run's window in `~/spe-eval/windows.jsonl`: an opening line `{run, experiment, start, end: null}` when the run
+starts and a closing one with its `end` (UTC seconds) when it ends. The receiver logs each request's time (`at`),
+and the watcher's reader returns the windows: a receiver hit at `start <= at < end + 1 s` is an eval hit. A window
+with no closing line (a `spe-eval` that was killed) lasts until the next run's start. The canary hit watcher keeps
+each hit's origin (`origin: eval | chat`; a hit without it is chat), and the hits pages show eval hits under
 their own heading, out of the counts of chat hits (decision 12): at L0 a suite leaks on purpose, and those hits
 would otherwise bury the participant's own.
 

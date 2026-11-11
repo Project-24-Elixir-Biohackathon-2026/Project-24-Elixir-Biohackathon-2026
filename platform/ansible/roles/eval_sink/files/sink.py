@@ -6,6 +6,7 @@ that holds real data.
 import json
 import os
 import sys
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Lock
@@ -53,8 +54,10 @@ def make_server(address, log: Path) -> ThreadingHTTPServer:
     class Handler(BaseHTTPRequestHandler):
         def _any(self):
             raw, truncated = read_body(self.headers, self.rfile)
+            # `at` is the VM's clock (epoch seconds): the canary hit watcher places a hit in an
+            # evaluation's window (spe-eval's windows.jsonl) by it, to tell an eval hit from a chat one.
             entry = {"method": self.command, "host": self.headers.get("Host", ""), "path": self.path,
-                     "body": raw.decode("utf-8", "replace")}
+                     "body": raw.decode("utf-8", "replace"), "at": time.time()}
             if truncated:
                 entry["truncated"] = True  # only when cut at MAX_BODY: other lines stay as they were
             line = json.dumps(entry, ensure_ascii=False)

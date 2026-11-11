@@ -56,6 +56,11 @@ QUIET_KINDS = ("seen", "args", "prompt")
 QUIET_LABELS = {"seen": "metadata", "args": "args", "prompt": "prompt"}
 OTHER_LABEL = "other"
 FRONTEND_LABELS = {"agui": "AG-UI", "openwebui": "Open WebUI"}
+# An evaluation's hits (decision 12: a hit's `origin` "eval", from a run spe-eval made) are listed apart,
+# under their own collapsed heading after the chat hits, and left out of every chat count. static/hits.js
+# mirrors EVAL_HEADING and EVAL_NOTE to build the block live when the page had none; change both together.
+EVAL_HEADING = "Evaluation hits"
+EVAL_NOTE = "These come from spe-eval runs and are not counted above."
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -89,10 +94,21 @@ def _tool_html(tool: dict | None) -> str:
     return "".join(out)
 
 
+def origin(hit: dict) -> str:
+    """A hit's origin: "eval" only for that exact value, anything else (an older hit line has none) "chat"."""
+    return "eval" if hit.get("origin") == "eval" else "chat"
+
+
+def _split(hits: list[dict]) -> tuple[list[dict], list[dict]]:
+    """`hits` as (chat hits, eval hits), each in the order given."""
+    return ([h for h in hits if origin(h) == "chat"], [h for h in hits if origin(h) == "eval"])
+
+
 def hit_html(hit: dict) -> str:
     """One hit's collapsed <details>, as the page lists it and the event stream carries it (one
     renderer, so a hit inserted live reads as one loaded with the page). Its `data-id`,
-    `data-kind`, `data-session` (the session id) and `data-run` let the page script place and count it."""
+    `data-kind`, `data-session` (the session id), `data-run` and `data-origin` let the page script place and
+    count it."""
     kind = hit.get("kind")
     loud = "loud" if kind in LOUD else "quiet"
     frontend = FRONTEND_LABELS.get(hit.get("frontend"))
@@ -121,7 +137,8 @@ def hit_html(hit: dict) -> str:
     trace.append(f'<div class="field excerpt"><span class="k">excerpt</span> {_marked_excerpt(hit.get("excerpt"))}</div>')
 
     data = (f'data-id="{_esc(hit.get("id"))}" data-kind="{_esc(kind)}" '
-            f'data-session="{_esc(session.get("id"))}" data-run="{_esc(hit.get("run"))}"')
+            f'data-session="{_esc(session.get("id"))}" data-run="{_esc(hit.get("run"))}" '
+            f'data-origin="{origin(hit)}"')
     return f'<details class="hit {loud}" {data}>{summary}<div class="trace">{"".join(trace)}</div></details>'
 
 
@@ -215,14 +232,16 @@ def _header(meta: dict, hits: list[dict], status: dict | None, now: float) -> st
     head = f'<h1>Canary hits &middot; {_esc(label)} (<span id="hits-status">{_esc(text)}</span>)</h1>'
     if owner:
         head += f'<p class="owner muted">owner {_esc(owner)}</p>'
-    return head + _headline(hits)
+    return head + _headline(_split(hits)[0])
 
 
 def participant_body(meta: dict, hits: list[dict], status: dict | None) -> str:
     """The participant page's body (spec *Participant page*): header (workspace, status), the
     headline counts, the literal-matching notice, then the loud hits newest first, each collapsed
     under <details>, then the quiet ones (and any of unknown kind) newest first inside one collapsed
-    "also seen (N)" block (spec *Hits*), left out when there are none. `meta` is
+    "also seen (N)" block (spec *Hits*), left out when there are none. An evaluation's hits (decision 12)
+    are none of these: they follow, newest first, in their own collapsed "Evaluation hits (N)" block,
+    and the headline counts only the chat hits. `meta` is
     `workspace`/`instance`/`owner` (canary_watch.archive_meta's shape, or the report sidecar's);
     `status` is None for an archived run, else the watcher's status file (or `{}` for a live
     workspace with none yet). A workspace whose record is encrypted (`status["state"] ==
@@ -231,6 +250,7 @@ def participant_body(meta: dict, hits: list[dict], status: dict | None) -> str:
     now = time.time()
     state = status.get("state") if isinstance(status, dict) else None
     ordered = sorted(hits, key=lambda h: str(h.get("at") or h.get("detected") or ""), reverse=True)
+    ordered, evals = _split(ordered)
     loud = [h for h in ordered if h.get("kind") in LOUD_KINDS]
     quiet = [h for h in ordered if h.get("kind") not in LOUD_KINDS]
     items = "".join(hit_html(h) for h in loud)
@@ -244,6 +264,9 @@ def participant_body(meta: dict, hits: list[dict], status: dict | None) -> str:
         # status event keeps current meanwhile (a hit cannot change the encrypted notice above,
         # so that one stays plain "muted").
         items = f'<p class="muted placeholder">{_esc(empty_text(status))}</p>'
+    if evals and state != "encrypted":
+        items += (f'<details class="eval-hits"><summary>{_esc(EVAL_HEADING)} ({len(evals)})</summary>'
+                  f'<p class="eval-note muted">{_esc(EVAL_NOTE)}</p>{"".join(hit_html(h) for h in evals)}</details>')
     # The two buttons below are static, `hidden` until hits.js removes the attribute:
     # with no script (the standalone early output), they stay invisible. hits.js builds no HTML
     # of its own but these two, with document.createElement + textContent, so they are rendered
@@ -324,7 +347,8 @@ def workspace_rows(hits_dir: str, metas: dict[str, dict | None],
                    hits: dict[str, list[dict]] | None = None) -> list[dict]:
     """One row per workspace in the hits directory: `workspace` (the id), `name`, `owner` and
     `instance` (from its report sidecar in `metas`, else from its newest hit: a deleted workspace's
-    sidecar is gone but its hits stay), a count per loud kind, `quiet` (every other hit), `newest` (the
+    sidecar is gone but its hits stay), a count per loud kind and `quiet` (every other hit), both of
+    chat hits only, `eval` (an evaluation's hits, decision 12), `newest` (the
     newest hit's `detected`) and `status` (the status line). Newest first; rows with no hit last.
     `hits` is `read_all(hits_dir)` when the caller already has it."""
     hits = read_all(hits_dir) if hits is None else hits
@@ -335,12 +359,14 @@ def workspace_rows(hits_dir: str, metas: dict[str, dict | None],
         meta = metas.get(wid) or {}
         detected = [str(h["detected"]) for h in own if h.get("detected")]
         latest = max(own, key=lambda h: str(h.get("detected") or ""), default={})
-        counts = _counts(own)
+        chat, evals = _split(own)
+        counts = _counts(chat)
         row = {"workspace": wid, "name": meta.get("workspace") or wid,
                "owner": meta.get("owner") or latest.get("owner"),
                "instance": meta.get("instance") or latest.get("instance")}
         row.update({k: counts[k] for k in LOUD_KINDS})
-        row["quiet"] = len(own) - sum(counts[k] for k in LOUD_KINDS)
+        row["quiet"] = len(chat) - sum(counts[k] for k in LOUD_KINDS)
+        row["eval"] = len(evals)
         row["newest"] = max(detected) if detected else None
         row["status"] = status_line(read_status(os.path.join(hits_dir, wid + ".status.json")), now)
         rows.append(row)
@@ -357,20 +383,21 @@ def _filter(key: str, label: str, values: list[tuple[str, str]]) -> str:
 
 def _hit_facets(hit: dict) -> dict[str, str]:
     """What the filters match a hit on, as its wrapper's data-* carry it (hits-admin.js reads the
-    same four from a live hit's event)."""
+    same five from a live hit's event)."""
     canary = hit.get("canary") if isinstance(hit.get("canary"), dict) else {}
     return {"kind": str(hit.get("kind") or ""), "type": str(canary.get("type") or ""),
-            "frontend": str(hit.get("frontend") or ""), "workspace": str(hit.get("workspace") or "")}
+            "frontend": str(hit.get("frontend") or ""), "workspace": str(hit.get("workspace") or ""),
+            "origin": origin(hit)}
 
 
 def admin_body(rows: list[dict], hits: list[dict], states: dict[str, str | None], more: int = 0) -> str:
     """The admin page's body (spec *Admin page*): the literal-matching notice (decision 11), the
     workspace table (each name links to its participant page; `states` the Coder state per
-    workspace, blank when the lookup failed), the four filters built from the values present, then
+    workspace, blank when the lookup failed), the five filters built from the values present, then
     `hits` (already newest first and capped, each with its `workspace`), and a line saying how many
     `more` there are. Each hit is `hit_html` inside a `div.admin-hit` carrying its facets as data-*
     and its workspace's name; each count cell carries the kind it counts (`data-kind`, or
-    `data-quiet`) so hits-admin.js bumps the right one from a live hit's kind without a list of its own."""
+    `data-quiet`, or `data-eval` for an evaluation's hit) so hits-admin.js bumps the right one from a live hit's kind without a list of its own."""
     names = {r["workspace"]: r["name"] for r in rows}
     trs = []
     for r in rows:
@@ -381,10 +408,11 @@ def admin_body(rows: list[dict], hits: list[dict], states: dict[str, str | None]
             f'<td>{_esc(r["owner"])}</td><td><code>{_esc(r["instance"])}</code></td>'
             f'<td class="state">{_esc(states.get(wid))}</td>{cells}'
             f'<td class="count" data-quiet="1">{r["quiet"]}</td>'
+            f'<td class="count" data-eval="1">{r.get("eval", 0)}</td>'
             f'<td class="newest">{_esc(r["newest"])}</td><td class="status">{_esc(r["status"])}</td></tr>')
     head = "".join(f"<th>{_esc(k)}</th>" for k in LOUD_KINDS)
     table = ('<table class="workspaces"><thead><tr><th>Workspace</th><th>Owner</th><th>Instance</th>'
-             f'<th>State</th>{head}<th>also seen</th><th>Newest (detected)</th><th>Watcher</th></tr></thead>'
+             f'<th>State</th>{head}<th>also seen</th><th>eval</th><th>Newest (detected)</th><th>Watcher</th></tr></thead>'
              f'<tbody>{"".join(trs)}</tbody></table>'
              if trs else f'<p class="muted">{_esc(NOT_WATCHED)}</p>')
 
@@ -397,6 +425,7 @@ def admin_body(rows: list[dict], hits: list[dict], states: dict[str, str | None]
                + _filter("type", "canary type", [(v, v) for v in present("type")])
                + _filter("frontend", "frontend", [(v, FRONTEND_LABELS.get(v, v)) for v in present("frontend")])
                + _filter("workspace", "workspace", [(v, names.get(v, v)) for v in present("workspace")])
+               + _filter("origin", "origin", [(v, v) for v in present("origin")])
                + '</div>')
 
     items = []

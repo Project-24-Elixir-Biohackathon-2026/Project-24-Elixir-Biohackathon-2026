@@ -172,8 +172,9 @@ spe_eval_uv_version: "0.5.11"
 
 # --- test receiver (spec part 04, *The test receiver*; on in every instances/L<n>.example.yml) --
 # An evaluation fixture standing for a host outside the SPE (role eval_sink): logs every
-# request to /var/lib/spe-eval-sink/requests.jsonl; the sandbox resolves spe_eval_sink_host
-# to the VM. Never on in a deployment that holds real data.
+# request to /var/lib/spe-eval-sink/requests.jsonl (one JSON line each, with its time `at`,
+# the VM's epoch seconds); the sandbox resolves spe_eval_sink_host to the VM. Never on in a
+# deployment that holds real data.
 spe_eval_sink: false
 spe_eval_sink_port: 8099
 spe_eval_sink_host: backup.spe-eval.test

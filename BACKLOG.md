@@ -66,7 +66,6 @@ start reads this section; keep it short.
   surface's `check_fixtures` result and an empty fixture list in the `repo` role — from slice 1's final review
   (#85, rulings 3 and 4); waits for slice 6 (`check_experiment.py`).
 - Experiments: a controls-suite probe for every participant mitigation (`probes` is optional; the gate notes an undeclared closed probe) — from the experiments spec (#84, *out-of-scope*); waits until experiments show the need.
-- Experiments: a `spe-eval run` SIGKILLed mid-arm (systemd's stop timeout, the OOM killer) appends no `windows.jsonl` line for that arm, so an eval hit in its window is not attributed to the run; `cmd_run` covers exceptions and SIGTERM in a `finally`. Fix: write the window's start line when the arm starts and close it after, or let the reader treat an open window as ending at the next run's start — from slice 3's re-review (PR #88); take up in slice 6, which reads the windows.
 - Experiments: `archive.yml` saving the participant's clone work on stop (decision 21: a `git bundle` of every
   commit not on a remote branch, plus a diff of what is not committed, as `work/` in the run directory, so a
   mitigation written but not pushed before the VM is destroyed still survives) — from the experiments spec

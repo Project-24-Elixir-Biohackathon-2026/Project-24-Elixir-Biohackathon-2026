@@ -64,8 +64,8 @@ def make_fake_instance(tmp_path: Path, encrypted: bool = False
                        ) -> tuple["canary_watch.LocalTransport", Path, Path, Path]:
     """A fake instance named `fixture` (workspace WORKSPACE, owner alice): its output directory
     (fixtures' hosts.yml and canaries.json, or only canaries.json.age), its report sidecar, and its
-    four sources under tmp_path/instance, none written yet. The transport's `paths` name them:
-    `sessions` (a journal per session, SESSION's among them), `agent_runs`, `receiver`, `webui_db`.
+    five sources under tmp_path/instance, none written yet. The transport's `paths` name them:
+    `sessions` (a journal per session, SESSION's among them), `agent_runs`, `receiver`, `windows`, `webui_db`.
     Returns (transport, output_root, reports_dir, runs_dir)."""
     reports, output_root, runs = layout(tmp_path)
     out = output_root / "fixture"
@@ -79,7 +79,8 @@ def make_fake_instance(tmp_path: Path, encrypted: bool = False
     instance = tmp_path / "instance"
     (instance / "sessions").mkdir(parents=True)
     paths = {"sessions": str(instance / "sessions"), "agent_runs": str(instance / "runs.jsonl"),
-             "receiver": str(instance / "requests.jsonl"), "webui_db": str(instance / "webui.db")}
+             "receiver": str(instance / "requests.jsonl"), "windows": str(instance / "windows.jsonl"),
+             "webui_db": str(instance / "webui.db")}
     return canary_watch.LocalTransport(paths), output_root, reports, runs
 
 

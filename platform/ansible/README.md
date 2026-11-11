@@ -189,7 +189,8 @@ from `spe_stack_dir/eval-sink/`; switched off, it takes down a receiver an earli
 | `spe_eval_sink_image` | `python:3.12-alpine` | its image; it runs `roles/eval_sink/files/sink.py`, standard library only |
 | `spe_compose_overlays` | derived | the overlays `platform/instance/compose.<name>.yml` the switches add to `spe-frontend` (`eval-sink` for `spe_eval_sink`, `egress` for `spe_harden_egress`); empty by default, so the `.env` is today's |
 
-Every request is one JSON line `{method, host, path, body}` (`body` as UTF-8 text, a chunked one decoded, at
+Every request is one JSON line `{method, host, path, body, at}` (`at` the VM's epoch seconds when it arrived, which
+the canary hit watcher matches against `spe-eval`'s windows; `body` as UTF-8 text, a chunked one decoded, at
 most 1 MiB; a body cut there adds `"truncated": true`, and a missing or invalid length logs it empty) in
 `/var/lib/spe-eval-sink/requests.jsonl`, which exists, empty, as soon as the receiver runs. The log lies outside
 the instance's paths: it persists across rebuilds and a destroy (the evaluation reads it by length), and only a

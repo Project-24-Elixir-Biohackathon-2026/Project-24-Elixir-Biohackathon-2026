@@ -59,7 +59,7 @@ def test_archive_one_hit_per_canary_and_place(tmp_path):
         assert {k: h[k] for k in META} == META
         assert h["detected"].endswith("Z")
         assert set(h) == {"id", "detected", "at", "workspace", "instance", "owner", "frontend", "source", "session",
-                          "run", "prompt", "kind", "place", "tool", "canary", "excerpt"}
+                          "run", "prompt", "kind", "place", "tool", "canary", "excerpt", "origin"}
 
 
 def test_archive_reads_openwebui_export(tmp_path):
@@ -425,6 +425,7 @@ class Fake:
         self.journal = Path(self.paths["sessions"]) / f"{SESSION}.jsonl"
         self.agent_runs = Path(self.paths["agent_runs"])
         self.receiver = Path(self.paths["receiver"])
+        self.windows = Path(self.paths["windows"])
         self.db = Path(self.paths["webui_db"])
         self.hits_dir = tmp_path / "hits"
         self.transport = Counting(local)
@@ -952,7 +953,7 @@ def test_once_polls_and_appends_without_touching_the_hits_root(tmp_path, capsys)
     for token in TOKENS:
         assert token not in captured.out and token not in captured.err
     assert "sources" in captured.out and "missing" in captured.out and "errors" in captured.out
-    assert "hits by kind" in captured.out
+    assert "hits (chat by kind, evaluations as eval)" in captured.out
 
 
 def test_once_is_idempotent_on_rerun(tmp_path):
@@ -1014,24 +1015,6 @@ def test_once_cli_needs_output_dir_and_out(tmp_path):
         canary_watch.main(["--once", "--output-dir", str(tmp_path)])
     with pytest.raises(SystemExit):
         canary_watch.main(["--once", "--archive", str(tmp_path), "--out", str(tmp_path / "h.jsonl")])
-
-
-def test_nothing_on_the_instance_changes():
-    """decision 1: no file under platform/instance/ or platform/ansible/roles/ is touched by this
-    branch. Skipped outside a git checkout, or when origin/main is not available (as CI and a
-    fresh upstream clone may lack it)."""
-    repo = Path(__file__).resolve().parents[3]
-    if not (repo / ".git").exists():
-        pytest.skip("not a git checkout")
-    check = subprocess.run(["git", "rev-parse", "--verify", "origin/main"], cwd=repo,
-                           capture_output=True, text=True)
-    if check.returncode != 0:
-        pytest.skip("origin/main is not available")
-    diff = subprocess.run(["git", "diff", "--name-only", "origin/main...HEAD"], cwd=repo,
-                          capture_output=True, text=True, check=True)
-    changed = [line for line in diff.stdout.splitlines() if line]
-    touched = [line for line in changed if line.startswith(("platform/instance/", "platform/ansible/roles/"))]
-    assert touched == []
 
 
 # --- write failures, a stop missed across a rebuild, a rebuild between
@@ -1157,3 +1140,207 @@ def test_archive_without_index_md_scanned_after_a_while(tmp_path):
     assert status["state"] == "stopped" and status["note"] == "archive incomplete"
     fake.watcher().tick(mtime + canary_watch.ARCHIVE_WAIT + 5)
     assert fake.status()["note"] == "archive incomplete" and len(fake.hits()) == len(R1_KEYS)
+
+
+# --- origin: an evaluation's hits apart from the chat's (decision 12) ---
+
+from datetime import datetime, timezone  # noqa: E402
+
+REQUEST = json.loads((FIXTURES / "requests.jsonl").read_text())
+
+
+def _epoch(text: str) -> float:
+    return datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
+
+
+def _window(run: str, start: str, end: str | None) -> dict:
+    return {"run": run, "experiment": "exp", "start": start, "end": end}
+
+
+def _append(path: Path, records: list[dict]) -> None:
+    with open(path, "a") as f:
+        f.writelines(_ndjson(records))
+
+
+def _delivered(fake: "Fake") -> list[tuple]:
+    return [(h["at"], h["origin"]) for h in fake.hits() if h["source"] == "receiver"]
+
+
+def test_receiver_hit_inside_a_window_is_eval(tmp_path):
+    fake = Fake(tmp_path)
+    watcher = fake.watcher()
+    _append(fake.windows, [_window("t1", "2026-11-11T10:00:00Z", "2026-11-11T10:05:00Z")])
+    watcher.tick(1000.0)
+    _append(fake.receiver, [REQUEST | {"at": _epoch("2026-11-11T10:05:00Z") + 0.5}])
+    watcher.tick(1003.0)
+    assert _delivered(fake) == [("2026-11-11T10:05:00Z", "eval")]
+    # The chat's own delivery of the same canary, later, outside every window, is a hit of its own.
+    _append(fake.receiver, [REQUEST | {"at": _epoch("2026-11-11T10:05:01Z")}])
+    watcher.tick(1006.0)
+    assert _delivered(fake) == [("2026-11-11T10:05:00Z", "eval"), ("2026-11-11T10:05:01Z", "chat")]
+    assert fake.state()["offsets"]["windows"] == fake.windows.stat().st_size
+
+
+def test_receiver_hit_outside_or_without_time_is_chat(tmp_path):
+    fake = Fake(tmp_path)
+    _append(fake.windows, [_window("t1", "2026-11-11T10:00:00Z", None)])  # open-ended
+    _append(fake.receiver, [REQUEST | {"at": _epoch("2026-11-11T09:59:59Z")}])
+    fake.watcher().tick(1000.0)
+    assert _delivered(fake) == [("2026-11-11T09:59:59Z", "chat")]
+    (tmp_path / "b").mkdir()
+    fake2 = Fake(tmp_path / "b")
+    _append(fake2.windows, [_window("t1", "2026-11-11T10:00:00Z", None)])
+    _append(fake2.receiver, [REQUEST])  # no time: never eval
+    fake2.watcher().tick(1000.0)
+    assert [o for _, o in _delivered(fake2)] == ["chat"]
+
+
+def test_window_and_hit_in_the_same_poll(tmp_path):
+    """An open window (spe-eval's opening line) and a delivery during it, both new in one poll: eval."""
+    fake = Fake(tmp_path)
+    _append(fake.receiver, [REQUEST | {"at": _epoch("2026-11-11T10:02:00Z")}])
+    _append(fake.windows, [_window("t1", "2026-11-11T10:00:00Z", None)])
+    fake.watcher().tick(1000.0)
+    assert _delivered(fake) == [("2026-11-11T10:02:00Z", "eval")]
+
+
+def test_windows_kept_over_a_restart_and_malformed_lines_dropped(tmp_path):
+    fake = Fake(tmp_path)
+    fake.windows.write_text("not json\n" + "".join(_ndjson([
+        {"run": 5, "start": "2026-11-11T10:00:00Z", "end": None},
+        _window("t1", "2026-11-11T10:00:00Z", None),
+        _window("t1", "2026-11-11T10:00:00Z", "2026-11-11T10:05:00Z"),
+        _window("t2", "2026-11-11T11:00:00Z", None),
+    ])))
+    fake.watcher().tick(1000.0)
+    assert fake.status()["state"] == "running"
+    assert fake.state()["windows"] == {"t1": {"start": "2026-11-11T10:00:00Z", "end": "2026-11-11T10:05:00Z"},
+                                       "t2": {"start": "2026-11-11T11:00:00Z", "end": None}}
+    restarted = fake.watcher()
+    _append(fake.receiver, [REQUEST | {"at": _epoch("2026-11-11T10:01:00Z")}])
+    restarted.tick(1003.0)
+    assert fake.transport.calls[-1]["windows"] == fake.windows.stat().st_size  # not read again
+    assert _delivered(fake) == [("2026-11-11T10:01:00Z", "eval")]
+
+
+def test_windows_bounded_in_state(tmp_path, monkeypatch):
+    monkeypatch.setattr(canary_hits, "WINDOWS_MAX", 3)
+    fake = Fake(tmp_path)
+    _append(fake.windows, [_window(f"t{n}", f"2026-11-11T1{n}:00:00Z", "2026-11-11T19:00:00Z") for n in range(5)])
+    fake.watcher().tick(1000.0)
+    assert list(fake.state()["windows"]) == ["t2", "t3", "t4"]
+
+
+def test_old_state_file_loads(tmp_path):
+    fake = Fake(tmp_path)
+    fake.watcher().tick(1000.0)
+    state = fake.state()
+    del state["windows"]
+    del state["offsets"]["windows"]
+    (fake.hits_dir / f"{WORKSPACE}.state.json").write_text(json.dumps(state))
+    _append(fake.windows, [_window("t1", "2026-11-11T10:00:00Z", None)])
+    _append(fake.receiver, [REQUEST | {"at": _epoch("2026-11-11T10:01:00Z")}])
+    fake.watcher().tick(1003.0)
+    assert fake.transport.calls[-1]["windows"] == 0
+    assert _delivered(fake) == [("2026-11-11T10:01:00Z", "eval")]
+    assert set(fake.state()["windows"]) == {"t1"}
+    loaded, _ = canary_watch._load_state(state | {"windows": {"t1": {"start": "bad", "end": None},
+                                                               "t2": {"start": "2026-11-11T10:00:00Z", "end": None},
+                                                               "t3": "x", "t4": {"start": "2026-11-11T10:00:00Z"}}})
+    assert loaded["windows"] == {"t2": {"start": "2026-11-11T10:00:00Z", "end": None}}
+    assert canary_watch._load_state(state | {"windows": []})[0]["windows"] == {}
+
+
+def test_eval_runs_from_journal_and_run_log(tmp_path):
+    fake = Fake(tmp_path)
+    lines = [json.loads(line) for line in JOURNAL_LINES]
+    for line in lines:
+        if line.get("type") == "run_start":
+            line["request"]["forwardedProps"] = {"spe_source": "eval"}
+    fake.write_journal(_ndjson(lines))
+    _append(fake.agent_runs, [{"run_id": "r9", "thread_id": "t9", "answer": "FCANARY-TEST01", "source": "eval"},
+                              {"run_id": "r8", "thread_id": "t9", "answer": "FCANARY-TEST01", "source": "chat"}])
+    fake.watcher().tick(1000.0)
+    hits = fake.hits()
+    assert _keys(hits) == R1_KEYS and {h["origin"] for h in hits if h["run"] == "r1"} == {"eval"}
+    assert [(h["run"], h["origin"]) for h in hits if h["source"] == "agent-runs"] == [("r9", "eval"), ("r8", "chat")]
+
+
+def test_archive_scan_origin(tmp_path):
+    run = tmp_path / "run"
+    shutil.copytree(RUN, run)
+    journals = run / "agui" / "agui-journals"
+    for journal in journals.glob("*.jsonl"):
+        lines = [json.loads(line) for line in journal.read_text().splitlines() if line.strip()]
+        for line in lines:
+            if line.get("type") == "run_start":
+                line.setdefault("request", {})["forwardedProps"] = {"spe_source": "eval"}
+        journal.write_text("".join(_ndjson(lines)))
+    with open(run / "agui" / "agent-runs.jsonl", "a") as f:
+        f.write(json.dumps({"run_id": "e7", "thread_id": "t7", "answer": "FCANARY-TEST01", "source": "eval"}) + "\n")
+    hits, count = scan(tmp_path, run=run)
+    found = hits.read()
+    assert count and {h["origin"] for h in found if h["source"] == "agui-journal"} == {"eval"}
+    assert [h["origin"] for h in found if h["run"] == "e7"] == ["eval"]
+    assert {h["origin"] for h in found if h["source"] == "archive"} == {"chat"}
+    (tmp_path / "plain").mkdir()
+    base, _ = scan(tmp_path / "plain")
+    assert {h["origin"] for h in base.read()} == {"chat"}
+
+
+def test_windows_in_offsets_reply_and_names():
+    assert canary_watch.check_offsets({"windows": 5}) == {"windows": 5}
+    with pytest.raises(canary_watch.OffsetsError):
+        canary_watch.check_offsets({"windows": -1})
+    canary_watch.check_reply(_reply({"windows": _file(["{}"])}))
+    assert "windows" in canary_watch.READER_SOURCES
+    assert canary_watch.READER_ERROR.fullmatch("windows: PermissionError")
+
+
+def test_window_closed_after_a_big_journal_keeps_a_later_hit_chat(tmp_path):
+    """A journal past the reader's shared budget, a window opened and closed, then the chat's own delivery:
+    the window is read whole (before the journal), so the delivery is chat, not eval for good."""
+    fake = Fake(tmp_path)
+    fake.write_journal([json.dumps({"pad": "y" * 1000}) + "\n"] * 1200)  # ~ 1.2 MiB
+    # Earlier runs' windows between t1's opening and closing lines: past the 64 KiB the reader reads on
+    # to a first line, so a starved windows read would stop before t1's close.
+    earlier = [_window(f"e{n}", "2026-11-10T10:00:00Z", "2026-11-10T10:01:00Z") | {"experiment": "x" * 200}
+               for n in range(400)]
+    _append(fake.windows, [_window("t1", "2026-11-11T10:00:00Z", None), *earlier,
+                           _window("t1", "2026-11-11T10:00:00Z", "2026-11-11T10:05:00Z")])
+    _append(fake.receiver, [REQUEST | {"at": _epoch("2026-11-11T10:06:00Z")}])
+    fake.watcher().tick(1000.0)
+    assert _delivered(fake) == [("2026-11-11T10:06:00Z", "chat")]
+
+
+def test_receiver_waits_while_windows_are_not_read_to_their_end(tmp_path):
+    """Windows not read to their end (`end < size`): the receiver's lines wait for the next poll, its offset
+    unmoved, rather than be judged against windows half read."""
+    fake = Fake(tmp_path)
+    opened = json.dumps(_window("t1", "2026-11-11T10:00:00Z", None))
+    _append(fake.windows, [_window("t1", "2026-11-11T10:00:00Z", None),
+                           _window("t1", "2026-11-11T10:00:00Z", "2026-11-11T10:05:00Z")])
+    _append(fake.receiver, [REQUEST | {"at": _epoch("2026-11-11T10:06:00Z")}])
+    windows = _file([opened]) | {"size": fake.windows.stat().st_size}
+    receiver = _file([json.dumps(REQUEST | {"at": _epoch("2026-11-11T10:06:00Z")})])
+    transport = Counting(fake.transport.inner, replies=[_reply({"windows": windows, "receiver": receiver})])
+    watcher = fake.watcher(transport)
+    watcher.tick(1000.0)
+    assert _delivered(fake) == []
+    assert fake.state()["offsets"]["receiver"] == 0 and fake.state()["offsets"]["windows"] == windows["end"]
+    watcher.tick(1003.0)  # the rest of the windows, then the receiver against them
+    assert transport.calls[-1]["receiver"] == 0
+    assert _delivered(fake) == [("2026-11-11T10:06:00Z", "chat")]
+
+
+def test_status_counts_chat_hits_per_kind_and_eval_apart(tmp_path):
+    fake = Fake(tmp_path)
+    _append(fake.windows, [_window("t1", "2026-11-11T10:00:00Z", "2026-11-11T10:05:00Z")])
+    _append(fake.receiver, [REQUEST | {"at": _epoch("2026-11-11T10:01:00Z")},
+                            REQUEST | {"at": _epoch("2026-11-11T10:06:00Z")}])
+    watcher = fake.watcher()
+    watcher.tick(1000.0)
+    assert fake.status()["hits"] == {"delivered": 1, "eval": 1}
+    (fake.hits_dir / f"{WORKSPACE}.status.json").unlink()
+    fake.watcher().tick(1003.0)  # a restart rebuilds the counts from the hits file
+    assert fake.status()["hits"] == {"delivered": 1, "eval": 1}

@@ -5,6 +5,7 @@ import os
 import socket
 import subprocess
 import threading
+import time
 import urllib.request
 from pathlib import Path
 
@@ -29,10 +30,18 @@ def test_the_log_exists_empty_once_the_receiver_starts(tmp_path):
         server.server_close()
 
 
+def without_at(lines):
+    """The lines without their `at` (each must have one, a float: the VM's clock when it was logged)."""
+    for line in lines:
+        assert isinstance(line.pop("at"), float)
+    return lines
+
+
 def test_a_request_is_logged_as_one_json_line(tmp_path):
     log = tmp_path / "requests.jsonl"
     server = sink.make_server(("127.0.0.1", 0), log)
     threading.Thread(target=server.serve_forever, daemon=True).start()
+    before = time.time()
     try:
         url = f"http://127.0.0.1:{server.server_port}/upload?x=1"
         req = urllib.request.Request(url, data="summary é".encode(), method="POST")
@@ -40,7 +49,12 @@ def test_a_request_is_logged_as_one_json_line(tmp_path):
         urllib.request.urlopen(f"http://127.0.0.1:{server.server_port}/", timeout=5)
     finally:
         server.shutdown()
+    after = time.time()
     lines = [json.loads(line) for line in log.read_text().splitlines()]
+    # `at` (epoch seconds) places a hit in an evaluation's window (canary hits: eval or chat).
+    assert all(before <= line["at"] <= after for line in lines)
+    assert lines[0]["at"] <= lines[1]["at"]
+    lines = without_at(lines)
     assert lines[0] == {"method": "POST", "host": f"127.0.0.1:{server.server_port}", "path": "/upload?x=1",
                         "body": "summary é"}
     assert lines[1]["method"] == "GET" and lines[1]["body"] == ""
@@ -58,7 +72,7 @@ def raw_requests(tmp_path, *payloads):
                 assert s.recv(1024).startswith(b"HTTP/1.0 200")
     finally:
         server.shutdown()
-    return [json.loads(line) for line in log.read_text().splitlines()]
+    return without_at([json.loads(line) for line in log.read_text().splitlines()])
 
 
 def test_a_chunked_body_is_decoded(tmp_path):

@@ -23,6 +23,10 @@
   // together.
   var QUIET_LABELS = { seen: "metadata", args: "args", prompt: "prompt" };
   var QUIET_LABEL_ORDER = ["metadata", "args", "prompt", "other"];
+  // An evaluation's hits (decision 12): hits_view.EVAL_HEADING and EVAL_NOTE, mirrored to build the
+  // block live when the page had none (hits_view.py carries the matching comment).
+  var EVAL_HEADING = "Evaluation hits";
+  var EVAL_NOTE = "These come from spe-eval runs and are not counted above.";
 
   // The model this script keeps in sync with the DOM: every hit currently shown, newest first,
   // loud (top of the list) and quiet (inside "also seen") kept apart so grouping only touches
@@ -30,10 +34,13 @@
   var loudHits = toArray(list.querySelectorAll(":scope > details.hit"));
   var alsoSeenInit = list.querySelector(":scope > details.also-seen");
   var quietHits = alsoSeenInit ? toArray(alsoSeenInit.querySelectorAll(":scope > details.hit")) : [];
+  // An evaluation's hits sit in their own block after both, out of the headline and the grouping.
+  var evalInit = list.querySelector(":scope > details.eval-hits");
+  var evalHits = evalInit ? toArray(evalInit.querySelectorAll(":scope > details.hit")) : [];
   // Ids are hits-file line numbers, and the watcher only appends to that file (never truncates or
   // replaces it), so an id seen once is never reused: a plain set is enough, no eviction needed.
   var seenIds = {};
-  loudHits.concat(quietHits).forEach(function (el) { seenIds[el.dataset.id] = true; });
+  loudHits.concat(quietHits, evalHits).forEach(function (el) { seenIds[el.dataset.id] = true; });
   var grouping = false;
 
   function toArray(nodeList) {
@@ -92,6 +99,12 @@
     var el = parseHtml(data.html);
     if (!el) return;
     el.classList.add("new");
+    if (data.origin === "eval") {
+      // Not a chat hit: no headline count, no placeholder change, no notification.
+      evalHits.unshift(el);
+      insertEval(el);
+      return;
+    }
     removePlaceholder();
     if (data.loud) {
       loudHits.unshift(el);
@@ -122,7 +135,32 @@
     var summary = document.createElement("summary");
     summary.textContent = "also seen (0)";
     block.appendChild(summary);
-    list.appendChild(block);
+    list.insertBefore(block, list.querySelector(":scope > details.eval-hits")); // before it, as rendered
+    return block;
+  }
+
+  function insertEval(el) {
+    var block = ensureEval();
+    var note = block.querySelector(":scope > p.eval-note");
+    block.insertBefore(el, note ? note.nextSibling : block.querySelector(":scope > summary").nextSibling);
+    var summary = block.querySelector(":scope > summary");
+    var m = /\((\d+)\)$/.exec(summary.textContent);
+    summary.textContent = EVAL_HEADING + " (" + ((m ? parseInt(m[1], 10) : 0) + 1) + ")";
+  }
+
+  function ensureEval() {
+    var block = list.querySelector(":scope > details.eval-hits");
+    if (block) return block;
+    block = document.createElement("details");
+    block.className = "eval-hits";
+    var summary = document.createElement("summary");
+    summary.textContent = EVAL_HEADING + " (0)";
+    var note = document.createElement("p");
+    note.className = "eval-note muted";
+    note.textContent = EVAL_NOTE;
+    block.appendChild(summary);
+    block.appendChild(note);
+    list.appendChild(block); // last: after the chat hits and "also seen"
     return block;
   }
 
@@ -183,7 +221,8 @@
   }
 
   function anchor() {
-    return list.querySelector(":scope > details.also-seen") || null;
+    return list.querySelector(":scope > details.also-seen")
+      || list.querySelector(":scope > details.eval-hits") || null;
   }
 
   function layoutFlat() {

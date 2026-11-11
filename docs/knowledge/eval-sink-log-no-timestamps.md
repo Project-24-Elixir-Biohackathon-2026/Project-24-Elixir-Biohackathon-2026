@@ -1,7 +1,8 @@
-# The test receiver's log carries no time: check with a unique marker
+# The test receiver's log carried no time, and outlives builds: check with a unique marker
 
 `/var/lib/spe-eval-sink/requests.jsonl` holds one `{method, host, path, body}` line per request, with no
-timestamp, and it outlives a rebuild. A check that posts a fixed string and greps for it (`grep -c
+timestamp before experiments slice 5 (which adds `at`, epoch seconds; lines an older receiver wrote still lack it),
+and it outlives a rebuild. A check that posts a fixed string and greps for it (`grep -c
 spe-receiver-check requests.jsonl`) can match a line an earlier build or slice posted: at L3 (2026-11-09, slice
 8) it gave `1` although the sandbox's POST timed out; the line was slice 7's (the file's mtime predated the
 build).

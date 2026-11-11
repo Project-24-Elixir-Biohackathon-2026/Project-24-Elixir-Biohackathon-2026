@@ -452,7 +452,8 @@ class Lock:
 # --- runs: kept reports, status and the progress file (07, `status`/`wait`/`runs`) -----------
 
 def append_jsonl(path: Path, record: dict) -> None:
-    """Append one JSON line to `path` (03, `windows.jsonl`): `{run, experiment, start, end}`."""
+    """Append one JSON line to `path` (03, `windows.jsonl`): `{run, experiment, start, end}`, two per run:
+    an opening line (`end` null) when it starts and a closing one at its end; per run, the closed line wins."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a") as f:
         f.write(json.dumps(record) + "\n")
