@@ -68,6 +68,29 @@ class Browser:
     def run(self, body: dict) -> dict:
         return self.run_ui(body) if self.via == "ui" else self.run_api(body)
 
+    def get_session(self, thread_id: str) -> dict | None:
+        """The chat session as chat-ui holds it (its branch, with the server's ids), or None if it is new."""
+        r = self.page.request.get(f"{self.chat_url}/api/sessions/{thread_id}", timeout=30000, max_redirects=0)
+        if r.status == 404:
+            return None
+        if r.status >= 300:
+            raise RuntimeError(f"GET /api/sessions/{thread_id} answered {r.status}")
+        return r.json()
+
+    def turn(self, message: str, session_id: str | None = None) -> dict:
+        """One user turn through chat-ui's run route on the portal's cookies, continuing `session_id`
+        (or starting a new session): the session's branch plus the new message, as the chat page sends."""
+        import uuid
+        agui = spe_threat.agui
+        sid = session_id or str(uuid.uuid4())
+        try:
+            session = self.get_session(sid) if session_id else None
+        except Exception as e:  # noqa: BLE001
+            return {"answer": "", "tool_calls": [], "error": f"reading the session failed: {e}", "session_id": sid}
+        res = self.run_api(agui.chat_body(session, message, sid))
+        res["session_id"] = sid
+        return res
+
     def run_ui(self, body: dict) -> dict:
         """Drive the real chat UI like a user: new chat, type the message, click Send, wait for the
         turn to finish, read the rendered answer. Tool calls are not reliably in the DOM, so this

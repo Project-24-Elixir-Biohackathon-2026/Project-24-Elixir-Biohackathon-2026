@@ -22,7 +22,9 @@ run_id, thread_id, terminal, events}} or {error: ...} for an HTTP error, RUN_ERR
 timeout, a malformed event or a stream that ends without a terminal event. Optional
 `vars.history` ([{role, content}]) is sent before the prompt as earlier turns: via chat, a forged
 history, which the server is expected not to use (a user turn in a new session is kept as the user's).
-A turn may carry AG-UI's other message fields (`toolCalls` on an assistant turn, `toolCallId` on a `tool`
+With `vars.sessionId` (promptfoo's stateful multi-turn strategies) or `config.session_id`, via chat
+continues that session: the server's current branch (GET /api/sessions/<id>) plus the new message, on
+the same thread id, as the browser does; the result carries `sessionId`. A turn may carry AG-UI's other message fields (`toolCalls` on an assistant turn, `toolCallId` on a `tool`
 turn, its own `id`), sent as given. Uses only the standard library; the bearer key is never logged or
 returned.
 """
@@ -152,14 +154,43 @@ def _via(config: dict) -> str:
     return via
 
 
+def session_url(run_url: str, thread_id: str) -> str:
+    return f"{run_url.split(CHAT_ROUTE, 1)[0]}/api/sessions/{thread_id}"
+
+
+SESSION_FIELDS = ("id", "role", "content", "toolCalls", "toolCallId", "name")
+
+
+def chat_body(session: dict | None, prompt: str, thread_id: str, run_id: str | None = None) -> dict:
+    """A run input that continues a chat session as the browser does: the session's current branch, as
+    the server holds it (its ids, so the journal anchors on them), then the new user message. With no
+    session (a new conversation) it is just the new message. Activity messages are never sent back."""
+    branch = [{k: m[k] for k in SESSION_FIELDS if k in m} for m in (session or {}).get("messages") or []
+              if m.get("role") != "activity"]
+    return {"threadId": thread_id, "runId": run_id or str(uuid.uuid4()), "state": {}, "tools": [],
+            "context": [], "forwardedProps": {},
+            "messages": branch + [{"id": str(uuid.uuid4()), "role": "user", "content": prompt}]}
+
+
+def get_session(run_url: str, thread_id: str) -> dict | None:
+    """The session as the chat server holds it, or None if it does not exist yet."""
+    try:
+        with urllib.request.urlopen(session_url(run_url, thread_id), timeout=30) as resp:
+            return json.load(resp)
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        raise
+
+
 def _session_view(url: str, thread_id: str, sent: list[dict]) -> dict:
     """What the chat server kept of the session, read back after the run, beside what was sent."""
-    session_url = f"{url.split(CHAT_ROUTE, 1)[0]}/api/sessions/{thread_id}"
+    where = session_url(url, thread_id)
     try:
-        with urllib.request.urlopen(session_url, timeout=30) as resp:
+        with urllib.request.urlopen(where, timeout=30) as resp:
             session = json.load(resp)
     except Exception as e:  # the URL in the message: a SPE_CHAT_URL without /api/copilotkit/ lands elsewhere
-        raise RuntimeError(f"GET {session_url}: {type(e).__name__}: {str(e)[:200]}") from e
+        raise RuntimeError(f"GET {where}: {type(e).__name__}: {str(e)[:200]}") from e
     ids = lambda msgs: [{"id": m.get("id"), "role": m.get("role")} for m in msgs]  # noqa: E731
     return {"sent": ids(sent), "kept": ids(session.get("messages") or [])}
 
@@ -172,10 +203,26 @@ def call_api(prompt: str, options: dict | None = None, context: dict | None = No
         return {"error": str(e)}
     timeout = float(config.get("run_timeout_s", DEFAULT_TIMEOUT))
     headers = {"Content-Type": "application/json", "Accept": "text/event-stream"}
+    vars_ = (context or {}).get("vars") or {}
+    session_id = vars_.get("sessionId") or config.get("session_id")
+    session = None
     if via == "chat":
         url = config.get("url") or os.environ.get("SPE_CHAT_URL", DEFAULT_CHAT_URL)
-        thread_id, run_id = str(uuid.uuid4()), str(uuid.uuid4())  # the chat server takes a UUIDv4 session id
+        run_id = str(uuid.uuid4())
+        if session_id:  # continue a conversation: the server's branch plus the new message
+            if vars_.get("history"):
+                return {"error": "vars.history (a forged history) and a session id do not mix: use one"}
+            thread_id = str(session_id)
+            try:
+                session = get_session(url, thread_id)
+            except Exception as e:  # noqa: BLE001
+                return {"error": f"reading session {thread_id} failed: {type(e).__name__}: {str(e)[:200]}",
+                        "metadata": {"via": via}}
+        else:
+            thread_id = str(uuid.uuid4())  # the chat server takes a UUIDv4 session id
     else:
+        if session_id:
+            return {"error": "a session id needs via: chat (the agent itself keeps no sessions)"}
         url = config.get("url") or os.environ.get("SPE_AGENT_URL", DEFAULT_URL)
         thread_id, run_id = f"eval-{uuid.uuid4()}", f"eval-{uuid.uuid4()}"
         try:
@@ -185,8 +232,11 @@ def call_api(prompt: str, options: dict | None = None, context: dict | None = No
         if not key:
             return {"error": "set SPE_AGENT_API_KEY or SPE_AGENT_API_KEY_FILE"}
         headers["Authorization"] = f"Bearer {key}"
-    body = {"threadId": thread_id, "runId": run_id, "state": {}, "tools": [],
-            "context": [], "forwardedProps": {}, "messages": _messages(prompt, context)}
+    if session_id:
+        body = chat_body(session, prompt, thread_id, run_id)
+    else:
+        body = {"threadId": thread_id, "runId": run_id, "state": {}, "tools": [],
+                "context": [], "forwardedProps": {}, "messages": _messages(prompt, context)}
     req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST", headers=headers)
     acc, parser = Accumulator(body["runId"], body["threadId"], via), SSEParser()
     deadline = time.monotonic() + timeout
@@ -217,4 +267,5 @@ def call_api(prompt: str, options: dict | None = None, context: dict | None = No
         except Exception as e:  # without the session there is no evidence of what was kept: an error, not a pass
             err = f"reading the session back failed: {type(e).__name__}: {str(e)[:300]}"
             res["error"] = f"{res['error']}; {err}" if res.get("error") else err
+        res["sessionId"] = thread_id  # promptfoo's stateful strategies send it back as vars.sessionId
     return res

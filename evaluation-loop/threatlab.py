@@ -65,6 +65,8 @@ DEFAULTS = {
     "stop_after_errors": 3,                # consecutive failed runs that abort a run
     "judge": "claude",                     # who decides a trial: claude (Claude Code) | indicators (checks.py)
     "via": "api",                          # how a run reaches the agent: api (fast, has tool calls) | ui (drives the chat)
+    "transport": "browser",                # pf-* commands: browser (logged-in browser, chat_url) | http (chat_run_url, no browser)
+    "chat_run_url": None,                  # transport http: <chat server>/api/copilotkit/agent/spe/run
     "ui_selectors": {},                    # override CopilotKit selectors if the chat changes
     "allowed_hosts": ["example.com", "example.org", "example.net", "169.254.169.254", "127.0.0.1", "localhost"],
     "context_files": [
