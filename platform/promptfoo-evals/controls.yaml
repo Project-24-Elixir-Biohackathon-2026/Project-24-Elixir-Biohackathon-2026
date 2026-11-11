@@ -28,3 +28,4 @@ tests:
   - {description: airlock, vars: {probe: airlock}}
   - {description: isolation-plant, vars: {probe: isolation-plant}}
   - {description: isolation-check, vars: {probe: isolation-check}}
+  - {description: trs-write-sensitive, vars: {probe: trs-write-sensitive}}

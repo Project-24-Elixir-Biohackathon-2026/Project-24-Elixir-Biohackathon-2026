@@ -25,6 +25,14 @@
   register: wes_guard_file
   when: spe_harden_trs_readonly
 
+- name: TRS write guard (spe_mitigate_trs_guard)
+  ansible.builtin.copy:
+    src: trs_guard.py
+    dest: "{{ spe_stack_dir }}/deployment/trs_guard.py"
+    mode: "0644"
+  register: trs_guard_file
+  when: spe_mitigate_trs_guard
+
 - name: Hardened data tiers are seeded tiers (spe_harden_data_tiers)
   ansible.builtin.assert:
     that:
@@ -118,7 +126,8 @@
     build: always   # services with a build section (added in a workspace) follow their sources; cached when unchanged
     recreate: >-
       {{ 'always' if rendered.changed or (cert.changed | default(false))
-         or (wes_guard_file.changed | default(false)) else 'auto' }}
+         or (wes_guard_file.changed | default(false)) or (trs_guard_file.changed | default(false))
+         else 'auto' }}
   register: stack_up
   # weskit-data-init is one-shot (restart: 'no'): every up starts it again and
   # compose reports that as a change. Its copy and chown are idempotent, so only

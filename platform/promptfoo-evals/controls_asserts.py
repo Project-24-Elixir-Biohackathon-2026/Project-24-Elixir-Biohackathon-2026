@@ -36,8 +36,13 @@ PROBE_CONTROL: dict[str, int | None] = {
     "egress": 3,
     "api-reach": None, "tool-surface": 4, "airlock": 5,
     "isolation-plant": None, "isolation-check": None,
+    # trs-write-sensitive (experiments/trs-guard.yml): a participant mitigation, not a ladder
+    # level, so no level ever closes it on its own -- only an arm that declares it in a
+    # mitigation file's own `probes` (out-of-scope.md, "A probe for every participant mitigation").
+    "trs-write-sensitive": None,
 }
-FIXED_STATE = {"api-reach": "open", "isolation-plant": "open", "isolation-check": "closed"}
+FIXED_STATE = {"api-reach": "open", "isolation-plant": "open", "isolation-check": "closed",
+              "trs-write-sensitive": "open"}
 LADDER = ("spe_harden_trs_readonly", "spe_harden_data_tiers", "spe_harden_egress", "spe_agent_tool_surface",
           "spe_harden_airlock")
 LADDER_IDS = frozenset(f"L{n}" for n in range(1, 6))  # the ladder's own mitigation ids; the level already

@@ -14,6 +14,7 @@ Index, one line per file:
 | `ladder-l1.yml` | TM-001 | P2 | L1: TRS read-only |
 | `ladder-l2.yml` | TM-001 | P3 | L2: Data tiers (on top of L1) |
 | `ladder-l3.yml` | TM-001 | P4 | L3: Egress (on top of L1, L2) |
+| `trs-guard.yml` | TM-003 | P2 | trs-guard: TRS write guard |
 
 The ladder (`ladder-l0`..`ladder-l3`) is the first set of experiments, the hardening ladder's levels
 read as a path through the threat model; `ladder-l0` is the template's default preset. A new

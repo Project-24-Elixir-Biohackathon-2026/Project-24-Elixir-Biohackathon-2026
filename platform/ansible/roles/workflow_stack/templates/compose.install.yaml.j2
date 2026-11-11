@@ -312,6 +312,38 @@ services:
     - trs-mongodb:/data/db
     networks:
     - weskit
+{% if spe_mitigate_trs_guard %}
+  trs-guard:
+    image: {{ spe_trs_guard_image }}
+    restart: unless-stopped
+    depends_on:
+    - trs-filer
+    user: 65534:65534
+    read_only: true
+    cap_drop:
+    - ALL
+    security_opt:
+    - no-new-privileges:true
+    volumes:
+    - ./trs_guard.py:/app/trs_guard.py:ro
+    command:
+    - python3
+    - /app/trs_guard.py
+    - --listen
+    - 0.0.0.0:8080
+    - --upstream
+    - trs-filer:8080
+    networks:
+    - weskit
+    labels:
+    - traefik.enable=true
+    - traefik.http.routers.trs_write.rule=PathPrefix("/ga4gh/trs") && !Method("GET", "HEAD")
+    - traefik.http.routers.trs_write.priority=1000
+    - traefik.http.routers.trs_write.entrypoints=websecure
+    - traefik.http.routers.trs_write.tls=true
+    - traefik.http.routers.trs_write.service=trs_guard
+    - traefik.http.services.trs_guard.loadbalancer.server.port=8080
+{% endif %}
   trs-filer:
     image: trs-filer:05a567c
     restart: unless-stopped
@@ -338,6 +370,9 @@ services:
     - traefik.http.routers.trs-admin.entrypoints=admin
     - traefik.http.routers.trs-admin.tls=true
     - traefik.http.routers.trs-admin.service=trs
+{% elif spe_mitigate_trs_guard %}
+    - traefik.http.routers.trs.rule=PathPrefix("/ga4gh/trs") && Method("GET", "HEAD")
+    - traefik.http.routers.trs.service=trs
 {% else %}
     - traefik.http.routers.trs.rule=PathPrefix("/ga4gh/trs")
 {% endif %}

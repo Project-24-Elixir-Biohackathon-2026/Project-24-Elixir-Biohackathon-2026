@@ -1,0 +1,19 @@
+id: trs-guard
+name: TRS write guard
+description: >
+  A small proxy (trs_guard.py) sits in front of trs-filer for every TRS request that is not GET
+  or HEAD. For a version write (files-bearing: a registered workflow), it refuses (403) any file
+  whose content names a path under the sensitive data tier; a tool own write (its free-text
+  description, which may legitimately mention that tier, e.g. a planted injection payload) and
+  every other write pass unchanged. Reads (GET, HEAD) go straight to trs-filer either way.
+closes: []  # narrows paths/P2.md rather than closing it: a payload that avoids the literal
+            # substring (built at runtime, split across fields, encoded) is not caught, and
+            # workflow_attachment straight to WES (bypassing TRS) is untouched by a guard in
+            # front of TRS; see probes below.
+"on": {spe_mitigate_trs_guard: true}
+"off": {spe_mitigate_trs_guard: false}
+requires: []
+conflicts: [L1]  # both rewrite the trs-filer Traefik router; L1 already subsumes this one (it
+                 # refuses every write, not only one naming a sensitive path), so the two are
+                 # never combined on the same build
+probes: [trs-write-sensitive]
