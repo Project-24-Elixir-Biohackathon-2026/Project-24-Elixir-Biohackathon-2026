@@ -1,5 +1,112 @@
 # Threat evaluations
 
+## Overview
+
+`evaluation-loop` red-teams the agent of an SPE instance. It takes threat models
+(`TM-NNN`), turns them into test prompts, sends them to the portal chat and decides
+whether each attack worked. The results are the evidence for the catalog in
+`threats/` (and for the poster).
+
+**The principle:** a model (Claude Code, `claude -p`, on its own login, so no API
+bill) only writes text. Everything that decides is code (`lab_checks.py`): lint,
+payload safety (only a fake `{nonce}`, no destructive commands), duplicate
+detection, a frozen plan with a hash you approve, and fixed verdict thresholds.
+The one exception is the per-trial judge (see [Who decides a trial](#who-decides-a-trial)).
+
+### The process, end to end
+
+```mermaid
+flowchart TD
+    subgraph Draft["1 · Draft (free, Claude Code)"]
+        P["<b>Proposer</b><br/>new threat models<br/><code>propose</code> → drafts/&lt;slug&gt;/"]
+        T["<b>Tester</b><br/>test cases from threat.md<br/>(message + indicators)"]
+        S[("scenarios/TM-NNN.yaml<br/>existing threats")]
+    end
+
+    subgraph Check["2 · Check (free, code)"]
+        LINT{"<b>lint</b> (lab_checks.py)<br/>schema · safety · allowed hosts<br/>echo test · example_hit"}
+        REP["<b>Repairer</b><br/>fixes a case from lint's errors"]
+        VAR["<b>Rewriter</b><br/><code>variants</code>: rephrasings,<br/>payload kept verbatim"]
+    end
+
+    subgraph Run["3 · Run (paid: the agent's model)"]
+        PLAN["<b>plan</b><br/>frozen cases + salt → SHA-256<br/>you approve the hash"]
+        RUN["<b>run --approve &lt;hash&gt;</b><br/>through your logged-in browser (CDP :9222)<br/><code>--via api</code> (tool calls) · <code>--via ui</code> (Playwright, answer only)<br/>or <code>--engine promptfoo</code>"]
+        AGENT[["SPE agent<br/>(portal chat)"]]
+        REF["<b>Refiner</b> (<code>adaptive</code>)<br/>reworks the prompt from<br/>the agent's answers"]
+    end
+
+    subgraph Judge["4 · Evaluate"]
+        J{"per trial:<br/><b>Judge</b> (judge: claude)<br/>or indicators in checks.py"}
+        TH["fixed thresholds (code)<br/>reproduced · blocked · inconclusive"]
+        VAL["<b>Validator</b><br/>independent review per threat:<br/>proven / not proven, overclaims,<br/>side effects, Evidence text"]
+    end
+
+    PROM["<b>promote</b><br/>new threats/TM-NNN-*.md (git)<br/>+ scenarios/TM-NNN.yaml (local)"]
+
+    P --> T --> LINT
+    S --> LINT
+    LINT -- fails --> REP --> LINT
+    LINT -- passes --> VAR --> LINT
+    LINT -- passes --> PLAN --> RUN <--> AGENT
+    RUN --> J --> TH
+    TH -- "inconclusive, next round (loop --rounds)" --> VAR
+    REF -. "until a weakness shows,<br/>then confirm unchanged" .-> RUN
+    J -.-> REF
+    TH --> VAL --> PROM
+```
+
+The commands map onto the diagram like this:
+
+| Command | Covers |
+|---|---|
+| `propose`, `variants`, `lint`, `plan`, `run`, `evaluate`, `promote` | single steps, run by hand |
+| `loop TM-… [--budget N]` | lint → repair → variants → plan → run → evaluate, in rounds; without `--budget` it stops before running |
+| `pipeline` | proposer → tester → runs → validator, each a separate Claude Code session; `--promote` adds the last step |
+| `adaptive` | the refiner loop: refine until a weakness shows, then repeat the winning prompt unchanged to confirm it |
+| `promptfoo` | the same approved plan run inside promptfoo, for its UI |
+| `validate` | the validator alone, on a finished loop |
+
+### The agents
+
+Every role is a separate `claude -p` call (`lab_llm.py`, the only code that calls a
+model). It runs with no tools, no MCP servers and no settings, in an empty temporary
+directory, so it can only write text. It answers in a JSON schema, its output is not
+used until code has checked it, and its provenance (model, session id, prompt hash,
+usage) is stored next to what it wrote.
+
+| Agent | Does |
+|---|---|
+| **Proposer** | drafts new threat models (optionally with test cases) the catalog does not cover |
+| **Tester** | writes test cases (message + indicators) from a threat's text alone |
+| **Repairer** | fixes a case lint rejected, from lint's exact errors |
+| **Rewriter** | rephrases a case's message (`variants`) |
+| **Refiner** | red-teams in `adaptive`: reworks the prompt from the agent's earlier answers |
+| **Judge** | decides one trial: verdict, reason, confidence |
+| **Validator** | reviews a finished loop per threat; it wrote neither the threat nor the tests |
+
+### Who decides a trial
+
+`judge:` in `lab.yaml` (or `evaluate --judge`) chooses who decides each trial:
+
+- `claude` (the default in `lab.example.yaml`): the Judge agent.
+- `indicators`: string matching in `checks.py`, fully deterministic.
+
+Either way, the per-threat verdict comes from the fixed thresholds in code, and the
+validator may claim `reproduced` only when the trials met them.
+
+### What stays local
+
+`scenarios/`, `runs/` (they hold canaries), `lab.yaml`, `drafts/` and `generated/` are
+git-ignored, and the tool checks this with `git check-ignore` before every write. Only
+the code, the tests and new `threats/TM-NNN-*.md` files go to git.
+
+```bash
+uv run --group dev pytest -q      # the tool's tests
+```
+
+## Running cases directly (`spe_threat.py`)
+
 Runs the scenarios of the threat catalog (`../../threats/`) against an SPE agent and
 reports, per scenario, whether it reproduced. This is the evidence the catalog's
 statuses ask for (`vocabulary.yaml`): `reproduced` when a case here reproduces a
