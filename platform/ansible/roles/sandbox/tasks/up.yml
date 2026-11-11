@@ -30,6 +30,15 @@
   delay: 5
   when: "'agui' in spe_frontends"
 
+- name: Evals-view image built (started by create.yml, before the frontend roles above)
+  ansible.builtin.async_status:
+    jid: "{{ evals_view_build_job.ansible_job_id }}"
+  register: evals_view_builds
+  until: evals_view_builds.finished
+  retries: 720
+  delay: 5
+  when: spe_experiments
+
 # With the overlays a ladder level adds (spe_compose_overlays), so a broken one stops the
 # build before spe-apply up merges it.
 - name: Validate compose file

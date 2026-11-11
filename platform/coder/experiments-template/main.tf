@@ -397,6 +397,26 @@ resource "coder_app" "chat" {
   }
 }
 
+# Evaluations: the read-only `promptfoo view` behind evals-view's proxy (decisions 14-16,
+# docs/specs/2026-11-10-experiments-design/04-viewer.md), on every spe-experiments workspace only
+# (platform/coder/template/ has no such app). Port 8200 is group_vars' spe_evals_port. Owner-only
+# like the chats: results hold canaries and the agent's answers. No run button: runs start by
+# command (`spe-eval run`, 07-agent-friendly.md), by the participant's agent or in the terminal.
+resource "coder_app" "evaluations" {
+  agent_id     = coder_agent.main.id
+  slug         = "evaluations"
+  display_name = "Evaluations"
+  url          = "http://localhost:8200"
+  subdomain    = true
+  share        = "owner"
+
+  healthcheck {
+    url       = "http://localhost:8200/"
+    interval  = 10
+    threshold = 30
+  }
+}
+
 # Report: the run report, kept on the portal VM by the report service
 # (platform/report), never on the instance. An external link, so it opens while
 # the workspace is stopped too; the report's owner and admins edit, everyone

@@ -31,14 +31,23 @@
     group: "{{ spe_ssh_user }}"
     mode: "0700"
 
-- name: ~/spe-eval/{reports,promptfoo} (spe-eval's own reports and PROMPTFOO_CONFIG_DIR)
+- name: ~/spe-eval/reports (spe-eval's own reports)
   ansible.builtin.file:
-    path: "{{ spe_eval_dir }}/{{ item }}"
+    path: "{{ spe_eval_dir }}/reports"
     state: directory
     owner: "{{ spe_ssh_user }}"
     group: "{{ spe_ssh_user }}"
     mode: "0755"
-  loop: [reports, promptfoo]
+
+# Already created, mode 0700, by role spe_eval before the first `spe-apply up` (this task runs
+# only after it); repeated here, idempotently, so this file alone leaves spe_eval_dir complete.
+- name: "~/spe-eval/promptfoo (PROMPTFOO_CONFIG_DIR / SPE_EVALS_DATA_DIR, mode 0700)"
+  ansible.builtin.file:
+    path: "{{ spe_eval_dir }}/promptfoo"
+    state: directory
+    owner: "{{ spe_ssh_user }}"
+    group: "{{ spe_ssh_user }}"
+    mode: "0700"
 
 - name: Canary record (plaintext, on the VM -- spe-eval's own promptfoo run reads it locally)
   ansible.builtin.copy:

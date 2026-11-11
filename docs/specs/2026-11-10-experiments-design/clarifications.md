@@ -36,3 +36,17 @@ Numbered, append-only: why the design changed after approval.
    decisions 17 and 18, the glossary (*Kind* becomes *Slot*), 01 (*Tests*, *Experiments*), 05 (rewritten), 07
    (*Commands*), approaches (*How a contribution's kind is known*), out of scope, slice 6, clarification 1.
    *Status:* folded.
+3. **The viewer is two containers, not one** (2026-11-11; PR #92, slice 4 task 3). `evals-view` is a stock
+   `nginx:1.29-alpine` (configuration only) that owns the network namespace, publishes
+   `127.0.0.1:${SPE_EVALS_PORT}` and joins the `evals` network; `evals-promptfoo` (image `spe-evals-view:local`,
+   built from `platform/instance/evals-view/Dockerfile`) runs `promptfoo view` with
+   `network_mode: service:evals-view`, so its port is on no network of its own. *Reason:* the proxy is a stock
+   nginx image and not our code; `promptfoo view` needs Node, which that image does not have; one shared network
+   namespace keeps promptfoo's own port off every network, reachable only through the proxy in front of it. Also
+   settled: the allow-list the proxy enforces (04, *Read-only*) is GET/HEAD everywhere plus socket.io's own
+   `POST /socket.io/` and its websocket upgrade, checked by `platform/dev/tests/test_evals_view.py` against
+   0.125.1's own routes; the proxy forwards the raw request path and allows `/socket.io/` only for exactly that raw
+   path, since forwarding nginx's decoded path let an encoded CR/LF smuggle a second request (a write) to promptfoo
+   (the PR's final review). *Amends:* 04 (*Read-only*, rewritten), the README's decision 14 (named the wrong compose
+   service: `promptfoo view` is `evals-promptfoo`, behind the `evals-view` proxy, not the other way round).
+   *Status:* folded.

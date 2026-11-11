@@ -7,6 +7,37 @@
 # checksum file, so neither version here needs its hash hand-copied and kept in sync; a wrong
 # version or url fails loudly here rather than silently, and is caught for real on de.NBI (task 7:
 # unit tests cannot exercise a network download, only render and check these tasks).
+#
+# The evals-view viewer's bind mount (SPE_EVALS_DATA_DIR) needs this directory before the first
+# `spe-apply up`, or Docker creates it itself, root-owned; this role runs early enough (role
+# handoff's vm_handoff.yml repeats the creation, idempotently, but only after that first up).
+# Mode 0700: bind-mounted read-write into a container reachable on a published port.
+#
+# evals-promptfoo runs as uid 1000 (evals-view/Dockerfile's `USER node`), so under any other
+# workspace uid it cannot read this 0700 directory, the viewer never starts, and `spe-apply up`,
+# which waits on the viewer's port under profile evals, fails every arm: refuse the build here.
+- name: Workspace user's passwd entry
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ spe_ssh_user }}"
+
+- name: Workspace user is uid 1000, the uid evals-promptfoo runs as
+  ansible.builtin.assert:
+    that: ansible_facts.getent_passwd[spe_ssh_user][1] == "1000"
+    fail_msg: >-
+      {{ spe_ssh_user }} is uid {{ ansible_facts.getent_passwd[spe_ssh_user][1] }}, not 1000:
+      evals-promptfoo runs as uid 1000 and bind-mounts {{ spe_eval_dir }}/promptfoo (mode 0700,
+      owned by {{ spe_ssh_user }}), so the Evaluations viewer could not read it.
+    quiet: true
+
+- name: "{{ spe_eval_dir }}/promptfoo (PROMPTFOO_CONFIG_DIR / SPE_EVALS_DATA_DIR, mode 0700)"
+  ansible.builtin.file:
+    path: "{{ spe_eval_dir }}/promptfoo"
+    state: directory
+    owner: "{{ spe_ssh_user }}"
+    group: "{{ spe_ssh_user }}"
+    mode: "0700"
+
 - name: Node already extracted
   ansible.builtin.stat:
     path: "/opt/node-v{{ spe_eval_node_version }}-linux-x64/bin/node"

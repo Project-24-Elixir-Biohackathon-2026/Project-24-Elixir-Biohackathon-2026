@@ -85,8 +85,9 @@ attack, on this build's own GA4GH stack. `spe-eval`, on `$PATH`, runs it from th
 with no `spe_experiment` in `instances/local.yml` is not one of these workspaces and has nothing here. These five
 are the first slice's; `spe-eval new`, `test`, `results` and `pr-body` (writing a mitigation, checking it offline,
 reading a run back as a table, filling a PR body) are a later slice's — until then, read a run's
-`~/spe-eval/reports/<experiment>/<run id>/<arm>/run.json` and `agent.json` by hand, or wait for the Evaluations
-app.
+`~/spe-eval/reports/<experiment>/<run id>/<arm>/run.json` and `agent.json` by hand, or `curl 127.0.0.1:8200/api/results`
+(the same read-only `promptfoo view` the owner-only Evaluations app opens, with nothing to tunnel: it already
+listens on this VM).
 
 1. **Try one arm by hand**: `spe-eval arm [<name>] baseline|mitigated` applies that arm (`spe-apply all` with its
    mitigation and injection vars) and waits for the stack to answer; `<name>` defaults to this build's own

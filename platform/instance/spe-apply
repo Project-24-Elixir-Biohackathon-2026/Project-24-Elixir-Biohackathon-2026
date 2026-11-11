@@ -2,10 +2,12 @@
 # Apply the repository clone to this SPE instance's chat frontend.
 #
 #   spe-apply              build what the active frontends need, then up
-#   spe-apply build [c..]  build images: agent, chat-ui, sandbox (default: what the
-#                          active frontends need; chat-ui is skipped in ui-dev mode)
+#   spe-apply build [c..]  build images: agent, chat-ui, sandbox, evals-view (default: what the
+#                          active frontends need; chat-ui is skipped in ui-dev mode, evals-view
+#                          only when the evals profile -- spe_experiments -- is on)
 #   spe-apply up           (re)create the containers from the compose file and wait
-#                          until they answer
+#                          until they answer (the evals-view viewer too, when the evals
+#                          profile is on)
 #   spe-apply status       containers and health
 #   spe-apply logs [svc]   follow the logs
 #   spe-apply stack [ARGS] run the Ansible roles of the GA4GH stack on this VM
@@ -72,6 +74,7 @@ default_components() {
     c+=(agent)
     has_profile ui && c+=(chat-ui)
   fi
+  has_profile evals && c+=(evals-view)
   printf '%s\n' "${c[@]}"
 }
 
@@ -90,7 +93,11 @@ build() {
         echo "== build sandbox ($SPE_TERMINAL_IMAGE) from roles/sandbox/files/Dockerfile.terminal + the instance CA"
         install -m 0644 "$sandbox_dir/Dockerfile.terminal" "$dir/Dockerfile.terminal"
         "${build_cmd[@]}" -t "$SPE_TERMINAL_IMAGE" -f "$dir/Dockerfile.terminal" "$dir" ;;
-      *) echo "spe-apply: unknown component '$c' (agent, chat-ui, sandbox)" >&2; exit 2 ;;
+      evals-view)
+        echo "== build evals-view ($SPE_EVALS_VIEW_IMAGE) from platform/promptfoo-evals"
+        "${build_cmd[@]}" -t "$SPE_EVALS_VIEW_IMAGE" -f "$SPE_REPO_DIR/platform/instance/evals-view/Dockerfile" \
+          "$SPE_REPO_DIR/platform/promptfoo-evals" ;;
+      *) echo "spe-apply: unknown component '$c' (agent, chat-ui, sandbox, evals-view)" >&2; exit 2 ;;
     esac
   done
 }
@@ -137,6 +144,9 @@ up() {
   if has_profile agui; then
     wait_http "http://127.0.0.1:${SPE_AGUI_AGENT_PORT}/healthz" 60
     wait_http "http://127.0.0.1:${SPE_AGUI_UI_PORT}/" "$(has_profile ui-dev && echo 100 || echo 40)"
+  fi
+  if has_profile evals; then
+    wait_http "http://127.0.0.1:${SPE_EVALS_PORT}/"
   fi
   status
 }
@@ -191,6 +201,6 @@ case $cmd in
   stack)   run_ansible --tags stack,drs,trs "$@" ;;
   all)     run_ansible --tags stack,drs,trs,frontend "$@" ;;
   ansible) run_ansible "$@" ;;
-  -h|--help|help) sed -n '2,47p' "$0" ;;
+  -h|--help|help) sed -n '2,50p' "$0" ;;
   *) echo "spe-apply: unknown command '$cmd' (build, up, status, logs, stack, all, ansible)" >&2; exit 2 ;;
 esac

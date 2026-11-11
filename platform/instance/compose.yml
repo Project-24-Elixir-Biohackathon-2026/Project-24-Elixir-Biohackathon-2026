@@ -5,6 +5,7 @@
 #   openwebui       Open WebUI
 #   agui,ui         our agent + the built chat UI
 #   agui,ui-dev     our agent + the chat UI as a dev server (hot reload)
+#   evals           evals-view: a read-only `promptfoo view` on spe_experiments builds only
 # Both frontends drive the same sandbox (service sandbox, profiles openwebui and
 # agui): one open-terminal container, one home directory, whichever chat the
 # person uses. Everything the agent and the sandbox read at run time is mounted
@@ -152,9 +153,78 @@ services:
       - open-terminal-data:/home/user
       # The runbook and helper scripts the agent runs, live from the clone.
       - ${SPE_REPO_DIR}/platform/ansible/roles/sandbox/files/agent:/opt/agent:ro
+
+  # --- evals-view: a read-only `promptfoo view` on spe_experiments builds (decisions 14-15,
+  # docs/specs/2026-11-10-experiments-design/04-viewer.md) --------------------------------
+  # The entry point: a stock nginx, configuration only (evals-view/nginx.conf), proxying
+  # GET/HEAD everywhere and socket.io's own POST, 403 to everything else -- including every
+  # write `promptfoo view` itself would otherwise accept. Publishes the only port; promptfoo
+  # (below) shares its network namespace instead of joining the `evals` network itself: the
+  # proxy guards the published entry point, nothing reaches promptfoo's own port without going
+  # through it first (though not a boundary against the VM host itself, which can always reach
+  # any container directly).
+  #
+  # Every SPE_EVALS_* variable below has a default: compose interpolates and parses every
+  # service, including one in an inactive profile (`evals` here, only on spe_experiments
+  # builds), so a plain spe build's .env -- which has none of these -- must still parse
+  # (fix round 1, Critical 1; platform/dev/tests/test_evals_view.py's
+  # test_compose_loads_without_any_spe_evals_variable checks this). The defaults are never used
+  # by a running container: this profile is simply never active on such a build.
+  evals-view:
+    profiles: [evals]
+    image: nginx:1.29-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${SPE_EVALS_PORT:-8200}:8080"
+    volumes:
+      - ${SPE_REPO_DIR}/platform/instance/evals-view/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks: [evals]
+    # The image's own non-root "nginx" user (uid/gid 101), throughout: no privileged master
+    # process to drop from, so no capability is needed (evals-view/nginx.conf has no "user"
+    # directive either).
+    user: "101:101"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    pids_limit: 64
+  evals-promptfoo:
+    profiles: [evals]
+    image: ${SPE_EVALS_VIEW_IMAGE:-spe-evals-view:local}
+    restart: unless-stopped
+    # Shares evals-view's network namespace instead of joining a network of its own: nothing
+    # on the `evals` network, or any other, reaches this port directly, only evals-view's proxy
+    # in front of it (not a boundary against the VM host itself, which can always reach any
+    # container's own interfaces).
+    network_mode: "service:evals-view"
+    environment:
+      # No sharing, telemetry or self-update from an SPE instance; baked into the image too
+      # (evals-view/Dockerfile), repeated here so a build without these is visible in the
+      # compose config itself (platform/dev/tests/test_evals_view.py).
+      PROMPTFOO_DISABLE_SHARING: "1"
+      PROMPTFOO_DISABLE_TELEMETRY: "1"
+      PROMPTFOO_DISABLE_UPDATE: "1"
+    volumes:
+      # The host's evaluations directory (docs/specs/2026-11-10-experiments-design/04-viewer.md),
+      # the same PROMPTFOO_CONFIG_DIR a run itself writes (read-write: promptfoo view runs its
+      # own DB migrations at start). The default is a placeholder, never read on a build where
+      # this profile is inactive (see the comment above evals-view).
+      - ${SPE_EVALS_DATA_DIR:-/nonexistent-spe-evals-data}:/data
+    # The image's "node" user, stated here so another SPE_EVALS_VIEW_IMAGE runs as it too: the
+    # uid that owns the data directory (role spe_eval asserts the workspace user is 1000).
+    user: "1000:1000"
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    pids_limit: 256
 networks:
   ui: {}      # chat-ui <-> agent
   tools: {}   # open-webui and agent <-> sandbox
+  evals: {}   # evals-view's own entry point; evals-promptfoo shares its netns instead of joining
 volumes:
   open-webui-data: {}
   open-terminal-data: {}

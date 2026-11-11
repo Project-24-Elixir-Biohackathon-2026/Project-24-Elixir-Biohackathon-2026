@@ -6,7 +6,7 @@ Loads just the "Connection details" task by name (as test_create_mitigations.py 
 create.yml's own pre_task), rather than running the whole file: the other tasks there write the
 canary record, DRS/TRS inventories, the certificate and the injection manifest, none of which this
 task's own `vars:` block (self-contained: it reads only its own input vars, no registered fact of
-an earlier task) needs, and two of them (the handoff/, {reports,promptfoo}/ directory tasks) set
+an earlier task) needs, and three of them (the handoff/, reports/, promptfoo/ directory tasks) set
 `group: "{{ spe_ssh_user }}"`, which only resolves on a real workspace user account.
 """
 import json

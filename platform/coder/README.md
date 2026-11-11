@@ -220,6 +220,12 @@ A second template, `experiments-template/`, offers the catalogue of threats, pat
   `— <threat> via <paths> · <mitigation <id>: <name>, or "no mitigation (one arm)">`, cut to the provider's
   128-byte limit on `description`, alongside the manual form.
 
+Every spe-experiments workspace also has an **Evaluations** app (`coder_app.evaluations`, owner-only like the
+chats, since results hold canaries and the agent's answers): the read-only `promptfoo view` of the workspace's
+`spe-eval` runs, on port 8200 (`spe_evals_port`) behind the `evals-view` proxy (`../instance/README.md`). It has no
+run button: runs start with `spe-eval run`, by the participant's agent or in the terminal. spe's own template
+has no such app.
+
 `experiments-template/assemble.sh <repo root> [<template dir>]` copies `experiments/`, `mitigations/`,
 `catalog/injections/fixtures.json` and `run-ansible.sh` into the template directory, since Terraform's
 `fileset()` only sees files already inside it (`.gitignore`d there, copied fresh before every plan or push,
@@ -230,7 +236,7 @@ pushes `spe`, on its own head-changed check.
 **Testing the template without Coder:** `platform/dev/tests/test_experiments_template.py` plans it with
 OpenTofu and checks the planned values (presets offered, `build_vars` for a preset and for overridden
 parameters). It needs a `tofu` or `terraform` binary: on PATH, or named by `SPE_TOFU=<path>` (plus
-`TF_PLUGIN_CACHE_DIR=<dir>` to cache the coder provider across runs); without either, the 7 cases that need a
+`TF_PLUGIN_CACHE_DIR=<dir>` to cache the coder provider across runs); without either, the 9 cases that need a
 plan are skipped and only the no-tofu `assemble.sh` case runs.
 
 ## Branch templates

@@ -74,6 +74,11 @@ def data_sources(plan_json: dict, kind: str) -> list[dict]:
             if r["mode"] == "data" and r["type"] == kind]
 
 
+def managed_resources(plan_json: dict, kind: str) -> dict:
+    return {r["name"]: r["values"] for r in plan_json["planned_values"]["root_module"]["resources"]
+            if r["mode"] == "managed" and r["type"] == kind}
+
+
 def parameter(plan_json: dict, name: str) -> dict:
     return next(p for p in data_sources(plan_json, "coder_parameter") if p["name"] == name)
 
@@ -179,6 +184,20 @@ def test_presets_are_the_experiment_files(ladder_l0_plan):
     assert presets[experiments["ladder-l0"]["name"]]["description"].endswith(
         " — TM-001 via P1, P2, P3, P4 · no mitigation (one arm)")
     assert [p["name"] for p in presets.values() if p["default"]] == [experiments["ladder-l0"]["name"]]
+
+
+@needs_tofu
+def test_evaluations_app_is_owner_only_with_no_run_button(ladder_l0_plan):
+    """Decision 16: one Evaluations app, owner-only, with no `command` (runs start by `spe-eval run`,
+    not a button). `platform/coder/template/` (spe) has no such app (checked by source text, below)."""
+    app = managed_resources(ladder_l0_plan, "coder_app")["evaluations"]
+    assert app["display_name"] == "Evaluations"
+    assert app["url"] == "http://localhost:8200"
+    assert app["subdomain"] is True
+    assert app["share"] == "owner"
+    assert app["command"] is None
+    assert app["healthcheck"] == [{"url": "http://localhost:8200/", "interval": 10, "threshold": 30}]
+    assert 'resource "coder_app" "evaluations"' not in SPE_TEMPLATE.joinpath("main.tf").read_text()
 
 
 @needs_tofu

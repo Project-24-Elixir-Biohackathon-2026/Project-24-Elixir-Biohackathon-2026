@@ -235,6 +235,18 @@
       tags: [frontend]
       when: "'agui' in spe_frontends"
 
+    # The evals-view viewer: same background-build-then-join pattern as role agui's build.yml
+    # above. Needs role sandbox's .env (just above), so only when it ran too -- its join lives in
+    # roles/sandbox/tasks/up.yml, under the same condition.
+    - name: Evals-view image build in the background (spe-apply build evals-view)
+      ansible.builtin.command: spe-apply build evals-view
+      async: 3600
+      poll: 0
+      register: evals_view_build_job
+      changed_when: false   # the join (roles/sandbox/tasks/up.yml) reports the change
+      tags: [frontend]
+      when: spe_experiments and spe_frontends | length > 0
+
     - name: Data copy and seeding
       ansible.builtin.import_role:
         name: spe_data

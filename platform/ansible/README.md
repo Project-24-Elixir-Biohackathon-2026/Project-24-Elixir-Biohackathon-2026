@@ -288,6 +288,13 @@ Under `spe_experiments`, `create.yml` also sets up measuring an experiment on th
   `spe-eval run --detach`'s `systemd --user` unit outlives a logged-out session).
 - **`/usr/local/bin/spe-eval`**, a link into the clone (`roles/repo/tasks/main.yml`, as `spe-apply` above),
   only with `spe_experiments`.
+- **The viewer** (`evals-view`, decisions 14-16, `docs/specs/2026-11-10-experiments-design/04-viewer.md`): a
+  read-only `promptfoo view` on `~/spe-eval/promptfoo` (role `spe_eval` creates it, mode 0700, before the first
+  `spe-apply up`, and refuses a workspace user other than uid 1000, the uid `evals-promptfoo` runs as), compose
+  profile `evals`, port `spe_evals_port` (default 8200). Role `sandbox` adds `evals` to `COMPOSE_PROFILES` and writes the three `SPE_EVALS_*` variables into `.env`; the image (`spe_evals_view_image`)
+  is built in the background by `create.yml` and joined in `roles/sandbox/tasks/up.yml`, the same pattern as
+  the agent and chat UI images; `spe-apply build`/`up` know the `evals-view` component. nginx's own image is
+  pulled by role `prefetch` too.
 
 `platform/instance/README.md` has the commands (`spe-eval arm`/`run`/`status`/`wait`/`runs`) and the
 `~/spe-eval` layout.

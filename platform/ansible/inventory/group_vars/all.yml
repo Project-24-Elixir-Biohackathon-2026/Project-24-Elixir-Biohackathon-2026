@@ -89,7 +89,9 @@ spe_traefik_image: traefik:v2.11
 spe_filer_mongo_image: mongo:3.6        # drs-filer and trs-filer databases
 spe_wes_guard_image: python:3.12-alpine   # L1 WES write guard (spe_harden_trs_readonly)
 spe_stack_images: "{{ [spe_mongo_image, spe_redis_image, spe_traefik_image, spe_filer_mongo_image] + ([spe_wes_guard_image] if spe_harden_trs_readonly else []) }}"
-spe_prefetch_images: "{{ spe_stack_images + ([spe_frontend_webui_image] if 'openwebui' in spe_frontends else []) }}"
+spe_prefetch_images: >-
+  {{ spe_stack_images + ([spe_frontend_webui_image] if 'openwebui' in spe_frontends else [])
+     + (['nginx:1.29-alpine'] if spe_experiments else []) }}
 # sha256 of every data file, computed in the background after seeding and read
 # by the DRS registration (role drs_register).
 spe_drs_hash_cache: /opt/spe/drs-hashes.json
@@ -148,6 +150,13 @@ spe_mitigations: []
 # agree without a shared variable; both assume the workspace user's home is /home/<spe_ssh_user>,
 # as spe_frontend_dir and spe_repo_dir already do.
 spe_eval_dir: "/home/{{ spe_ssh_user }}/spe-eval"
+# The viewer (decisions 14-16, docs/specs/2026-11-10-experiments-design/04-viewer.md): a
+# read-only `promptfoo view` behind an nginx allow-list, profile `evals`, on every
+# spe-experiments build. Port free next to 3000/8080/8099/8100/8443. The image tag is local,
+# built on the instance; nginx's own tag is pinned in compose.yml and repeated as a literal in
+# spe_prefetch_images below (test_evals_view.py checks they agree).
+spe_evals_port: 8200
+spe_evals_view_image: spe-evals-view:local
 # Toolchain for spe-eval, installed on the host (not in a container) under spe_experiments: Node (a
 # version promptfoo 0.125.1 requires -- its own package-lock.json pins `engines.node: ">=22.22.0"`
 # for the promptfoo package itself, checked by test_spe_eval_node_version.py against that same

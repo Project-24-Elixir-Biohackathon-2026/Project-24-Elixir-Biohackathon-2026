@@ -28,7 +28,9 @@ Slices 3 and 4 together give the early output (README). `spe-eval`'s `--detach`,
 
 ## For the plan to settle
 
-- The writes `promptfoo view` 0.125.1's reading UI needs (04, *Read-only*), from its routes, with a test.
+- The writes `promptfoo view` 0.125.1's reading UI needs (04, *Read-only*), from its routes, with a test: settled
+  by this slice (#92), GET/HEAD everywhere plus socket.io's own `POST /socket.io/` and its websocket upgrade, by
+  `platform/dev/tests/test_evals_view.py` against 0.125.1's own routes (clarification 3).
 - How the generated experiment suite config is built: settled by #88. `spe-eval` writes `suite.yaml` into the
   arm's reports directory, `agent.yaml`'s settings with its tests replaced by the named ones plus the utility
   group; an experiment with `tests: []` runs `agent.yaml` unchanged.
