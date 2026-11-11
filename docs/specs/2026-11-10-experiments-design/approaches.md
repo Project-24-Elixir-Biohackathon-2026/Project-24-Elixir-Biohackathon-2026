@@ -35,11 +35,11 @@
 
 | | Trade-off | |
 |---|---|---|
-| **Read from the files**: `check_experiment.py` compares the branch with its base and names the kind | nothing to declare, so nothing to declare wrongly; the participant, reviewer and a later CI get the same answer; needs a current base (`git fetch` in `new` and `pr-body`) | **chosen** (the user, 2026-11-10) |
+| **Read from the files**: `check_experiment.py` compares the branch with its base and names the kind | nothing to declare, so nothing to declare wrongly; the participant, reviewer and a later CI get the same answer; needs a current base (`git fetch` in `new` and `pr-body`) | chosen (the user, 2026-11-10), then dropped: clarification 2 |
 | Declared, `kind:` in the experiment file, checked against the files | explicit; but it restates what the files say, and a mismatch is one more error for a newcomer | rejected |
-| One PR template with optional sections, no kinds in the checker | least to build; the participant works out which sections apply, and a red PR that showed no harm looks like an unfinished one | rejected |
+| One PR template with optional sections, no kinds in the checker | least to build; the participant works out which sections apply, and a red PR that showed no harm looks like an unfinished one | **chosen** (the user, 2026-11-11, clarification 2: the design is a skeleton to test the stack with, not contribution rules; the result is read by people) |
 
-A one-sided PR carries a measured result (an attack shows the harm on a named base; a mitigation is measured
+*Before clarification 2:* a one-sided PR carried a measured result (an attack shows the harm on a named base; a mitigation is measured
 against existing attacks) rather than structure checks alone, so every merged attack is shown to work and every
 merged mitigation is measured, its counts and per-metric verdicts in the PR for the reviewer to judge (`pr-body`
 refuses only a missing arm or a red run with no harm: a mitigation that does not help is a result too, and noise
