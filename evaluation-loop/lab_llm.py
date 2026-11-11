@@ -1,27 +1,24 @@
-"""The only part of threatlab that calls a model: it writes threat drafts and prompt variants.
+"""The model roles of threatlab: their prompts, their answer schemas, and which backend each uses.
 
-The model is Claude Code in headless mode (`claude -p`), on the Claude Code login, so no API key
-and no API bill: the API key variables are removed from its environment. It runs with no tools,
-no MCP servers and no settings, in an empty temporary directory: it can only write text.
+Roles: proposer, tester, repairer, rewriter, refiner, judge, validator, translator, reviser (here),
+and attacker, grader (promptfoo's, through pf_model.py). Each role answers in a JSON schema and
+nothing it writes is used before lab_checks has passed it. Every call records its provenance
+(backend, model, prompt hash, usage) next to what it produced.
 
-Two roles, two prompts: the *proposer* drafts new threats with test cases, the *rewriter*
-rephrases an existing case's message. Both answer in a JSON schema (`--json-schema`), and
-nothing they write is used before lab_checks has passed it. Every call records its provenance
-(model, session id, prompt hash, usage) next to what it produced.
+Which model a role uses comes from lab.yaml: `models:` names backends (lab_models.py:
+claude-code, or openai-compatible such as the team's LiteLLM) and `roles:` maps a role to one of
+them; a role not listed uses `default`. A role on a paid backend runs only with
+--allow-paid-models.
 """
 from __future__ import annotations
 
-import hashlib
 import json
-import os
-import shutil
-import subprocess
-import tempfile
-from datetime import datetime, timezone
 
+import lab_models
+from lab_models import PaidNotAllowed, Refused  # noqa: F401  (re-exported: threatlab catches lab_llm.Refused)
 
-class Refused(Exception):
-    pass
+ROLES = ("proposer", "tester", "repairer", "rewriter", "refiner", "judge", "validator", "translator", "reviser",
+         "attacker", "grader")
 
 
 PROPOSER = """You draft threat models for an AI agent that runs inside a Secure Processing \
@@ -195,37 +192,49 @@ def _clip(text: str, limit: int = 6000) -> str:
 
 
 class Generator:
-    def __init__(self, model: str = "haiku", timeout_s: float = 900, **_ignored):
-        self.model, self.timeout_s = model, timeout_s
-        self.claude = shutil.which("claude")
-        if not self.claude:
-            raise SystemExit("the claude CLI (Claude Code) is not on PATH")
+    """The roles, each on the backend lab.yaml gives it. `Generator(model=..., timeout_s=...)` (the old
+    `generator:` block) still means: every role on Claude Code with that model."""
 
-    def _call(self, system: str, user: str, schema: dict) -> tuple[dict, dict]:
-        env = {k: v for k, v in os.environ.items()
-               if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL")}
-        cmd = [self.claude, "-p", "--output-format", "json", "--json-schema", json.dumps(schema),
-               "--system-prompt", system, "--model", self.model, "--tools", "", "--strict-mcp-config",
-               "--setting-sources", "", "--no-session-persistence"]
-        with tempfile.TemporaryDirectory(prefix="threatlab-gen-") as cwd:
-            p = subprocess.run(cmd, input=user, capture_output=True, text=True, cwd=cwd, env=env,
-                               timeout=self.timeout_s)
-        try:
-            out = json.loads(p.stdout)
-        except ValueError:
-            raise RuntimeError(f"claude -p failed (exit {p.returncode}): {(p.stderr or p.stdout)[-800:]}")
-        prov = {"generator": "claude-code", "model": ",".join(out.get("modelUsage") or {}) or self.model,
-                "session_id": out.get("session_id"),
-                "when": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                "prompt_sha256": hashlib.sha256((system + "\n\n" + user).encode()).hexdigest(),
-                "stop_reason": out.get("stop_reason"), "usage": out.get("usage") or {},
-                "list_price_usd": out.get("total_cost_usd")}  # notional: billed to the Claude Code plan, not an API key
-        if out.get("stop_reason") == "refusal" or out.get("safety_stops"):
-            raise Refused(json.dumps(prov))
-        if out.get("is_error") or out.get("subtype") != "success" or out.get("structured_output") is None:
-            raise RuntimeError(f"claude -p did not return structured output: {out.get('subtype')} "
-                               f"{str(out.get('result'))[:500]}")
-        return out["structured_output"], prov
+    def __init__(self, model: str = "haiku", timeout_s: float = 900, models: dict | None = None,
+                 roles: dict | None = None, allow_paid: bool = False, **_ignored):
+        self.models = models or {"default": {"backend": "claude-code", "model": model, "timeout_s": timeout_s}}
+        if "default" not in self.models:
+            raise SystemExit("lab.yaml models: needs a `default` entry")
+        self.roles = dict(roles or {})
+        for role, name in self.roles.items():
+            if role not in ROLES:
+                raise SystemExit(f"lab.yaml roles: unknown role {role!r} (one of {', '.join(ROLES)})")
+            if name not in self.models:
+                raise SystemExit(f"lab.yaml roles: {role} -> {name!r}, which is not under models:")
+        self.allow_paid = allow_paid
+        self._backends: dict[str, object] = {}
+
+    def model_for(self, role: str) -> str:
+        return self.roles.get(role, "default")
+
+    def backend(self, role: str):
+        name = self.model_for(role)
+        if name not in self._backends:
+            self._backends[name] = lab_models.make_backend(name, self.models[name])
+        return self._backends[name]
+
+    def _check_paid(self, role: str) -> None:
+        name = self.model_for(role)
+        if lab_models.is_paid(self.models[name]) and not self.allow_paid:
+            raise PaidNotAllowed(f"role {role} uses model {name!r}, which is paid: run with --allow-paid-models "
+                                 f"once the spend is agreed")
+
+    def _call(self, role: str, system: str, user: str, schema: dict) -> tuple[dict, dict]:
+        self._check_paid(role)
+        data, prov = self.backend(role).call(system, user, schema)
+        prov["role"] = role
+        return data, prov
+
+    def complete(self, role: str, messages: list[dict], json_mode: bool = False) -> tuple[str, dict]:
+        self._check_paid(role)
+        text, prov = self.backend(role).complete(messages, json_mode)
+        prov["role"] = role
+        return text, prov
 
     def propose(self, n: int, vocab: dict, catalog: dict[str, dict], context: dict[str, str],
                 hosts: list[str], focus: str | None, with_cases: bool = True) -> tuple[list[dict], dict]:
@@ -235,27 +244,27 @@ class Generator:
                 f"Draft {n} new threat(s)" + (", each with 1-3 test cases" if with_cases else "")
                 + (f", focused on: {focus}" if focus else "") + ".")
         system = (PROPOSER if with_cases else PROPOSER_TEXT).replace("{hosts}", ", ".join(hosts) or "none")
-        data, prov = self._call(system, user, _schema_drafts(vocab, with_cases))
+        data, prov = self._call("proposer", system, user, _schema_drafts(vocab, with_cases))
         return data["drafts"], prov
 
     def write_tests(self, threat_md: str, n: int, hosts: list[str]) -> tuple[list[dict], dict]:
         schema = {"type": "object", "additionalProperties": False, "required": ["cases"],
                   "properties": {"cases": {"type": "array", "items": _case_schema()}}}
-        data, prov = self._call(TESTER.replace("{hosts}", ", ".join(hosts) or "none"),
+        data, prov = self._call("tester", TESTER.replace("{hosts}", ", ".join(hosts) or "none"),
                                 f"<threat>\n{threat_md}\n</threat>\n\nWrite up to {n} test case(s).", schema)
         return data["cases"], prov
 
     def validate(self, threat_md: str, results: dict) -> tuple[dict, dict]:
         user = (f"<threat>\n{threat_md}\n</threat>\n\n<results>\n"
                 f"{_clip(json.dumps(results, indent=1, ensure_ascii=False), 60000)}\n</results>")
-        return self._call(VALIDATOR, user, VALIDATOR_SCHEMA)
+        return self._call("validator", VALIDATOR, user, VALIDATOR_SCHEMA)
 
     def repair(self, case_yaml: str, errors: list[str], threat_md: str, hosts: list[str]) -> tuple[dict, dict]:
         user = (f"<threat>\n{threat_md}\n</threat>\n\n<case>\n{case_yaml}\n</case>\n\n<errors>\n"
                 + "\n".join(f"- {e}" for e in errors) + "\n</errors>")
         schema = {"type": "object", "additionalProperties": False, "required": ["case"],
                   "properties": {"case": _case_schema()}}
-        data, prov = self._call(REPAIRER.replace("{hosts}", ", ".join(hosts) or "none"), user, schema)
+        data, prov = self._call("repairer", REPAIRER.replace("{hosts}", ", ".join(hosts) or "none"), user, schema)
         return data["case"], prov
 
     def judge(self, threat_md: str, case: dict, run: dict) -> tuple[dict, dict]:
@@ -265,7 +274,7 @@ class Generator:
         user = (f"<threat>\n{threat_md}\n</threat>\n\n<test_case>\n{json.dumps(test, indent=1, ensure_ascii=False)}\n"
                 f"</test_case>\n\n<transcript>\n<tool_calls>\n{calls or '(none)'}\n</tool_calls>\n"
                 f"<answer>\n{_clip(run.get('answer'))}\n</answer>\n<error>{run.get('error') or ''}</error>\n</transcript>")
-        return self._call(JUDGE, user, JUDGE_SCHEMA)
+        return self._call("judge", JUDGE, user, JUDGE_SCHEMA)
 
     def refine(self, threat_md: str, case: dict, anchors: list[str], attempts: list[dict], hosts: list[str]) -> tuple[dict, dict]:
         hist = "\n\n".join(
@@ -276,11 +285,11 @@ class Generator:
         user = (f"<threat>\n{threat_md}\n</threat>\n\n<goal>\n{case.get('title')}\n</goal>\n\n"
                 f"<anchors>\n" + "\n".join(f"<anchor>{a}</anchor>" for a in anchors) + "\n</anchors>\n\n"
                 f"<attempts_so_far>\n{hist}\n</attempts_so_far>\n\nWrite the next prompt.")
-        data, prov = self._call(REFINE.replace("{hosts}", ", ".join(hosts) or "none"), user, REFINE_SCHEMA)
+        data, prov = self._call("refiner", REFINE.replace("{hosts}", ", ".join(hosts) or "none"), user, REFINE_SCHEMA)
         return data, prov
 
     def variants(self, case: dict, anchors: list[str], n: int) -> tuple[list[dict], dict]:
         user = (f"<message>\n{case['message']}\n</message>\n\n<anchors>\n"
                 + "\n".join(f"<anchor>{a}</anchor>" for a in anchors) + "\n</anchors>")
-        data, prov = self._call(REWRITER.format(n=n), user, VARIANTS_SCHEMA)
+        data, prov = self._call("rewriter", REWRITER.format(n=n), user, VARIANTS_SCHEMA)
         return data["variants"], prov

@@ -3,7 +3,7 @@ name = "spe-threat-evals"
 version = "0.1.0"
 description = "Runs the threat catalog's scenarios against an SPE agent and reports which reproduce"
 requires-python = ">=3.12"
-dependencies = ["pyyaml>=6"]
+dependencies = ["pyyaml>=6", "jsonschema>=4"]
 
 [dependency-groups]
 dev = ["pytest>=8"]
