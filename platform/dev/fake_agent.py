@@ -20,7 +20,10 @@ model run two commands in one response, the second exiting 1 (the chat groups th
 a message containing "echo-input"
 makes the model answer, instead of running a command, with the JSON list of {role, id}
 of what it was sent (the system prompt left out), so a
-client can see which history reached the model. `/title` is off (the e2e finds rows by
+client can see which history reached the model. `/threat-score` is on, with scripted embeddings
+(no network): a draft containing "secret" scores high, "Secrets and credentials" among its high categories, any other
+draft low; with --embeddings-url (and $SPE_FAKE_EMBEDDINGS_KEY) the drafts are embedded by that
+OpenAI-compatible endpoint instead, for a look at real scores. `/title` is off (the e2e finds rows by
 their auto title; see `title: {enabled: False}` below). The run log
 goes to a temporary directory, or to --run-log PATH; --key defaults to
 $SPE_AGENT_API_KEY, so the key need not sit in argv.
@@ -47,6 +50,7 @@ from spe_agent.app import create_app
 from spe_agent.compaction import FOCUS_HEADING, SUMMARY_PROMPT, SUMMARY_PROMPT_MANUAL, is_framed
 from spe_agent.config import Config, Secrets
 from spe_agent.sandbox import SandboxClient
+from spe_agent.threat import ThreatModel
 
 FIXTURE = Path(__file__).resolve().parents[1] / "agui" / "pydantic-ai-agent" / "tests" / "fixtures" / "open-terminal-0.16.1-openapi.json"
 
@@ -172,6 +176,15 @@ async def scripted(messages, info):
                                 tool_call_id=f"call-{len(users)}-{uuid.uuid4().hex[:8]}")}
 
 
+def fake_embeddings(request: httpx.Request) -> httpx.Response:
+    """A draft with "secret" in it lies along the general and the secrets heads' weights; any other against them."""
+    heads = {h["id"]: h["weights"] for h in ThreatModel.packaged().heads}
+    text = json.loads(request.content)["input"][0].lower()
+    sign = 1 if "secret" in text else -1
+    embedding = [sign * (g + s) for g, s in zip(heads["general"], heads["secrets"])]
+    return httpx.Response(200, json={"data": [{"index": 0, "embedding": embedding}]})
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--port", type=int, default=18100)
@@ -179,6 +192,8 @@ def main() -> None:
     ap.add_argument("--key", default=os.environ.get("SPE_AGENT_API_KEY"),
                     help="bearer key clients must send (default: $SPE_AGENT_API_KEY)")
     ap.add_argument("--run-log", type=Path, help="run log path (default: in a temporary directory)")
+    ap.add_argument("--embeddings-url", help="score drafts with this OpenAI-compatible endpoint (its /embeddings, "
+                    "key in $SPE_FAKE_EMBEDDINGS_KEY) instead of the scripted embeddings")
     args = ap.parse_args()
     if not args.key:
         ap.error("--key or SPE_AGENT_API_KEY is required")
@@ -187,7 +202,8 @@ def main() -> None:
     (tmp / "prompt.txt").write_text("You are a scripted test agent.")
     config = Config.model_validate({
         # Placeholder only: the scripted model replaces it and no LLM is called.
-        "model": {"provider": "anthropic", "name": "claude-haiku-5-5"},
+        "model": {"provider": "openai_compatible", "name": "scripted", "base_url": "http://llm.invalid/v1"},
+        "threat_score": {"enabled": True, **({"base_url": args.embeddings_url} if args.embeddings_url else {})},
         "prompt": {"file": str(tmp / "prompt.txt")},
         "tools": {"sandbox_url": "http://sandbox:8000"},
         "run_log": str(run_log),
@@ -196,11 +212,13 @@ def main() -> None:
         # 404, which the chat UI's title route logs and ignores.
         "title": {"enabled": False},
     })
-    secrets = Secrets(agent_api_key=args.key, sandbox_api_key="fake-sandbox-key", llm_api_key="no-llm")
+    secrets = Secrets(agent_api_key=args.key, sandbox_api_key="fake-sandbox-key",
+                      llm_api_key=os.environ.get("SPE_FAKE_EMBEDDINGS_KEY", "no-llm") if args.embeddings_url else "no-llm")
     client = SandboxClient("http://sandbox:8000", "fake-sandbox-key",
                            http=httpx.AsyncClient(transport=httpx.MockTransport(fake_sandbox)))
     app = create_app(config, secrets, model_override=FunctionModel(summarise, stream_function=scripted),
-                     sandbox_client=client, retry_delay=0.1)
+                     sandbox_client=client, retry_delay=0.1,
+                     threat_http=None if args.embeddings_url else httpx.AsyncClient(transport=httpx.MockTransport(fake_embeddings)))
     print(f"fake agent on http://{args.host}:{args.port}/agent, run log {run_log}", flush=True)
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 

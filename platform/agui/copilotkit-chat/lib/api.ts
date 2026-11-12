@@ -17,17 +17,17 @@ function serverError(what: string, error: unknown): Response {
   return fail(500, "the session store failed; see the chat-ui logs");
 }
 
-class TooLarge extends Error {}
+export class TooLarge extends Error {}
 
 // A JSON `Content-Type`, ignoring any `; charset=...` suffix.
-function isJsonContentType(request: Request): boolean {
+export function isJsonContentType(request: Request): boolean {
   return (request.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase() === "application/json";
 }
 
-// Reads at most MAX_BODY bytes; a larger body is refused without reading the rest.
-async function readBody(request: Request): Promise<string> {
+// Reads at most `max` bytes (MAX_BODY by default); a larger body is refused without reading the rest.
+export async function readBody(request: Request, max = MAX_BODY): Promise<string> {
   const declared = Number(request.headers.get("content-length") ?? 0);
-  if (declared > MAX_BODY) throw new TooLarge();
+  if (declared > max) throw new TooLarge();
   if (!request.body) return "";
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -36,7 +36,7 @@ async function readBody(request: Request): Promise<string> {
     const { done, value } = await reader.read();
     if (done) break;
     size += value.byteLength;
-    if (size > MAX_BODY) {
+    if (size > max) {
       await reader.cancel();
       throw new TooLarge();
     }

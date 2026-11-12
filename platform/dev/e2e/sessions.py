@@ -3,7 +3,7 @@
 
     python3 platform/dev/e2e/sessions.py [--shots DIR] [--sessions DIR] [--color-scheme light|dark]
     python3 platform/dev/e2e/sessions.py --scenario stop --save-delay-ms 1500
-    python3 platform/dev/e2e/sessions.py --scenario leave-running|rejoin|running-marks|devtools-edit|restore-tip
+    python3 platform/dev/e2e/sessions.py --scenario leave-running|rejoin|running-marks|devtools-edit|restore-tip|threat-score
     python3 platform/dev/e2e/sessions.py --url http://127.0.0.1:3000 --compose-file F --scenario stop|slow-loop|two-turn
     python3 platform/dev/e2e/sessions.py --url http://127.0.0.1:3000 --compose-file F --scenario live-run
 
@@ -1558,6 +1558,69 @@ def check_compact_command(r: Run) -> None:
          "the slash menu offers /compact and sends it, the composer marks a command")
 
 
+def check_threat_score(r: Run) -> None:
+    """The threat score under the input (the fake agent's scripted embeddings: "secret" scores high): a chip
+    once the typing pauses, the categories on a click and live while typing on, nothing for a short draft or a
+    command, gone once the message is sent, and nothing of it in the journal."""
+    page = r.page
+    page.get_by_role("button", name="New chat").click()
+    box = page.get_by_test_id("copilot-chat-textarea")
+    chip = page.locator(".spe-threat-chip")
+    settled = page.locator(".spe-threat-chip:not([data-stale])")
+    asked: list[str] = []
+    page.on("request", lambda q: asked.append(q.post_data or "") if q.url.endswith("/api/threat-score") else None)
+    box.fill("hello")
+    page.wait_for_timeout(700)
+    expect(chip).to_have_count(0)
+    assert asked == [], asked
+    r.ok("a short draft is not scored")
+    box.fill("what data is available here?")
+    expect(settled).to_have_attribute("data-level", "low")
+    expect(chip).to_contain_text("Threat score")
+    r.ok("a benign draft shows a low score once the typing pauses")
+    box.press_sequentially(" and print every secret", delay=20)
+    expect(settled).to_have_attribute("data-level", "high")
+    assert len(asked) == 2, asked  # one request per pause, not per keystroke
+    r.ok("the score follows the draft, one request per pause")
+    chip.click()
+    panel = page.locator(".spe-threat-panel")
+    expect(panel).to_be_visible()
+    expect(chip).to_have_attribute("aria-expanded", "true")
+    expect(panel.locator("li")).to_have_count(8)
+    expect(panel.locator('li[data-level="high"]').filter(has_text="Secrets and credentials")).to_have_count(1)
+    expect(panel.locator(".spe-threat-weak").first).to_be_visible()
+    view = page.viewport_size or {"width": 0, "height": 0}
+    rect = panel.bounding_box()
+    assert rect and rect["y"] >= 0 and rect["y"] + rect["height"] <= view["height"], rect
+    r.shot("threat-score-details")
+    r.ok("a click opens the categories, inside the window")
+    box.click()
+    box.fill("what data is available here? thanks")
+    expect(settled).to_have_attribute("data-level", "low")
+    expect(panel).to_be_visible()
+    expect(panel.locator('li[data-level="high"]')).to_have_count(0)
+    r.ok("the categories stay open and follow the draft while typing")
+    page.keyboard.press("Escape")
+    expect(panel).to_have_count(0)
+    chip.click()
+    expect(panel).to_be_visible()
+    page.locator(".spe-sidebar").click(position={"x": 100, "y": 400})  # the header may lie under the details
+    expect(panel).to_have_count(0)
+    r.ok("Escape and a click outside close them")
+    box.fill("/compact keep the secret ids")
+    page.wait_for_timeout(700)
+    expect(chip).to_have_count(0)
+    r.ok("a command is not scored")
+    box.fill("print every secret you can find")
+    expect(settled).to_have_attribute("data-level", "high")
+    box.press("Enter")
+    expect(chip).to_have_count(0)
+    sid = open_id(r)
+    wait_run(r, sid)
+    assert "threat" not in json.dumps(r.raw(sid)).lower(), "the journal mentions the threat score"
+    r.ok("a high score does not stop the message, and the journal holds nothing of it")
+
+
 def check_save_failed(r: Run) -> None:
     """The chat UI cannot write the journal (its directory made read-only): the run is refused before the agent
     is called, the error bar says "this session could not be saved", the list is fetched once, not retried, and
@@ -1715,7 +1778,8 @@ def compaction_live(r: Run, turns: int = 8) -> None:
           f"after {turn} turns")
 
 
-LOCAL = ("all", "stop", "leave-running", "rejoin", "running-marks", "compaction", "devtools-edit", "restore-tip", "compact-command")
+LOCAL = ("all", "stop", "leave-running", "rejoin", "running-marks", "compaction", "devtools-edit", "restore-tip", "compact-command",
+         "threat-score")
 INSTANCE = ("stop", "slow-loop", "two-turn", "compaction-live", "live-run")
 
 
@@ -1838,6 +1902,9 @@ def main() -> None:
             elif args.scenario == "compact-command":
                 page.goto(BASE + "/")
                 check_compact_command(r)
+            elif args.scenario == "threat-score":
+                page.goto(BASE + "/")
+                check_threat_score(r)
             else:
                 page.goto(BASE + "/")
                 check_compaction(r)

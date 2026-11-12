@@ -1,5 +1,6 @@
 // The page's calls to the session API (lib/api.ts answers them). Browser-safe: types only from sessions.ts.
 import type { MetaPatch, SessionMeta, SessionView } from "./sessions.ts";
+import type { ThreatScore } from "./threat.ts";
 
 export type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -89,4 +90,17 @@ export function tagSuggestions(known: string[], current: string[], input: string
   const typed = input.trim().toLowerCase();
   if (!typed) return [];
   return known.filter((t) => !current.includes(t) && t.toLowerCase().includes(typed)).slice(0, max);
+}
+
+// The draft's threat score (lib/threat.ts answers); null when the instance has it switched off.
+export async function fetchThreatScore(text: string, signal?: AbortSignal, f?: Fetch): Promise<ThreatScore | null> {
+  const response = await call(f)("/api/threat-score", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+    signal,
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) throw await failure(response, "Scoring the draft");
+  return (await response.json()) as ThreatScore;
 }

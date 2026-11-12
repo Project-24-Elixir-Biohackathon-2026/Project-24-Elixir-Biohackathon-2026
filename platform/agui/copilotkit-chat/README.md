@@ -25,6 +25,7 @@ JavaScript API, which TypeScript 7 does not have.
 |---|---|
 | `app/api/copilotkit/[[...slug]]/route.ts` | `CopilotRuntime` with one agent `spe`, an `HttpAgent` for `AGENT_URL` with the bearer key, and the session recorder attached |
 | `app/api/sessions/` | The session API: list, read, patch metadata, delete, title |
+| `app/api/threat-score/`, `app/threat-indicator.tsx` | The threat score of the draft: the route asks the agent, the indicator sits under the input |
 | `app/page.tsx`, `app/sidebar.tsx`, `app/tool-calls.tsx` | The chat, the sidebar, the tool-call cards |
 | `lib/` | Sessions on the server, plain TypeScript that `node --test` runs: `recorder.ts` (the run hook), `journal.ts`, `rebuild.ts`, `anchor.ts`, `sessions.ts`, `api.ts`, `export.ts`, `shutdown.ts` |
 | `scripts/export-journals.ts` | The archive's exporter: journals to one Open WebUI-shaped bundle |
@@ -79,6 +80,15 @@ hidden, deleted. Nothing rewrites a journal.
   run that could not be saved, in a session that is not open shows in the error bar
   as `“<title>”: <message>` ("New chat" for no title; `lib/run-error.ts`); a failed
   refresh's error goes once a list loads again.
+- **Threat score**: while typing, the draft is scored 350 ms after the last keystroke
+  (`POST /api/threat-score`, which asks the agent's `/threat-score`; `lib/threat.ts`,
+  `lib/threat-watch.ts`) and a chip under the input shows the 0-100 score and its level. A click
+  opens the score per category, which keeps updating while typing; Escape or a click outside
+  closes it. Advisory: nothing is blocked or journaled. Drafts under 8 characters and commands
+  are not scored; an answer for an older draft is dropped; when the agent has the score off
+  (404) the chip never appears and nothing more is asked. The route wants a JSON
+  `Content-Type`, like the title route. The draft leaves the browser before it is sent: it goes
+  to the agent and from there to the LLM endpoint's embedding model.
 - **Shutdown**: on SIGTERM new runs are refused, runs in progress are cancelled and
   journaled, the queue drains within 25 s, the process exits. The image sets
   `NEXT_MANUAL_SIG_HANDLE=true` so Next.js does not exit first. The final archive

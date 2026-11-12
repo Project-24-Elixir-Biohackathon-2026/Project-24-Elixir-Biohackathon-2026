@@ -5,6 +5,7 @@
 import { CopilotChatInput } from "@copilotkit/react-core/v2";
 import type { ComponentProps } from "react";
 import { offersCompact, parseCommand } from "../lib/command.ts";
+import { DraftTextProvider, ThreatDisclaimer } from "./threat-indicator";
 
 // "compact" first, so the menu's filter (label starts with what follows the `/`) puts it on top.
 const COMPACT_LABEL = "compact · summarise the conversation so far (/compact <focus> to say what to keep)";
@@ -21,12 +22,16 @@ function render(props: ComponentProps<typeof CopilotChatInput>) {
     : [];
   const command = parseCommand(value) !== null;
   return (
-    <CopilotChatInput
-      {...props}
-      toolsMenu={toolsMenu}
-      addMenuButton={NO_ADD_MENU}
-      data-command={command ? "compact" : undefined}
-    />
+    // The draft reaches the threat indicator (in the disclaimer slot, under the composer) through context.
+    <DraftTextProvider value={value}>
+      <CopilotChatInput
+        {...props}
+        toolsMenu={toolsMenu}
+        addMenuButton={NO_ADD_MENU}
+        disclaimer={ThreatDisclaimer}
+        data-command={command ? "compact" : undefined}
+      />
+    </DraftTextProvider>
   );
 }
 

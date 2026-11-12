@@ -82,6 +82,14 @@ class TitleCfg(_Strict):
     max_tokens: PositiveInt = 1024
 
 
+class ThreatScoreCfg(_Strict):
+    # Off unless configured: it needs an embeddings endpoint that serves the model threat_model.json was trained on.
+    enabled: bool = False
+    embedding_model: str = "vllm/BAAI/bge-m3"
+    # Unset: model.base_url. The LLM key is sent to it either way.
+    base_url: str | None = None
+
+
 class Config(_Strict):
     model: ModelCfg
     prompt: PromptCfg
@@ -89,7 +97,16 @@ class Config(_Strict):
     limits: LimitsCfg = LimitsCfg()
     compaction: CompactionCfg = CompactionCfg()
     title: TitleCfg = TitleCfg()
+    threat_score: ThreatScoreCfg = ThreatScoreCfg()
     run_log: Path = Path("/var/lib/spe-agent/runs.jsonl")
+
+    @model_validator(mode="after")
+    def _check_threat_score(self) -> "Config":
+        if self.threat_score.enabled and self.model.provider != "openai_compatible":
+            # The LLM key is sent to the embeddings endpoint: only where that key belongs to it.
+            raise ValueError("threat_score.enabled needs model.provider openai_compatible (its endpoint and key "
+                             "serve threat_score.embedding_model)")
+        return self
 
 
 class Secrets(BaseModel):

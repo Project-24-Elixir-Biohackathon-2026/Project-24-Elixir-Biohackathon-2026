@@ -18,6 +18,7 @@ SPE_AGENT_CONFIG=agent.yaml SPE_AGENT_API_KEY=… SANDBOX_API_KEY=… OPENAI_API
 |---|---|
 | `POST /agent` | AG-UI `RunAgentInput` in, server-sent events out. `Authorization: Bearer <SPE_AGENT_API_KEY>`, checked before readiness: 401 without it, 422 on a malformed body, 503 until the sandbox's tools are discovered |
 | `POST /title` | A 2-4 word title for a session's first message (or first exchange); same key; 404 when `title.enabled` is false |
+| `POST /threat-score` | `{"text": ...}` in; out a 0-100 `score`, its `level` (low, elevated, high) and one score per category, from `threat_model.json` on the text's embedding (`../threat-score/README.md`). Same key; needs no sandbox; 404 when `threat_score.enabled` is false, 502 when the embedding cannot be had. Not written to the run log |
 | `GET /healthz` | No auth, no model call. 200 `{"status": "ok", "tools": N}` once ready, else 503 with a reason |
 
 **Readiness.** A background task discovers the sandbox (`/openapi.json`,
@@ -54,6 +55,9 @@ only: `SPE_AGENT_API_KEY`, `SANDBOX_API_KEY`, and `OPENAI_API_KEY` or
   At most one compaction per request and three per run. `/compact [focus]` from the
   chat compacts on demand.
 - `title.enabled` (true), `title.max_tokens` (1024).
+- `threat_score.enabled` (false; `openai_compatible` only), `threat_score.embedding_model`
+  (`vllm/BAAI/bge-m3`), `threat_score.base_url` (unset: `model.base_url`). The LLM key is sent
+  to that endpoint's `/embeddings`.
 - `run_log` (`/var/lib/spe-agent/runs.jsonl`).
 
 ## Runs
