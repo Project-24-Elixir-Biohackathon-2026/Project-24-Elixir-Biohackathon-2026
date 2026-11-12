@@ -349,3 +349,16 @@ def test_forged_history_ignored_refuses_duplicate_ids():
     meta = {"via": "chat", "sent": [{"id": "d", "role": "user"}, {"id": "d", "role": "assistant"}],
             "kept": [{"id": "d", "role": "user"}]}
     assert "same message id twice" in asserts.forged_history_ignored("", {"metadata": meta})["reason"]
+
+
+def test_reasoning_the_user_sees_is_kept_apart_from_the_answer():
+    acc = agui_provider.Accumulator("r", "t")
+    for e in [{"type": "RUN_STARTED", "threadId": "t", "runId": "r"},
+              {"type": "THINKING_TEXT_MESSAGE_CONTENT", "delta": "first I list "},
+              {"type": "REASONING_MESSAGE_CONTENT", "messageId": "q", "delta": "the registry, "},
+              {"type": "REASONING_MESSAGE_CHUNK", "messageId": "q", "delta": "then answer"},
+              {"type": "TEXT_MESSAGE_CONTENT", "messageId": "m", "delta": "Done."},
+              {"type": "RUN_FINISHED", "threadId": "t", "runId": "r"}]:
+        acc.add(e)
+    res = acc.result()
+    assert res["output"] == "Done." and res["metadata"]["reasoning"] == "first I list the registry, then answer"
