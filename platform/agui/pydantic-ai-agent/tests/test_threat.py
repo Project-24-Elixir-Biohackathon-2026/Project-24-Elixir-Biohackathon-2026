@@ -33,12 +33,24 @@ class FakeEmbeddings:
         return httpx.Response(200, json=self.body if self.body is not None else {"data": [{"index": 0, "embedding": self.embedding}]})
 
 
-def scoring(tmp_path, embeddings: FakeEmbeddings, **over):
+def scoring(tmp_path, embeddings: FakeEmbeddings, secrets=SECRETS, **over):
     # Not test_app.build: its `model` argument is the scripted LLM, and here `model` is the configuration's.
     sandbox = SandboxClient(SANDBOX, SANDBOX_KEY, http=httpx.AsyncClient(transport=httpx.MockTransport(FakeSandbox())))
-    return create_app(config(tmp_path, **{**ON, **over}), SECRETS, model_override=one_tool_then_answer(),
+    return create_app(config(tmp_path, **{**ON, **over}), secrets, model_override=one_tool_then_answer(),
                       sandbox_client=sandbox, threat_http=httpx.AsyncClient(transport=httpx.MockTransport(embeddings)),
                       retry_delay=0.01, probe_interval=0.05)
+
+
+async def test_another_endpoint_gets_its_own_key(tmp_path):
+    fake = FakeEmbeddings()
+    secrets = SECRETS.model_copy(update={"threat_api_key": "sk-embeddings-only"})
+    over = {"threat_score": {"enabled": True, "base_url": "https://embed.example/v1/"}}
+    async with running(scoring(tmp_path, fake, secrets=secrets, **over)) as c:
+        r = await c.post("/threat-score", json={"text": "hello there"}, headers=AUTH)
+    assert r.status_code == 200
+    sent = fake.requests[0]
+    assert str(sent.url) == "https://embed.example/v1/embeddings"
+    assert sent.headers["authorization"] == "Bearer sk-embeddings-only"
 
 
 async def test_no_auth_is_401(tmp_path):

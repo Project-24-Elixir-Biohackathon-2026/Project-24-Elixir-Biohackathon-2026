@@ -63,7 +63,7 @@
   ansible.builtin.assert:
     that: >-
       (agui_agent_yaml.content | b64decode | from_yaml).threat_score.enabled
-      == ((spe_agent_threat_score | bool) and spe_agent_model_provider == 'openai_compatible')
+      == ((spe_agent_threat_score | bool) and (spe_agent_model_provider == 'openai_compatible' or (spe_agent_threat_base_url | default('', true) | trim | length) > 0))
     success_msg: "threat_score: {{ (agui_agent_yaml.content | b64decode | from_yaml).threat_score | to_json }}"
     fail_msg: "agent.yaml's threat_score.enabled does not match spe_agent_threat_score and the provider"
 
@@ -138,6 +138,11 @@
       - >-
         {{ (agui_agent_env.content | b64decode).splitlines()
            | select('match', '^(ANTHROPIC|OPENAI)_API_KEY=') | first | regex_replace('^[A-Z_]+=', '') }}
+      # The embeddings key of the threat score, or the LLM key again when there is none.
+      - >-
+        {{ (agui_agent_env.content | b64decode).splitlines()
+           | select('match', '^(SPE_THREAT|ANTHROPIC|OPENAI)_API_KEY=') | sort(reverse=true) | first
+           | regex_replace('^[A-Z_]+=', '') }}
   no_log: true
 
 - name: Sandbox container
@@ -198,20 +203,22 @@
     fail_msg: "an unauthenticated request from the sandbox to the agent did not get 401"
     quiet: true
 
-- name: Keys no session file may hold (agent, LLM and sandbox keys)
+- name: Keys no session file may hold (agent, LLM and sandbox keys, and the threat score's when it has its own)
   ansible.builtin.set_fact:
     agui_session_keys: >-
       {{ ([spe_agent_api_key]
           + ((agui_agent_env.content | b64decode).splitlines()
-             | select('match', '^(ANTHROPIC|OPENAI|SANDBOX)_API_KEY=')
+             | select('match', '^(ANTHROPIC|OPENAI|SANDBOX|SPE_THREAT)_API_KEY=')
              | map('regex_replace', '^[A-Z_]+=', '') | list))
          | map('trim') | reject('equalto', '') | unique | list }}
   no_log: true
 
-- name: All three keys found (grep with no pattern would match nothing and pass)
+- name: All keys found (grep with no pattern would match nothing and pass)
   ansible.builtin.assert:
-    that: agui_session_keys | length == 3
-    fail_msg: "expected the agent, LLM and sandbox keys, found {{ agui_session_keys | length }}; see agent.env"
+    that: >-
+      agui_session_keys | length == 3 + ((spe_agent_threat_key | default('', true) | trim | length > 0
+                                         and (spe_agent_threat_key | trim) != (spe_agent_llm_key | trim)) | int)
+    fail_msg: "expected the agent, LLM and sandbox keys (and the threat score's own), found {{ agui_session_keys | length }}; see agent.env"
     quiet: true
 
 - name: Session files scanned for the keys

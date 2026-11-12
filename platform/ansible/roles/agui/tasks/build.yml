@@ -22,6 +22,17 @@
       anthropic; spe_agent_model must be one of spe_agent_allowed_models when that list is
       set; tool surface shell; positive limits (spe_agent_total_tokens_limit may be null) and output cap; two distinct free ports.
 
+- name: Threat score endpoint and key come together
+  ansible.builtin.assert:
+    that: >-
+      ((spe_agent_threat_base_url | default('', true) | trim | length) > 0)
+      == ((spe_agent_threat_key | default('', true) | trim | length) > 0)
+    fail_msg: >-
+      The threat score's embeddings endpoint and its key must both be set or both be empty
+      (SPE_THREAT_BASE_URL and SPE_THREAT_API_KEY, or BI_DENBI_LLM_BASE_URL and
+      BI_DENBI_LLM_API_KEY, on the controller): otherwise the LLM key would be sent to another endpoint.
+    quiet: true
+
 - name: LLM key present
   ansible.builtin.assert:
     that: (spe_agent_llm_key | default('', true) | trim | length) > 0

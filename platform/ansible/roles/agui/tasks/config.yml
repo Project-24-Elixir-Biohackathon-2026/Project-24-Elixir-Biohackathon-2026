@@ -31,8 +31,10 @@
       title: >-
         {{ {'enabled': spe_agent_title_generation | bool} }}
       threat_score: >-
-        {{ {'enabled': (spe_agent_threat_score | bool) and spe_agent_model_provider == 'openai_compatible',
-            'embedding_model': spe_agent_threat_embedding_model} }}
+        {{ {'enabled': (spe_agent_threat_score | bool) and (spe_agent_model_provider == 'openai_compatible' or (spe_agent_threat_base_url | default('', true) | trim | length) > 0),
+            'embedding_model': spe_agent_threat_embedding_model}
+           | combine({'base_url': spe_agent_threat_base_url | trim}
+                     if (spe_agent_threat_base_url | default('', true) | trim | length) > 0 else {}) }}
 
 - name: agent.yaml
   ansible.builtin.copy:

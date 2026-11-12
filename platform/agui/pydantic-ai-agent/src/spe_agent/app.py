@@ -323,7 +323,7 @@ def create_app(config: Config, secrets: Secrets, model_override: Model | None = 
     service = Service(config, secrets, model, client, owns_client=sandbox_client is None,
                       retry_delay=retry_delay, max_retry_delay=max_retry_delay, probe_interval=probe_interval)
     threat = config.threat_score
-    scorer = ThreatScorer(threat, threat.base_url or config.model.base_url, secrets.llm_api_key,
+    scorer = ThreatScorer(threat, threat.base_url or config.model.base_url, secrets.threat_api_key or secrets.llm_api_key,
                           http=threat_http) if threat.enabled else None
 
     @asynccontextmanager
