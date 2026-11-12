@@ -188,11 +188,11 @@
   changed_when: false
   no_log: true   # the output holds the sandbox's own key (a known, documented gap)
 
-- name: The sandbox's environment has neither the agent key nor the LLM key
+- name: The sandbox's environment has none of the agent, LLM and threat-score keys
   ansible.builtin.assert:
     that:
       - "'PATH=' in agui_probe.stdout"
-      - agui_forbidden_keys | map('trim') | reject('equalto', '') | list | length == 2
+      - agui_forbidden_keys | map('trim') | reject('equalto', '') | list | length == 3
       - agui_forbidden_keys | select('in', agui_probe.stdout) | list | length == 0
     fail_msg: "key boundary broken (or the probe produced no environment); see agui_probe.py"
     quiet: true
