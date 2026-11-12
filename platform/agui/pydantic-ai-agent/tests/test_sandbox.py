@@ -188,6 +188,22 @@ async def test_http_error_is_a_result():
     out = await client_for(rec).call(OPS["get_process_status"], {"process_id": "p9"})
     assert json.loads(out) == {"error": "HTTP error 404: no such process"}
 
+async def test_tool_output_redacts_common_secret_patterns():
+    raw = (
+        "FATAL: DB_PASSWORD=SECRET-123\n"
+        "api_token='AKIA-TESTTOKEN'\n"
+        "Authorization: Bearer abc123"
+    )
+    rec = Recorder(lambda r: httpx.Response(200, text=raw))
+
+    out = await client_for(rec).call(OPS["list_processes"], {})
+
+    assert "SECRET-123" not in out
+    assert "AKIA-TESTTOKEN" not in out
+    assert "abc123" not in out
+    assert "FATAL:" in out
+    assert "[redacted]" in out
+
 
 async def test_redirect_not_followed():
     rec = Recorder(lambda r: httpx.Response(302, headers={"location": "http://elsewhere/"}))
