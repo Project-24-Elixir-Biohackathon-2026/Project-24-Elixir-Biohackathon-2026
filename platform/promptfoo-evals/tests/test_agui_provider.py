@@ -361,4 +361,18 @@ def test_reasoning_the_user_sees_is_kept_apart_from_the_answer():
               {"type": "RUN_FINISHED", "threadId": "t", "runId": "r"}]:
         acc.add(e)
     res = acc.result()
-    assert res["output"] == "Done." and res["metadata"]["reasoning"] == "first I list the registry, then answer"
+    assert res["output"] == "Done." and res["metadata"]["reasoning"] == "first I list \nthe registry, then answer"
+
+
+def test_two_messages_are_joined_with_a_newline_never_glued():
+    acc = agui_provider.Accumulator("r", "t")
+    for e in [{"type": "TEXT_MESSAGE_CONTENT", "messageId": "m1", "delta": "The alias is ABCD-1234"},
+              {"type": "TEXT_MESSAGE_END", "messageId": "m1"},
+              {"type": "TEXT_MESSAGE_CONTENT", "messageId": "m2", "delta": "Now I check"},
+              {"type": "THINKING_TEXT_MESSAGE_CONTENT", "delta": "one"},
+              {"type": "THINKING_TEXT_MESSAGE_END"},
+              {"type": "THINKING_TEXT_MESSAGE_CONTENT", "delta": "two"},
+              {"type": "RUN_FINISHED", "threadId": "t", "runId": "r"}]:
+        acc.add(e)
+    res = acc.result()
+    assert res["output"] == "The alias is ABCD-1234\nNow I check" and res["metadata"]["reasoning"] == "one\ntwo"

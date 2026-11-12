@@ -5,3 +5,5 @@ reports/
 __pycache__/
 .pytest_cache/
 *.env
+matrix/targets.yaml
+matrix/matrix.generated.yaml

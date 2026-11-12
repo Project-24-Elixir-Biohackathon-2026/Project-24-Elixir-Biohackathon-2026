@@ -15,6 +15,7 @@ Environment (on the controller, never in the config):
   SPE_AGENT_URL           default http://127.0.0.1:8100/agent (through the SSH tunnel)
   SPE_AGENT_API_KEY       the agent's bearer key, or
   SPE_AGENT_API_KEY_FILE  a file holding it (output/<instance>/agent_api_key)
+  (config.api_key_file, when set, takes precedence: one key per target in a multi-workspace run)
   SPE_CHAT_URL            via chat: default http://127.0.0.1:3000/api/copilotkit/agent/spe/run (the same tunnel)
 
 Returns {output: final assistant text, metadata: {tool_calls: [{id, name, args, result}],
@@ -95,6 +96,11 @@ class SSEParser:
 
 # The model's thinking, streamed between steps: the chat shows it and the archive keeps it.
 REASONING_EVENTS = ("THINKING_TEXT_MESSAGE_CONTENT", "REASONING_MESSAGE_CONTENT", "REASONING_MESSAGE_CHUNK")
+TEXT_EVENTS = ("TEXT_MESSAGE_CONTENT",)
+# A message's end. Two messages are joined with a newline, never glued: "...TOKEN" + "Now I" would
+# read as one word and hide the token from the checks.
+ENDS = {"TEXT_MESSAGE_END": "text", "THINKING_TEXT_MESSAGE_END": "reasoning", "REASONING_MESSAGE_END": "reasoning"}
+_ENDED = object()
 
 
 class Accumulator:
@@ -102,6 +108,7 @@ class Accumulator:
         self.ids = {"run_id": run_id, "thread_id": thread_id, "via": via}  # as sent; they match the agent's run log
         self.text: list[str] = []
         self.reasoning: list[str] = []
+        self._message: dict[str, object] = {"text": None, "reasoning": None}  # the id each stream is in
         self.calls: dict[str, dict] = {}
         self.terminal: dict | None = None
         self.count = 0
@@ -116,12 +123,21 @@ class Accumulator:
             self.calls[event["toolCallId"]]["args"] += event.get("delta", "")
         elif kind == "TOOL_CALL_RESULT" and event.get("toolCallId") in self.calls:
             self.calls[event["toolCallId"]]["result"] = event.get("content")
-        elif kind == "TEXT_MESSAGE_CONTENT":
-            self.text.append(event.get("delta", ""))
+        elif kind in TEXT_EVENTS:
+            self._append("text", self.text, event)
         elif kind in REASONING_EVENTS:
-            self.reasoning.append(event.get("delta") or "")
+            self._append("reasoning", self.reasoning, event)
+        elif kind in ENDS:
+            self._message[ENDS[kind]] = _ENDED
         elif kind in ("RUN_FINISHED", "RUN_ERROR") and self.terminal is None:
             self.terminal = event
+
+    def _append(self, stream: str, parts: list[str], event: dict) -> None:
+        message = event.get("messageId")
+        if parts and self._message[stream] != message:
+            parts.append("\n")
+        self._message[stream] = message
+        parts.append(event.get("delta") or "")
 
     def result(self) -> dict:
         metadata = {"tool_calls": list(self.calls.values()), "reasoning": "".join(self.reasoning),
@@ -135,7 +151,12 @@ class Accumulator:
         return out
 
 
-def _key() -> str:
+def _key(config: dict | None = None) -> str:
+    """The bearer key: `config.api_key_file` (one per target, for a multi-workspace run), else the environment."""
+    path = (config or {}).get("api_key_file") or ""
+    if path:
+        with open(path) as f:
+            return f.read().strip()
     key = os.environ.get("SPE_AGENT_API_KEY", "")
     path = os.environ.get("SPE_AGENT_API_KEY_FILE", "")
     if not key and path:
@@ -187,9 +208,9 @@ def call_api(prompt: str, options: dict | None = None, context: dict | None = No
         url = config.get("url") or os.environ.get("SPE_AGENT_URL", DEFAULT_URL)
         thread_id, run_id = f"eval-{uuid.uuid4()}", f"eval-{uuid.uuid4()}"
         try:
-            key = _key()
+            key = _key(config)
         except OSError as e:
-            return {"error": f"cannot read SPE_AGENT_API_KEY_FILE: {e.strerror}"}
+            return {"error": f"cannot read the agent key file: {e.strerror}"}
         if not key:
             return {"error": "set SPE_AGENT_API_KEY or SPE_AGENT_API_KEY_FILE"}
         headers["Authorization"] = f"Bearer {key}"
