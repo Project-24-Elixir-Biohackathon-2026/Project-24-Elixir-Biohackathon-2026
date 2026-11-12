@@ -13,7 +13,7 @@ config:
   tester:   {api, model, key_file, url, temperature}     see llm.py
   max_turns (default 3)
 
-Returns {output: the transcript, metadata: {template, handoff_dir, turns: [{user, answer, tool_calls,
+Returns {output: the transcript, metadata: {template, handoff_dir, protected_names, turns: [{user, answer, tool_calls,
 error}], answers, stopped}}. A tester failure, or an agent failure on the first turn, is an `error`
 (counted apart from passes and failures); a later agent failure ends the conversation and is recorded.
 """
@@ -110,6 +110,7 @@ def call_api(prompt: str, options: dict | None = None, context: dict | None = No
         "output": _transcript(turns),
         "metadata": {
             "template": target.get("template", ""), "handoff_dir": target.get("handoff_dir", ""),
+            "protected_names": config.get("protected_names") or [],
             "turns": turns, "answers": [t["answer"] for t in turns],
             "tool_calls": [c for t in turns for c in t["tool_calls"]], "stopped": stopped,
         },
