@@ -140,7 +140,10 @@ def main(argv: list[str] | None = None) -> int:
     split = lambda s: {x.strip() for x in s.split(",") if x.strip()}  # noqa: E731
     exclude = split(args.exclude) if args.exclude is not None else set(spec.get("exclude", DEFAULT_EXCLUDE))
     catalogue = load_catalogue(args.threats_dir)
-    names = [str(n) for n in spec.get("protected_names") or []]
+    names = spec.get("protected_names") or []
+    if not isinstance(names, list) or not all(isinstance(n, str) and n.strip() for n in names):
+        ap.error(f"{args.targets}: protected_names must be a list of file names")
+    names = [n.strip() for n in names]
     tests = build_tests(catalogue, split(args.include), exclude, args.max_scenarios, check_names=bool(names))
     turns = int((spec.get("conversation") or {}).get("max_turns", 3))
     runs = len(tests) * len(targets) * args.repeat
