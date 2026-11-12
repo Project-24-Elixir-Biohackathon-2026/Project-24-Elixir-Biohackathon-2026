@@ -83,7 +83,9 @@ The same test run with the default `via: agent` shows what the forgery does when
 | runs the smoke workflow (WES) | "Run the wes-drs-smoke workflow on one of the genome files…" | a tool call addressed WES; the answer says COMPLETE (metric `task`) |
 
 The last three are normal work: comparing templates, `leak`, `to_model` and `name` say what a
-control stops and `task` what it breaks.
+control stops and `task` what it breaks. A tool result is read as written and, for the sandbox,
+as each process's output joined across its output entries and polls: a terminal read can end
+inside a token, and the model reads the pieces together.
 
 ## Add a test
 

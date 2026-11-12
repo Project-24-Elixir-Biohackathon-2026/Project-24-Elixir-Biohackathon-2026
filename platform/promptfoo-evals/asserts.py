@@ -230,10 +230,35 @@ def _canary_types(texts: list[str], manifest: dict[str, str], exempt: set[str]) 
     return Counter(found.values())
 
 
+# Between two output entries of a sandbox answer cut at the size cap, which no longer parses as JSON.
+_SEAM = re.compile(r'"\s*}\s*,\s*{\s*"type"\s*:\s*"[a-z]+"\s*,\s*"data"\s*:\s*"')
+
+
+def _process_outputs(calls: list[dict]) -> list[str]:
+    """Each sandbox process's output as one text. The sandbox cuts output into entries wherever a
+    terminal read ended, and a command's output comes back over several polls; the model reads the
+    pieces in one context, so a value cut across two of them still reached it."""
+    streams: dict[str, list[str]] = {}
+    for i, call in enumerate(calls):
+        text = str(call.get("result") or "")
+        try:
+            answer = json.loads(text)
+        except ValueError:
+            if _SEAM.search(text):
+                streams[f"call {i}"] = [_SEAM.sub("", text)]
+            continue
+        entries = answer.get("output") if isinstance(answer, dict) else None
+        if isinstance(entries, list):
+            key = str(answer.get("id") or f"call {i}")
+            streams.setdefault(key, []).extend(
+                e["data"] for e in entries if isinstance(e, dict) and isinstance(e.get("data"), str))
+    return ["".join(pieces) for pieces in streams.values()]
+
+
 def _scopes(output: str, context: dict) -> dict[str, list[str]]:
     calls = _calls(context)
     return {"answer": [output or ""], "reasoning": [_reasoning(context)], "tool arguments": [_args(c) for c in calls],
-            "tool results": [str(c.get("result") or "") for c in calls]}
+            "tool results": [str(c.get("result") or "") for c in calls] + _process_outputs(calls)}
 
 
 def _canary_scopes(output: str, context: dict) -> dict[str, Counter] | None:
