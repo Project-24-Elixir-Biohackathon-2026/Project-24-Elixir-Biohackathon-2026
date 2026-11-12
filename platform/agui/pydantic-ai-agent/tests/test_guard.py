@@ -106,6 +106,46 @@ class Chunked(FakeSandbox):
         return super().__call__(request)
 
 
+def stepping(*steps, seen: list | None = None):
+    """Makes each tool call of `steps` (operation, arguments) in a turn of its own, then answers."""
+
+    async def stream(messages, info):
+        if seen is not None:
+            seen.append(messages)
+        done = sum(isinstance(p, ToolReturnPart) for m in messages for p in m.parts)
+        if done < len(steps):
+            name, args = steps[done]
+            yield {0: DeltaToolCall(name=name, json_args=json.dumps(args), tool_call_id=f"call-{done}")}
+        else:
+            yield "done"
+
+    return FunctionModel(stream_function=stream)
+
+
+class Process(FakeSandbox):
+    """One background process p1 as open-terminal 0.16.1 answers for it: its output entries are numbered,
+    each request first lets the next batch arrive, and the answer holds the entries from `offset` (the last
+    `tail` of them) and `next_offset`, the count so far."""
+
+    def __init__(self, *batches: list[str]):
+        super().__init__()
+        self.batches = list(batches)
+        self.entries: list[str] = []
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        if request.url.path not in ("/execute", "/execute/p1/status"):
+            return super().__call__(request)
+        self.calls.append(request)
+        self.entries += self.batches.pop(0) if self.batches else []
+        out = self.entries[int(request.url.params.get("offset", 0)):]
+        if "tail" in request.url.params:
+            out = out[-int(request.url.params["tail"]):]
+        return httpx.Response(200, json={
+            "id": "p1", "command": "make report", "status": "running" if self.batches else "done",
+            "exit_code": None if self.batches else 0, "output": [{"type": "stdout", "data": d} for d in out],
+            "next_offset": len(self.entries), "truncated": False})
+
+
 def to_model(seen) -> str:
     return json.dumps([str(p.content) for m in seen for p in m[-1].parts if isinstance(p, ToolReturnPart)])
 
@@ -236,6 +276,96 @@ async def test_observe_mode_records_a_canary_cut_across_entries_and_changes_noth
     assert "HPCANARY-" in to_model(seen) and "Withheld" not in to_model(seen)
     (rec,) = log_records(tmp_path)
     assert {"where": "tool_result", "kind": "canary", "type": "honeypot-test", "action": "observed"} in rec["guard"]
+
+
+# --- polls of one process ----------------------------------------------------------------------
+
+POLL = "get_process_status"
+WITHHELD_POLL = {"where": "tool_result", "kind": "canary", "type": "honeypot-test", "action": "withheld"}
+
+
+def process_guard(tmp_path, mode="enforce") -> guard_module.Guard:
+    from spe_agent.config import GuardCfg
+
+    return guard_module.Guard(GuardCfg(mode=mode, matcher=matcher_path(), manifest=manifest(tmp_path),
+                                       sensitive_names=[NAME]))
+
+
+def polled(start: int, *pieces: str) -> str:
+    """open-terminal's answer to a poll: one entry per piece, numbered from `start`, and `next_offset`."""
+    return json.dumps({"id": "p1", "command": "make report", "status": "running", "exit_code": None,
+                       "output": [{"type": "stdout", "data": p} for p in pieces],
+                       "next_offset": start + len(pieces), "truncated": False})
+
+
+async def test_a_canary_cut_across_two_polls_of_a_process_is_withheld(tmp_path):
+    seen: list = []
+    sandbox = Process(["building\n", "ref HPCANARY-"], ["TEST23 linked\n"])
+    model = stepping(("run_command", {"command": "make report", "wait": 5}),
+                     ("get_process_status", {"process_id": "p1", "offset": 2}), seen=seen)
+    evs, _ = await run(tmp_path, model, sandbox=sandbox)
+    sent = to_model(seen)
+    assert "HPCANARY-" in sent and "TEST23" not in sent and "Withheld by the SPE guard" in sent
+    assert "TEST23" not in everything_sent(evs)
+    assert "TEST23" not in (tmp_path / "log" / "runs.jsonl").read_text()
+    (rec,) = log_records(tmp_path)
+    assert WITHHELD_POLL in rec["guard"]
+
+
+@pytest.mark.parametrize("pieces", [("ref HPC", "ANARY-", "TEST23 linked"), ("open lin", "kage.", "csv now")])
+def test_a_value_cut_over_three_polls_is_withheld(tmp_path, pieces):
+    poll = process_guard(tmp_path).run("t1").screen
+    for i, piece in enumerate(pieces[:-1]):
+        assert poll(polled(i, piece), POLL) == polled(i, piece)
+    assert poll(polled(len(pieces) - 1, pieces[-1]), POLL) == guard_module.WITHHELD_RESULT
+
+
+def test_a_poll_that_goes_back_to_an_earlier_boundary_is_joined_there(tmp_path):
+    """Each answer is a suffix of the output, but `offset` can skip ahead and come back."""
+    poll = process_guard(tmp_path).run("t1").screen
+    poll(polled(0, "ref HPCANARY-"), POLL)
+    assert poll(polled(3, "later\n"), POLL) == polled(3, "later\n")
+    assert poll(polled(1, "TEST23 linked\n", "x\n", "later\n"), POLL) == guard_module.WITHHELD_RESULT
+
+
+def test_the_earlier_half_arriving_last_is_withheld(tmp_path):
+    """Two polls in one model turn run in parallel, and their answers can come back in either order."""
+    poll = process_guard(tmp_path).run("t1").screen
+    assert poll(polled(1, "TEST23 linked"), POLL) == polled(1, "TEST23 linked")
+    assert poll(polled(0, "ref HPCANARY-"), POLL) == guard_module.WITHHELD_RESULT
+
+
+def test_a_shorter_re_read_does_not_shorten_what_is_joined(tmp_path):
+    poll = process_guard(tmp_path).run("t1").screen
+    poll(polled(0, "ref H", "PCANARY-"), POLL)
+    poll(polled(1, "PCANARY-"), POLL)      # tail=1: the same boundary, less of what precedes it
+    assert poll(polled(2, "TEST23 linked"), POLL) == guard_module.WITHHELD_RESULT
+
+
+def test_a_poll_in_a_later_run_of_the_chat_is_joined_and_stays_withheld_when_retried(tmp_path):
+    guard = process_guard(tmp_path)
+    guard.run("t1").screen(polled(0, "ref HPCANARY-"), POLL)
+    later = guard.run("t1")
+    for _ in range(2):
+        assert later.screen(polled(1, "TEST23 linked"), POLL) == guard_module.WITHHELD_RESULT
+    assert later.entries == [WITHHELD_POLL]
+
+
+def test_observe_mode_records_a_canary_cut_across_polls_and_changes_nothing(tmp_path):
+    run = process_guard(tmp_path, "observe").run("t1")
+    for answer in (polled(0, "ref HPCANARY-"), polled(1, "TEST23 linked")):
+        assert run.screen(answer, POLL) == answer
+    assert run.entries == [{**WITHHELD_POLL, "action": "observed"}]
+
+
+def test_polls_with_nothing_cut_between_them_pass_unchanged(tmp_path):
+    """What is joined is what was passed on: a canary redacted in one poll is not found again in the next."""
+    run = process_guard(tmp_path).run("t1")
+    first = run.screen(polled(0, f"ref {TOKEN}"), POLL)
+    assert TOKEN not in first and "[REDACTED:honeypot-test]" in first
+    for answer in (polled(1, "-2 HPCANARY"), polled(2, "-done\n")):
+        assert run.screen(answer, POLL) == answer
+    assert run.entries == [{**WITHHELD_POLL, "action": "redacted"}]
 
 
 # Compact, ASCII-only JSON as Flask or json.dumps(ensure_ascii=True) writes it: an escaped astral character

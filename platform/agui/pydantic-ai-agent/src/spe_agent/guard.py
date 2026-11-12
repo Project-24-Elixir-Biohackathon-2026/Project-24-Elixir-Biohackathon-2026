@@ -7,8 +7,12 @@ It acts at three points of a run:
     file names are redacted (`RunGuard.screen`). The model runs off the VM, so this is also
     what keeps them away from the model endpoint. The sandbox cuts a command's output into
     entries wherever a terminal read ended; a value cut across two entries is found in the joined
-    output and withholds the answer. A value cut across two polls of the same process is not
-    joined (a known gap);
+    output and withholds the answer. Polls of one process are joined too: the sandbox numbers the
+    entries, and the guard keeps what it passed on either side of each boundary a poll began or
+    ended at, per chat (`_Polls`), so a poll that completes a value with output passed on before
+    is withheld, whatever the order and in later runs too. Not joined: a poll cut at the size cap
+    (where it starts is unknown), and boundaries pushed out of the bounded store or lost when the
+    agent restarts;
   - on every AG-UI event the client receives: canaries are redacted (`RunGuard.feed`). Text that
     arrives in deltas is held back until the next whitespace, so a token split across deltas is
     checked whole and never leaves in part. Protected file names in the agent's own text are
@@ -34,6 +38,7 @@ import logging
 import re
 import sys
 import threading
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import ModuleType
@@ -81,6 +86,18 @@ _SIMPLE_ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "b": "\b", "f": "\f"}
 _WHITESPACE = re.compile(r"\s")
 # Between two output entries of a sandbox answer, for a body cut at the size cap that no longer parses.
 _SEAM = re.compile(r'"\s*}\s*,\s*{\s*"type"\s*:\s*"[a-z]+"\s*,\s*"data"\s*:\s*"')
+# The sandbox operations whose answers hold a process's numbered output: the process `id`, the
+# entries read and `next_offset`, the count so far.
+_POLLED = frozenset({"run_command", "get_process_status"})
+# How much of a process's output either side of a poll boundary is kept and joined. No protected
+# value holds whitespace (a candidate is a run of token characters or a URL; names hold none), so
+# only the text since the last whitespace can join, but such a run can be long. The manifest holds
+# hashes, not lengths: the longest value the seeding plants is 65 characters (the placeholder
+# callback URL) and a file name is at most 255 bytes.
+_REACH = 256
+# Poll boundaries kept over all chats (two sides of at most _REACH characters each); the least
+# recently written go first.
+_BOUNDARIES = 4096
 
 
 def _unescape(text: str) -> str:
@@ -100,6 +117,82 @@ def _joined_output(text: str) -> str | None:
     if not isinstance(entries, list) or len(entries) < 2:
         return None
     return "".join(e["data"] for e in entries if isinstance(e, dict) and isinstance(e.get("data"), str))
+
+
+@dataclass(frozen=True)
+class _Read:
+    """A poll's output entries [start, end) of one process, joined."""
+    process: str
+    start: int
+    end: int
+    text: str
+
+
+def _read(text: str) -> _Read | None:
+    """The process output a poll answer holds. Whatever `offset` and `tail` asked for, the sandbox
+    answers with a suffix of the output so far, so it ends at `next_offset`. None for a body cut at
+    the size cap: it no longer parses and where it starts is unknown."""
+    try:
+        answer = json.loads(text)
+    except ValueError:
+        return None
+    if not isinstance(answer, dict):
+        return None
+    process, end, entries = answer.get("id"), answer.get("next_offset"), answer.get("output")
+    if not isinstance(process, str) or type(end) is not int or not isinstance(entries, list) or len(entries) > end:
+        return None
+    data = "".join(e["data"] for e in entries if isinstance(e, dict) and isinstance(e.get("data"), str))
+    return _Read(process, end - len(entries), end, data)
+
+
+def _lead(text: str) -> str:
+    head = text[:_REACH]
+    m = _WHITESPACE.search(head)
+    return head[:m.start()] if m else head
+
+
+def _trail(text: str) -> str:
+    tail = text[-_REACH:]
+    return tail[_last_whitespace_end(tail):]
+
+
+class _Polls:
+    """What was passed on of each process's output either side of the entry boundaries its polls began
+    or ended at, per chat, so a value cut across two polls is checked whole: in whichever order they
+    arrive, in any run of the chat."""
+
+    def __init__(self):
+        self._sides: OrderedDict[tuple, list[str]] = OrderedDict()
+
+    def _around(self, thread_id: str | None, read: _Read) -> tuple[str, str]:
+        before = self._sides.get((thread_id, read.process, read.start), ("", ""))[0]
+        after = self._sides.get((thread_id, read.process, read.end), ("", ""))[1]
+        return before, after
+
+    def windows(self, thread_id: str | None, read: _Read) -> list[str]:
+        """The texts a value that `read` completes with output passed on before would show whole in."""
+        before, after = self._around(thread_id, read)
+        text = read.text
+        if not _WHITESPACE.search(text) and len(text) <= _REACH:   # a value may run through it
+            return [before + text + after] if before or after else []
+        return [w for side, w in ((before, before + _lead(text)), (after, _trail(text) + after)) if side]
+
+    def passed(self, thread_id: str | None, read: _Read) -> None:
+        """Keeps `read`'s edges, joined with what was passed on next to them, since a value may run
+        through a short piece into a third poll."""
+        before, after = self._around(thread_id, read)
+        self._keep((thread_id, read.process, read.end), 0, _trail(before + read.text))
+        self._keep((thread_id, read.process, read.start), 1, _lead(read.text + after))
+
+    def _keep(self, key: tuple, side: int, text: str) -> None:
+        """A side is never shortened: a poll that starts later or ends sooner holds less of the same output."""
+        sides = self._sides.pop(key, ["", ""])
+        if len(text) > len(sides[side]):
+            sides[side] = text
+        if any(sides):
+            self._sides[key] = sides
+            while len(self._sides) > _BOUNDARIES:
+                self._sides.popitem(last=False)
 
 
 def views(text: str) -> list[str]:
@@ -145,6 +238,7 @@ class Guard:
         self._hashes: dict[str, str] = {}
         self._mtime: float | None = None
         self._lock = threading.Lock()
+        self.polls = _Polls()   # here, not on a run: a chat polls a process in its later runs too
 
     @property
     def enforcing(self) -> bool:
@@ -250,16 +344,23 @@ class RunGuard:
         self.note("tool_args", hits, "denied" if self.enforcing else "observed")
         return DENIED if self.enforcing else None
 
-    def screen(self, text: str) -> str:
-        """A sandbox answer as the model may see it: canaries and protected names redacted. A value cut
-        across two output entries cannot be replaced in place: that answer is withheld."""
+    def screen(self, text: str, op: str | None = None) -> str:
+        """The answer to sandbox operation `op` as the model may see it: canaries and protected names
+        redacted. A value cut across two output entries, or completed by a poll with output of the same
+        process passed on before, cannot be replaced in place: that answer is withheld."""
         kinds = ("canary", "name")
         out, hits, clean = self.guard.redact(text, kinds)
         joined = _joined_output(out)
         cut = [h for h in self.guard.find(joined).values() if h[0] in kinds] if joined else []
+        read = _read(out) if op in _POLLED else None
+        if read is not None:
+            cut += [h for w in self.guard.polls.windows(self.thread_id, read)
+                    for h in self.guard.find(w).values() if h[0] in kinds]
+        withheld = not clean or bool(cut)
+        if read is not None and not withheld:     # as enforcing would pass it on, in observe mode too
+            self.guard.polls.passed(self.thread_id, read)
         if not hits and not cut:
             return text
-        withheld = not clean or bool(cut)
         self._act("tool_result", hits + cut, kinds, withheld=withheld)
         if not self.enforcing:
             return text

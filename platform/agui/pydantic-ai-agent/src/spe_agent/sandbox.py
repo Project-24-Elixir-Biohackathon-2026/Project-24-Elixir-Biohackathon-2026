@@ -5,6 +5,7 @@ import asyncio
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from typing import Literal
 from urllib.parse import quote
 
@@ -254,7 +255,7 @@ def build_tools(client: SandboxClient, ops: list[Operation], max_output_bytes: i
             refusal = guard.deny(args) if guard is not None else None
             if refusal is not None:
                 return refusal
-            screen = guard.screen if guard is not None else None
+            screen = partial(guard.screen, op=op.name) if guard is not None else None
             return truncate(await client.call(op, args, session_id=session, screen=screen), max_output_bytes)
         description = op.description
         if op.name == "run_command" and cwd:
