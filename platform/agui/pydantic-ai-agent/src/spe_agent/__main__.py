@@ -12,9 +12,13 @@ from .app import create_app
 from .config import ConfigError, load_config, load_secrets
 
 
-def main() -> int:
+def _configure_logging() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)  # one line per sandbox request and probe otherwise
+
+
+def main() -> int:
+    _configure_logging()
     path = Path(os.environ.get("SPE_AGENT_CONFIG", "/etc/spe-agent/agent.yaml"))
     try:
         config = load_config(path)
@@ -35,7 +39,9 @@ def main() -> int:
 
 
 def app_factory():
-    """The app for uvicorn's reloader: configuration and keys as in main(), errors are fatal."""
+    """The app for uvicorn's reloader: configuration, keys and logging as in main(), errors are fatal.
+    The reloader serves from a new process that never runs main()."""
+    _configure_logging()
     path = Path(os.environ.get("SPE_AGENT_CONFIG", "/etc/spe-agent/agent.yaml"))
     try:
         config = load_config(path)
