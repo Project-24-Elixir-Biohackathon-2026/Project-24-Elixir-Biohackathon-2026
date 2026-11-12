@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from dataclasses import dataclass
 from typing import Literal
 from urllib.parse import quote
@@ -12,6 +13,24 @@ from pydantic_ai import Tool
 
 MAX_RESPONSE_BYTES = 1024 * 1024
 REQUEST_TIMEOUT = 30.0
+
+_SECRET_ASSIGNMENT_RE = re.compile(
+    r"(?i)\b([A-Za-z0-9_.-]*(?:password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|client[_-]?secret))"
+    r"(\s*[:=]\s*)(?:\"[^\"\r\n]*\"|'[^'\r\n]*'|[^\s,;]+)"
+)
+_AUTHORIZATION_RE = re.compile(
+    r"(?im)(\bauthorization\b\s*[:=]\s*)(?:Bearer\s+)?[^\s,;]+"
+)
+
+
+def redact_sensitive_data(text: str) -> str:
+    """Mask common credential-like values in text returned by the sandbox."""
+    text = _AUTHORIZATION_RE.sub(r"\1[redacted]", text)
+
+    def redact_assignment(match: re.Match) -> str:
+        return f"{match.group(1)}{match.group(2)}[redacted]"
+
+    return _SECRET_ASSIGNMENT_RE.sub(redact_assignment, text)
 
 
 class SandboxUnavailable(RuntimeError):
@@ -171,9 +190,12 @@ class SandboxClient:
                     total += len(chunk)
                     data.extend(chunk[:max(0, MAX_RESPONSE_BYTES - len(data))])
                 text = bytes(data).decode("utf-8", errors="replace")
+                text = redact_sensitive_data(text)
+                    
                 # Never echo the sandbox credential from an error or tool response.
                 if self._key:
                     text = text.replace(self._key, "[redacted]")
+                    
                 return response.status_code, _ResponseText(text, total)
 
     async def _discover(self, path):
