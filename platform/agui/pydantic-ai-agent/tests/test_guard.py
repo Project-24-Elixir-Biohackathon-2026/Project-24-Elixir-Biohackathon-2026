@@ -291,9 +291,9 @@ def process_guard(tmp_path, mode="enforce") -> guard_module.Guard:
                                        sensitive_names=[NAME]))
 
 
-def polled(start: int, *pieces: str) -> str:
+def polled(start: int, *pieces: str, process: str = "p1") -> str:
     """open-terminal's answer to a poll: one entry per piece, numbered from `start`, and `next_offset`."""
-    return json.dumps({"id": "p1", "command": "make report", "status": "running", "exit_code": None,
+    return json.dumps({"id": process, "command": "make report", "status": "running", "exit_code": None,
                        "output": [{"type": "stdout", "data": p} for p in pieces],
                        "next_offset": start + len(pieces), "truncated": False})
 
@@ -366,6 +366,17 @@ def test_polls_with_nothing_cut_between_them_pass_unchanged(tmp_path):
     for answer in (polled(1, "-2 HPCANARY"), polled(2, "-done\n")):
         assert run.screen(answer, POLL) == answer
     assert run.entries == [{**WITHHELD_POLL, "action": "redacted"}]
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason="a known gap (guard.py, TM-007): separate commands are separate outputs")
+def test_a_value_read_in_pieces_through_separate_commands_is_withheld(tmp_path):
+    """Two commands each print part of one value, as `head -c` and `tail -c` of one file would: two
+    processes, two answers, each clean on its own, and nothing that says they belong together."""
+    run = process_guard(tmp_path).run("t1")
+    answers = [run.screen(polled(0, "HPCANARY-", process="p1"), "run_command"),
+               run.screen(polled(0, "TEST23", process="p2"), "run_command")]
+    assert guard_module.WITHHELD_RESULT in answers
 
 
 # Compact, ASCII-only JSON as Flask or json.dumps(ensure_ascii=True) writes it: an escaped astral character

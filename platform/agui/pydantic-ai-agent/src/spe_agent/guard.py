@@ -12,7 +12,9 @@ It acts at three points of a run:
     ended at, per chat (`_Polls`), so a poll that completes a value with output passed on before
     is withheld, whatever the order and in later runs too. Not joined: a poll cut at the size cap
     (where it starts is unknown), and boundaries pushed out of the bounded store or lost when the
-    agent restarts;
+    agent restarts. A value read in pieces through separate commands (`head -c`, `cut`, `dd`, line
+    ranges of `read_file`, two files) cannot be joined at all: the pieces are separate outputs and
+    no string rule tells which belong together (a known gap, threat TM-007);
   - on every AG-UI event the client receives: canaries are redacted (`RunGuard.feed`). Text that
     arrives in deltas is held back until the next whitespace, so a token split across deltas is
     checked whole and never leaves in part. Protected file names in the agent's own text are
