@@ -61,6 +61,9 @@
   --button-off-bg: var(--gray-100);
   --button-off-text: var(--gray-400);
 
+  --threat-low: var(--gray-500);
+  --threat-elevated: #b26a00;
+  --threat-high: #c2453d;
   --danger: #c2453d;
   --danger-soft-bg: #fdf3f2;
   --danger-soft-border: #f5d5d2;
@@ -134,6 +137,9 @@
     --button-off-bg: var(--gray-800);
     --button-off-text: var(--gray-600);
 
+    --threat-low: var(--gray-500);
+    --threat-elevated: #e0a84f;
+    --threat-high: #e58a83;
     --danger: #e58a83;
     --danger-soft-bg: rgba(229, 138, 131, 0.1);
     --danger-soft-border: rgba(229, 138, 131, 0.22);
@@ -191,6 +197,9 @@
   --button-off-bg: var(--gray-800);
   --button-off-text: var(--gray-600);
 
+  --threat-low: var(--gray-500);
+  --threat-elevated: #e0a84f;
+  --threat-high: #e58a83;
   --danger: #e58a83;
   --danger-soft-bg: rgba(229, 138, 131, 0.1);
   --danger-soft-border: rgba(229, 138, 131, 0.22);
@@ -515,6 +524,47 @@ body {
   left: 22px; padding: 0 6px; background: var(--bg); color: var(--text-muted); font-size: 11px; line-height: 16px;
   pointer-events: none; }
 [data-command] [data-testid="copilot-chat-textarea"] { font-family: var(--font-mono); font-size: 14px; }
+
+/* ---------- Threat score (app/threat-indicator.tsx) ---------- */
+
+/* A row under the composer, in CopilotKit's input container (pointer-events: none, position: relative):
+   the row takes clicks itself, and the details are placed against that container, above the composer. */
+.spe-threat { display: flex; justify-content: center; align-items: center; min-height: 24px; margin-top: 8px;
+  padding: 0 16px; pointer-events: auto; font-size: 12px; line-height: 16px; color: var(--text-muted); }
+.spe-threat [data-level="low"] { --threat: var(--threat-low); }
+.spe-threat [data-level="elevated"] { --threat: var(--threat-elevated); }
+.spe-threat [data-level="high"] { --threat: var(--threat-high); }
+.spe-threat-chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px;
+  border: 1px solid var(--chip-border); border-radius: 12px; background: var(--chip-bg); color: var(--chip-text);
+  font: inherit; cursor: pointer; transition: opacity 150ms; }
+.spe-threat-chip:hover { background: var(--chip-hover); }
+.spe-threat-chip:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.spe-threat-chip[data-stale] { opacity: 0.55; }
+.spe-threat-chip strong { color: var(--text); font-variant-numeric: tabular-nums; }
+.spe-threat-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--threat); }
+.spe-threat-level { color: var(--threat); font-weight: 600; }
+.spe-threat-level[data-level="low"] { font-weight: 400; }
+.spe-threat-wait { color: var(--text-placeholder); }
+.spe-threat-panel { position: absolute; bottom: calc(100% + 8px); left: 50%; z-index: 50; width: min(380px, calc(100% - 32px));
+  box-sizing: border-box; padding: 14px 16px; transform: translateX(-50%); border: 1px solid var(--menu-border);
+  border-radius: var(--radius-menu); background: var(--menu-bg); box-shadow: var(--shadow-menu); color: var(--text);
+  font-size: 13px; line-height: 18px; text-align: left;
+  overflow-y: auto; }
+.spe-threat-panel[data-below] { bottom: auto; top: calc(100% + 4px); }
+.spe-threat-head { display: flex; align-items: baseline; gap: 8px; font-size: 14px; }
+.spe-threat-panel p { margin: 4px 0 10px; color: var(--text-muted); font-size: 12px; line-height: 16px; }
+.spe-threat-panel ul { display: grid; grid-template-columns: 1fr 72px 28px; gap: 6px 10px; align-items: center;
+  margin: 0; padding: 0; list-style: none; }
+.spe-threat-panel li { display: contents; }
+.spe-threat-weak { display: block; color: var(--text-placeholder); font-size: 11px; line-height: 14px; }
+.spe-threat-bar { display: block; height: 6px; border-radius: 3px; background: var(--hover-strong); overflow: hidden; }
+.spe-threat-bar > span { display: block; height: 100%; border-radius: 3px; background: var(--threat);
+  transition: width 200ms; }
+.spe-threat-number { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.spe-threat-panel li[data-level="low"] .spe-threat-name { color: var(--text-secondary); }
+.spe-threat-panel .spe-threat-foot { margin: 12px 0 0; }
+/* The notice under it keeps less air above, now that the row sits between it and the composer. */
+.spe-threat + div { padding-top: 6px; }
 
 /* ---------- Tool cards ---------- */
 

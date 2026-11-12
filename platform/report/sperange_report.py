@@ -52,6 +52,7 @@ import datetime
 import hashlib
 import html
 import json
+import math
 import os
 import re
 import sys
@@ -260,7 +261,7 @@ def public(d: dict) -> dict:
     return {k: v for k, v in d.items() if k not in HIDDEN_RUN_KEYS}
 
 
-def split_turns(md: str) -> tuple[dict, list[dict]]:
+def split_turns(md: str, render: bool = True) -> tuple[dict, list[dict]]:
     """A chat as write_run.py renders it: a title, '- Key: value' facts, then one '## role · time'
     heading per turn (Open WebUI adds the model in parentheses; AG-UI has a few other '##' sections,
     'Compacted', 'Other branches', which become turns of their own kind). A '##' line the model wrote
@@ -275,7 +276,8 @@ def split_turns(md: str) -> tuple[dict, list[dict]]:
         if current is not None:
             text = "\n".join(body).strip("\n")
             current["markdown"] = text
-            current["html"] = render_markdown(text)
+            if render:
+                current["html"] = render_markdown(text)
             turns.append(current)
 
     for line in md.split("\n"):
@@ -301,9 +303,100 @@ def split_turns(md: str) -> tuple[dict, list[dict]]:
     return facts, turns
 
 
+# --- the threat score -----------------------------------------------------------
+# How much a user turn resembles known adversarial prompts: the same model file and arithmetic as
+# the agent's POST /threat-score (platform/agui/pydantic-ai-agent/src/spe_agent/threat.py), here for
+# the archived chats. The turn is embedded by an OpenAI-compatible endpoint (THREAT_EMBEDDINGS_URL,
+# THREAT_EMBEDDINGS_KEY) and scored by threat_model.json next to this file: logistic regressions on
+# the embedding, one general head and one per category. Without the endpoint, or when it fails, the
+# chats are served without scores. Scores are kept in memory only.
+
+THREAT_EMBED_CHARS = 6000   # what is embedded, as in training
+THREAT_BATCH = 32
+THREAT_CACHE = 4096
+
+
+def threat_display(p: float, elevated: float, high: float) -> int:
+    """A probability on the head's own scale: 50 is its `elevated` threshold (5% of benign in-domain
+    prompts score above it), 75 its `high` threshold (1%)."""
+    if p < elevated:
+        value = 50 * p / elevated if elevated > 0 else 50.0
+    elif p < high:
+        value = 50 + 25 * (p - elevated) / (high - elevated)
+    else:
+        value = 75 + 25 * (p - high) / (1 - high) if high < 1 else 100.0
+    return max(0, min(100, round(value)))
+
+
+def threat_level(score: int) -> str:
+    return "high" if score >= 75 else "elevated" if score >= 50 else "low"
+
+
+class ThreatScorer:
+    def __init__(self, model_path: str, base_url: str, api_key: str, embedding_model: str, post=None, timeout: float = 15.0):
+        with open(model_path, encoding="utf-8") as f:
+            data = json.load(f)
+        self.heads = data["heads"]
+        self.dimensions = data["dimensions"]
+        self.info = {"version": data["version"], "trained": data["trained"], "embedding_model": data["embedding_model"]}
+        if not self.heads or self.heads[0]["id"] != "general" or any(len(h["weights"]) != self.dimensions for h in self.heads):
+            raise ValueError(f"{model_path}: not a threat model")
+        self.url = base_url.rstrip("/") + "/embeddings"
+        self.api_key = api_key
+        self.embedding_model = embedding_model
+        self.timeout = timeout
+        self._post = post or self._http_post
+        self._cache: dict[str, dict] = {}
+        self._lock = threading.Lock()
+
+    def _http_post(self, body: dict) -> dict:
+        req = urllib.request.Request(self.url, data=json.dumps(body).encode(), method="POST", headers={
+            "Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=self.timeout) as r:
+            return json.load(r)
+
+    def score(self, embedding: list[float]) -> dict:
+        if len(embedding) != self.dimensions:
+            raise ValueError(f"the embedding has {len(embedding)} dimensions, the model needs {self.dimensions}")
+        norm = math.sqrt(sum(v * v for v in embedding)) or 1.0
+        x = [v / norm for v in embedding]
+        scored = []
+        for head in self.heads:
+            z = sum(w * v for w, v in zip(head["weights"], x)) + head["bias"]
+            p = 1 / (1 + math.exp(-z)) if z > -700 else 0.0
+            value = threat_display(p, head["elevated"], head["high"])
+            scored.append({"id": head["id"], "label": head["label"], "score": value, "level": threat_level(value),
+                           "examples": head["examples"], "auc": head["auc"]})
+        general, categories = scored[0], sorted(scored[1:], key=lambda c: -c["score"])
+        return {"score": general["score"], "level": general["level"], "categories": categories}
+
+    def scores(self, texts: list[str]) -> list[dict | None]:
+        """One score per text, None where there is none (an empty text, or the endpoint failed)."""
+        keys = [t.strip()[:THREAT_EMBED_CHARS] for t in texts]
+        with self._lock:
+            todo = [k for k in dict.fromkeys(keys) if k and k not in self._cache]
+        try:
+            for i in range(0, len(todo), THREAT_BATCH):
+                batch = todo[i:i + THREAT_BATCH]
+                data = self._post({"model": self.embedding_model, "input": batch})["data"]
+                rows = sorted(data, key=lambda e: e["index"])
+                if len(rows) != len(batch):
+                    raise ValueError(f"{len(rows)} embeddings for {len(batch)} texts")
+                fresh = {k: self.score(e["embedding"]) for k, e in zip(batch, rows)}
+                with self._lock:
+                    while len(self._cache) + len(fresh) > THREAT_CACHE:
+                        self._cache.pop(next(iter(self._cache)))
+                    self._cache.update(fresh)
+        except Exception as e:  # the chats are served without scores; the reason only, never the key
+            print(f"sperange-report: threat score unavailable: {type(e).__name__}: {str(e)[:200]}", flush=True)
+        with self._lock:
+            return [self._cache.get(k) for k in keys]
+
+
 class Runs:
-    def __init__(self, root: str):
+    def __init__(self, root: str, threat: ThreatScorer | None = None):
         self.root = root
+        self.threat = threat
         self.lock = threading.Lock()
         self._listing: tuple[float, list[dict]] | None = None
 
@@ -431,22 +524,46 @@ class Runs:
     def detail(self, rid: str) -> dict:
         d = self.summary(rid)
         d["parameters"] = self.params(rid)
-        d["chat_list"] = self.chats(rid)
+        d["chat_list"] = self.with_threat(rid, self.chats(rid))
         report = self.report(rid)
         if report is not None:
             d["report"] = {**report, "html": render_markdown(report["markdown"])}
         d["files"] = self.files(rid)
         return d
 
+    def with_threat(self, rid: str, chats: list[dict]) -> list[dict]:
+        """Each chat with the highest threat score among its user turns (one request for the whole run)."""
+        if self.threat is None:
+            return chats
+        texts: list[str] = []
+        spans = []
+        for c in chats:
+            md = _read_text(self.chat_path(rid, c["frontend"], c["id"], ".md")) or ""
+            mine = [t["markdown"] for t in split_turns(md, render=False)[1] if t["role"] == "user"]
+            spans.append((len(texts), len(texts) + len(mine)))
+            texts += mine
+        scores = self.threat.scores(texts)
+        out = []
+        for c, (a, b) in zip(chats, spans):
+            top = max((s for s in scores[a:b] if s), key=lambda s: s["score"], default=None)
+            out.append({**c, "threat": {"score": top["score"], "level": top["level"]}} if top else c)
+        return out
+
     def chat(self, rid: str, frontend: str, chat: str) -> dict | None:
         md = _read_text(self.chat_path(rid, frontend, chat, ".md"))
         if md is None:
             return None
         facts, turns = split_turns(md)
+        if self.threat is not None:
+            users = [t for t in turns if t["role"] == "user"]
+            for t, score in zip(users, self.threat.scores([t["markdown"] for t in users])):
+                if score:
+                    t["threat"] = score
         meta = next((c for c in self.chats(rid) if c["frontend"] == frontend and c["id"] == chat), None)
         title = md.split("\n", 1)[0].lstrip("# ").strip() if md.startswith("# ") else chat
         return {"run": rid, "frontend": frontend, "id": chat, "title": (meta or {}).get("title") or title,
                 "meta": meta, "facts": facts, "turns": turns,
+                "threat_model": self.threat.info if self.threat is not None else None,
                 "links": {"markdown": f"{API}runs/{rid}/chats/{frontend}/{chat}.md",
                           "json": f"{API}runs/{rid}/chats/{frontend}/{chat}.json"}}
 
@@ -863,10 +980,11 @@ class Handler(BaseHTTPRequestHandler):
         self.send(HTTPStatus.OK, data, STATIC_TYPES[ext], {"Cache-Control": "public, max-age=300"})
 
 
-def make_server(listen: str, reports_dir: str, coder_url: str, runs_dir: str | None = None) -> ThreadingHTTPServer:
+def make_server(listen: str, reports_dir: str, coder_url: str, runs_dir: str | None = None,
+                threat: ThreatScorer | None = None) -> ThreadingHTTPServer:
     host, _, port = listen.rpartition(":")
     handler = type("BoundHandler", (Handler,), {"store": Store(reports_dir), "coder": Coder(coder_url),
-                                                "runs": Runs(runs_dir or os.path.join(os.path.dirname(reports_dir.rstrip("/")), "runs"))})
+                                                "runs": Runs(runs_dir or os.path.join(os.path.dirname(reports_dir.rstrip("/")), "runs"), threat)})
     srv = ThreadingHTTPServer((host or "127.0.0.1", int(port)), handler)
     srv.daemon_threads = True
     return srv
@@ -881,8 +999,18 @@ def main():
         sys.exit(f"sperange-report: REPORTS_DIR {reports_dir} is not a directory")
     if not os.path.isdir(runs_dir):  # the runs browser is then empty, the reports still work
         print(f"sperange-report: RUNS_DIR {runs_dir} is not a directory; no archived runs to show", flush=True)
-    srv = make_server(listen, reports_dir, coder_url, runs_dir)
-    print(f"sperange-report: {reports_dir} and {runs_dir} on {listen}, Coder at {coder_url}", flush=True)
+    threat = None
+    embeddings_url, embeddings_key = os.environ.get("THREAT_EMBEDDINGS_URL"), os.environ.get("THREAT_EMBEDDINGS_KEY")
+    if embeddings_url and embeddings_key:
+        model_path = os.environ.get("THREAT_MODEL", os.path.join(os.path.dirname(os.path.abspath(__file__)), "threat_model.json"))
+        try:
+            threat = ThreatScorer(model_path, embeddings_url, embeddings_key,
+                                  os.environ.get("THREAT_EMBEDDING_MODEL", "vllm/BAAI/bge-m3"))
+        except (OSError, ValueError, KeyError) as e:  # the runs browser works without it
+            print(f"sperange-report: no threat scores: {type(e).__name__}: {e}", flush=True)
+    srv = make_server(listen, reports_dir, coder_url, runs_dir, threat)
+    print(f"sperange-report: {reports_dir} and {runs_dir} on {listen}, Coder at {coder_url}, "
+          f"threat scores {'on' if threat else 'off'}", flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

@@ -80,3 +80,29 @@ main.runs td time, main.runs td .when { white-space: nowrap; color: var(--muted)
   .turn.assistant { margin-right: 0; }
 }
 .list-card h2 .chip { margin-left: 0.6rem; vertical-align: middle; }
+
+/* The threat score of a user turn: a chip in the turn's head (a button: it opens the categories) and in the
+   run's chat table (the chat's highest). */
+.threat { display: inline-flex; align-items: center; gap: 0.3rem; font: inherit; font-size: 0.78rem; white-space: nowrap; color: var(--muted);
+  background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 0.05rem 0.6rem; }
+button.threat { cursor: pointer; margin-left: auto; }
+.threat.compact { padding: 0.05rem 0.5rem; }
+button.threat:hover { border-color: var(--muted); }
+.threat strong { color: var(--fg); font-variant-numeric: tabular-nums; }
+.threat .dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--threat, var(--muted)); }
+.threat .level { color: var(--threat, var(--muted)); }
+.threat.elevated, .threat-details li.elevated { --threat: var(--threat-elevated); }
+.threat.high, .threat-details li.high { --threat: var(--error); }
+.threat.elevated .level, .threat.high .level { font-weight: 700; }
+:root { --threat-elevated: #b26a00; }
+@media (prefers-color-scheme: dark) { :root { --threat-elevated: #e0a84f; } }
+.threat-details { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 0.7rem 0.9rem; margin: 0 0 0.7rem;
+  font-size: 0.85rem; max-width: 30rem; margin-left: auto; }
+.threat-details p { margin: 0 0 0.6rem; color: var(--muted); font-size: 0.8rem; }
+.threat-details p:last-child { margin: 0.6rem 0 0; }
+.threat-details ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 5rem 2rem; gap: 0.35rem 0.7rem; align-items: center; }
+.threat-details li { display: contents; }
+.threat-details small { display: block; color: var(--muted); font-size: 0.72rem; }
+.threat-details .meter { display: block; height: 0.4rem; border-radius: 0.2rem; background: var(--line); overflow: hidden; }
+.threat-details .meter > span { display: block; height: 100%; border-radius: 0.2rem; background: var(--threat, var(--muted)); }
+.threat-details .n { text-align: right; font-variant-numeric: tabular-nums; }

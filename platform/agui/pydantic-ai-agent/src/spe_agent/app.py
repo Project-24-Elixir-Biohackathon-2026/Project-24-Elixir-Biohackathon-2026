@@ -16,6 +16,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 from ag_ui.core import BaseEvent, EventType, RunAgentInput, RunErrorEvent, RunFinishedEvent, RunStartedEvent
+import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
@@ -33,6 +34,7 @@ from .compaction import (
 from .config import Config, ConfigError, Secrets
 from .runlog import RunLog, RunRecorder, redact
 from .sandbox import SandboxClient, SandboxUnavailable, build_tools, operations_from_openapi, select_operations
+from .threat import ThreatScoreRequest, ThreatScorer, ThreatUnavailable
 from .title import TitleRequest, generate_title
 
 log = logging.getLogger("spe_agent")
@@ -313,12 +315,16 @@ class Service:
 
 
 def create_app(config: Config, secrets: Secrets, model_override: Model | None = None,
-               sandbox_client: SandboxClient | None = None, *, retry_delay: float = 1.0,
+               sandbox_client: SandboxClient | None = None, *, threat_http: httpx.AsyncClient | None = None,
+               retry_delay: float = 1.0,
                max_retry_delay: float = 30.0, probe_interval: float = 30.0) -> FastAPI:
     model = model_override or build_model(config.model, secrets.llm_api_key)
     client = sandbox_client or SandboxClient(config.tools.sandbox_url, secrets.sandbox_api_key)
     service = Service(config, secrets, model, client, owns_client=sandbox_client is None,
                       retry_delay=retry_delay, max_retry_delay=max_retry_delay, probe_interval=probe_interval)
+    threat = config.threat_score
+    scorer = ThreatScorer(threat, threat.base_url or config.model.base_url, secrets.llm_api_key,
+                          http=threat_http) if threat.enabled else None
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -327,6 +333,8 @@ def create_app(config: Config, secrets: Secrets, model_override: Model | None = 
             yield
         finally:
             await service.stop()
+            if scorer:
+                await scorer.aclose()
 
     app = FastAPI(title="spe-agent", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.service = service
@@ -372,5 +380,23 @@ def create_app(config: Config, secrets: Secrets, model_override: Model | None = 
             detail = service.sanitize(record["error"]) if record["error"] else "could not produce a title"
             return JSONResponse({"detail": detail}, status_code=422)
         return {"title": title}
+
+    @app.post("/threat-score")
+    async def threat_score_endpoint(request: Request):
+        if not service.authorized(request):
+            return JSONResponse({"detail": "unauthorized"}, status_code=401, headers={"WWW-Authenticate": "Bearer"})
+        if scorer is None:
+            return JSONResponse({"detail": "the threat score is disabled"}, status_code=404)
+        try:
+            body = ThreatScoreRequest.model_validate(await request.json())
+        except ValueError as e:
+            errors = e.errors(include_url=False, include_input=False, include_context=False) \
+                if isinstance(e, ValidationError) else str(e)
+            return JSONResponse({"detail": errors}, status_code=422)
+        try:
+            return await scorer.score(body.text)
+        except ThreatUnavailable as e:
+            log.warning("threat score: %s", e)
+            return JSONResponse({"detail": service.sanitize(str(e))}, status_code=502)
 
     return app

@@ -11,7 +11,8 @@ and `docs/specs/2026-11-10-runs-browser.md`.
 | `sperange_report.py` | The service (standard library plus `python3-markdown` and `python3-yaml`) |
 | `static/` | The pages' CSS and scripts, the runs browser (`runs.js`, `runs.css`) and the vendored EasyMDE editor |
 | `tests/` | `pytest` against a fake Coder API |
-| `../coder/deploy/sperange-report.service`, `report.env.example` | The systemd unit and its env file (`REPORTS_DIR`, `RUNS_DIR`, `CODER_URL`, `LISTEN`) |
+| `threat_model.json` | The threat-score classifier, a copy of the agent's (`../agui/threat-score/README.md`; a test keeps the two equal) |
+| `../coder/deploy/sperange-report.service`, `report.env.example` | The systemd unit and its env file (`REPORTS_DIR`, `RUNS_DIR`, `CODER_URL`, `LISTEN`, optionally `THREAT_EMBEDDINGS_URL` and `THREAT_EMBEDDINGS_KEY`) |
 
 ## Logging in
 
@@ -81,6 +82,17 @@ directory name (`<UTC time>_<instance>`, for example
 | `GET /reports/api/runs/<run>/agui/agent-runs.jsonl` | The agent's run log, `application/x-ndjson` |
 | `GET /reports/api/runs/<run>/agui/journals/<session id>.jsonl` | One AG-UI session journal as stored (the ids are in `files.journals`) |
 | `GET /reports/api/workspaces/<workspace id>` | `{"workspace_id", "live_report", "runs"}`: the workspace's live report (as in `api/reports`, or `null`) and its archived runs, each with `chat_list`. A run belongs to the workspace when its archived report names the workspace id; older archives without that are matched by instance name |
+
+**Threat scores.** With `THREAT_EMBEDDINGS_URL` (an OpenAI-compatible base URL) and
+`THREAT_EMBEDDINGS_KEY` set, every user turn of a chat carries `threat`: `score` (0 to 100), `level`
+(low, elevated, high) and `categories` (each `id`, `label`, `score`, `level`, `examples`, `auc`); the
+chat carries `threat_model`, and each entry of a run's `chat_list` the highest score of its user
+turns (`threat`: `score`, `level`). The runs browser shows them as chips; a click on a turn's chip
+opens the categories. `THREAT_EMBEDDING_MODEL` (default `vllm/BAAI/bge-m3`) and `THREAT_MODEL`
+(default `threat_model.json` next to the service) are optional. The texts are embedded on first
+view, 32 per request, and the scores kept in memory. Without the variables, or when the endpoint
+fails, the fields are absent. The scores are the classifier's, not a finding: it was trained on the
+archived chats up to its date, so those score higher than new ones will.
 
 Anything else under `/reports/api/` answers `404` with `{"error": "not found"}`.
 The run listing is cached for ten seconds.

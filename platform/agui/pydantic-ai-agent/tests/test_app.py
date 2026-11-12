@@ -93,11 +93,11 @@ def one_tool_then_answer(seen: list | None = None):
     return FunctionModel(stream_function=stream)
 
 
-def build(tmp_path, model=None, sandbox=None, **cfg_over):
+def build(tmp_path, model=None, sandbox=None, threat_http=None, **cfg_over):
     sandbox = sandbox or FakeSandbox()
     client = SandboxClient(SANDBOX, SANDBOX_KEY, http=httpx.AsyncClient(transport=httpx.MockTransport(sandbox)))
     app = create_app(config(tmp_path, **cfg_over), SECRETS, model_override=model or one_tool_then_answer(),
-                     sandbox_client=client, retry_delay=0.01, probe_interval=0.05)
+                     sandbox_client=client, threat_http=threat_http, retry_delay=0.01, probe_interval=0.05)
     return app, sandbox
 
 

@@ -152,6 +152,9 @@ de.NBI's model and null for others (set it, or only a provider's "too long" erro
 triggers it); `spe_agent_compaction_enabled`, `spe_agent_compaction_trigger_ratio`
 (0.8), `spe_agent_compaction_summary_max_tokens` (4096). `spe_agent_title_generation`
 (true) lets the agent title a session from its first question, as its first run starts.
+`spe_agent_threat_score` (true, `openai_compatible` only) shows a threat score under the chat
+input while typing; `spe_agent_threat_embedding_model` (`vllm/BAAI/bge-m3`) is the embedding
+model the endpoint must serve for it (`../agui/threat-score/README.md`).
 
 Checks, at the end of `create.yml` and in `verify.yml`, without a model call: health,
 the chat UI, 401 without or with a wrong key, the session API, the chat UI's

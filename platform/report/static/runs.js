@@ -192,14 +192,16 @@
       var mine = list.filter(function (c) { return c.frontend === f; });
       if (!mine.length) return;
       chats.appendChild(el("h2", { text: f === "agui" ? "AG-UI chat" : "Open WebUI" }));
+      var scored = mine.some(function (c) { return c.threat; });
       var body = el("tbody", {}, mine.map(function (c) {
         return el("tr", {}, [
           el("td", {}, [el("a", { href: "#/run/" + encodeURIComponent(r.id) + "/chat/" + f + "/" + encodeURIComponent(c.id), text: c.title })]),
           timeCell(c.created), el("td", { class: "num", text: String(c.messages) }),
+          scored ? el("td", {}, [c.threat ? threatChip(c.threat, "Highest threat score among the user turns") : null]) : null,
           el("td", {}, [chips(c.tags)])
         ]);
       }));
-      chats.appendChild(el("table", {}, [el("thead", {}, [el("tr", {}, ["Chat", "Created", "Messages", "Tags"].map(function (t) { return el("th", { text: t, scope: "col" }); }))]), body]));
+      chats.appendChild(el("table", {}, [el("thead", {}, [el("tr", {}, ["Chat", "Created", "Messages"].concat(scored ? ["Threat"] : [], ["Tags"]).map(function (t) { return el("th", { text: t, scope: "col" }); }))]), body]));
     });
     if (r.files && r.files.journals && r.files.journals.length) {
       chats.appendChild(el("h2", { text: "AG-UI session journals (raw)" }));
@@ -211,6 +213,43 @@
     }
     show(el("div", {}, [crumbs([el("span", { text: r.workspace || r.id })]), head, el("div", { class: "two" }, [report, chats])]));
     document.title = "Run " + (r.workspace || r.id);
+  }
+
+  // ---- the threat score of a user turn (the service scores it; absent when it has no embeddings endpoint)
+  // In a table: the dot and the number only; the level is in the title.
+  function threatChip(t, title) {
+    return el("span", { class: "threat compact " + t.level, title: title + ": " + t.score + " (" + t.level + ")" },
+      [el("span", { class: "dot" }), el("strong", { text: String(t.score) })]);
+  }
+  function threatToggle(t, details) {
+    var b = el("button", { type: "button", class: "threat " + t.level, "aria-expanded": "false", title: "Show the score per category" },
+      [el("span", { class: "dot" }), "Threat score ", el("strong", { text: String(t.score) }), " ", el("span", { class: "level", text: t.level })]);
+    b.addEventListener("click", function () {
+      details.hidden = !details.hidden;
+      b.setAttribute("aria-expanded", details.hidden ? "false" : "true");
+    });
+    return b;
+  }
+  function weakness(c) {
+    if (c.examples < 5) return "only " + c.examples + (c.examples === 1 ? " example" : " examples");
+    if (c.auc !== null && c.auc < 0.8) return "weak detector";
+    return null;
+  }
+  function threatDetails(t, model) {
+    var rows = (t.categories || []).map(function (c) {
+      var bar = el("span", { class: "meter" }, [el("span", {})]);
+      bar.firstChild.style.width = c.score + "%";
+      var weak = weakness(c);
+      return el("li", { class: c.level }, [el("span", { class: "name" }, [c.label, weak ? el("small", { text: weak }) : null]), bar,
+        el("span", { class: "n", text: String(c.score) })]);
+    });
+    var d = el("div", { class: "threat-details" }, [
+      el("p", { text: "How much this message resembles known adversarial prompts, per detector. 0 to 100: from 50, only 5% of benign prompts score higher; from 75, 1%. Violations that read like ordinary work are often missed." }),
+      el("ul", {}, rows),
+      model ? el("p", { class: "muted", text: "Model of " + model.trained + ", " + model.embedding_model + " embeddings." }) : null
+    ]);
+    d.hidden = true;
+    return d;
   }
 
   // ---- one chat
@@ -229,7 +268,9 @@
     var turns = el("div", { class: "turns" }, (c.turns || []).map(function (t) {
       var meta = el("div", { class: "meta" }, [el("span", { class: "role", text: t.label || t.role }),
         t.model ? el("span", { text: t.model }) : null, t.at ? el("span", { text: t.at }) : null]);
-      return el("article", { class: "turn " + t.role }, [meta, el("div", { class: "body", html: t.html })]);
+      var details = t.threat ? threatDetails(t.threat, c.threat_model) : null;
+      if (details) meta.appendChild(threatToggle(t.threat, details));
+      return el("article", { class: "turn " + t.role }, [meta, details, el("div", { class: "body", html: t.html })]);
     }));
     if (!(c.turns || []).length) turns.appendChild(el("p", { class: "muted", text: "This chat has no messages." }));
     show(el("div", {}, [crumbs([el("a", { href: "#/run/" + encodeURIComponent(c.run), text: c.run }), el("span", { text: c.title })]), head, turns]));
