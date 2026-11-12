@@ -176,6 +176,20 @@ async def test_a_canary_in_a_tool_result_is_redacted_before_the_model_and_the_cl
     assert "[REDACTED:honeypot-test]" in sent and "[REDACTED:vcf-test]" in sent
     assert TOKEN not in everything_sent(evs) and OTHER not in everything_sent(evs)
     assert terminal(evs) == ["RUN_FINISHED"] and tool_call_violations(evs) == []
+    (rec,) = log_records(tmp_path)
+    assert {"where": "tool_result", "kind": "canary", "type": "honeypot-test", "action": "redacted"} in rec["guard"]
+    assert not any(g["action"] == "withheld" for g in rec["guard"])
+
+
+async def test_a_tool_result_whose_canary_only_shows_decoded_is_withheld_and_recorded_so(tmp_path):
+    """The escape survives the JSON body once, so the token is only seen decoded and cannot be cut out."""
+    seen: list = []
+    sandbox = Printing("key \\u0048PCANARY-TEST23\n")
+    await run(tmp_path, calling("cat keys.txt", seen), sandbox=sandbox)
+    assert "Withheld by the SPE guard" in to_model(seen)
+    (rec,) = log_records(tmp_path)
+    assert {"where": "tool_result", "kind": "canary", "type": "honeypot-test", "action": "withheld"} in rec["guard"]
+    assert not any(g["action"] == "redacted" for g in rec["guard"])
 
 
 async def test_a_protected_file_name_in_a_tool_result_is_redacted(tmp_path):
@@ -202,7 +216,8 @@ async def test_a_canary_cut_across_two_output_entries_is_withheld(tmp_path):
     assert "HPCANARY" not in everything_sent(evs)
     assert "HPCANARY" not in (tmp_path / "log" / "runs.jsonl").read_text()
     (rec,) = log_records(tmp_path)
-    assert {"where": "tool_result", "kind": "canary", "type": "honeypot-test", "action": "redacted"} in rec["guard"]
+    assert {"where": "tool_result", "kind": "canary", "type": "honeypot-test", "action": "withheld"} in rec["guard"]
+    assert not any(g["action"] == "redacted" for g in rec["guard"])
 
 
 async def test_a_canary_cut_across_entries_of_an_answer_past_the_size_cap_is_withheld(tmp_path):
@@ -267,6 +282,13 @@ async def test_the_run_log_holds_no_blocked_value_but_says_what_was_blocked(tmp_
     assert TOKEN not in raw
     (rec,) = log_records(tmp_path)
     assert {"where": "answer", "kind": "canary", "type": "honeypot-test", "action": "redacted"} in rec["guard"]
+
+
+async def test_an_answer_piece_withheld_whole_is_recorded_as_withheld(tmp_path):
+    evs, _ = await run(tmp_path, answering("the key is \\u0048PCANARY-TEST23 here"))
+    assert "PCANARY" not in answer(evs) and guard_module.WITHHELD in answer(evs)
+    (rec,) = log_records(tmp_path)
+    assert {"where": "answer", "kind": "canary", "type": "honeypot-test", "action": "withheld"} in rec["guard"]
 
 
 async def test_observe_mode_records_but_changes_nothing(tmp_path):

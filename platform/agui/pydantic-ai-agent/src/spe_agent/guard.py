@@ -21,7 +21,9 @@ twice, so a token behind a JSON `\\n` (a sandbox answer is JSON, an error nests 
 seen. A hit that only shows decoded cannot be replaced in place; that text is withheld.
 
 Modes: `disabled` (no guard), `observe` (record what would be changed, change nothing) and
-`enforce`. Records never hold a matched value, only where, what kind and which canary type.
+`enforce`. Records never hold a matched value, only where, what kind, which canary type and the
+action: `denied` (the tool call), `redacted` (replaced in place), `withheld` (the whole text
+replaced) or `observed`.
 """
 from __future__ import annotations
 
@@ -230,9 +232,11 @@ class RunGuard:
                 self.entries.append(entry)
                 log.info(json.dumps({"event": "guard_hit", "thread_id": self.thread_id, **entry}))
 
-    def _act(self, where: str, hits: list[Hit], applied: tuple[str, ...]) -> None:
+    def _act(self, where: str, hits: list[Hit], applied: tuple[str, ...], *, withheld: bool) -> None:
+        """Records `hits`: those of the `applied` kinds as redacted in place, or as withheld when the
+        whole text is replaced, so withholds can be counted from the records."""
         changed = [h for h in hits if h[0] in applied]
-        self.note(where, changed, "redacted" if self.enforcing else "observed")
+        self.note(where, changed, ("withheld" if withheld else "redacted") if self.enforcing else "observed")
         self.note(where, [h for h in hits if h[0] not in applied], "observed")
 
     # --- the sandbox ---------------------------------------------------------------------------
@@ -255,17 +259,18 @@ class RunGuard:
         cut = [h for h in self.guard.find(joined).values() if h[0] in kinds] if joined else []
         if not hits and not cut:
             return text
-        self._act("tool_result", hits + cut, kinds)
+        withheld = not clean or bool(cut)
+        self._act("tool_result", hits + cut, kinds, withheld=withheld)
         if not self.enforcing:
             return text
-        return out if clean and not cut else WITHHELD_RESULT
+        return WITHHELD_RESULT if withheld else out
 
     def title(self, title: str) -> str:
         """A chat title the model wrote, as the client may show it."""
         out, hits, clean = self.guard.redact(title, ("canary",))
         if not hits:
             return title
-        self._act("title", hits, ("canary",))
+        self._act("title", hits, ("canary",), withheld=not clean)
         if not self.enforcing:
             return title
         return out if clean else WITHHELD
@@ -322,7 +327,7 @@ class RunGuard:
         held.sent = cut
         out, hits, clean = self.guard.redact(piece, ("canary",))
         if hits:
-            self._act(held.where, hits, ("canary",))
+            self._act(held.where, hits, ("canary",), withheld=not clean)
             piece = out if clean else WITHHELD
         return [held.last.model_copy(update={"delta": piece})] if piece else []
 
@@ -345,7 +350,7 @@ class RunGuard:
             out, hits, clean = self.guard.redact(value, ("canary",))
             if not hits:
                 return value
-            self._act(where, hits, ("canary",))
+            self._act(where, hits, ("canary",), withheld=not clean)
             return out if clean else WITHHELD
         if isinstance(value, BaseModel):
             dumped = value.model_dump()
