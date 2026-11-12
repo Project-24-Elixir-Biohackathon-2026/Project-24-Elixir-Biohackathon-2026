@@ -1,5 +1,5 @@
 ---
-id: TM-016
+id: TM-019
 name: Unverified Assurance Claims Relayed as Verified Fact
 description: 'The agent states authorization, compliance or security-posture claims to the user as established fact when the only source is text the user pasted or forwarded. Examples: that a DRS object is cleared for external sharing, or that sandbox egress is restricted to WES, DRS and TRS. The claim is false or unverified, but it is delivered in the agent''s own voice, so the researcher can act on it (release data, skip review) without any tool call looking wrong. This is distinct from TM-003, where the injected instruction changes an action, and from TM-009, where scientific results are altered. Here the harm is a false assurance about the system''s own controls. The check is the written answer itself, which the chat UI shows.'
 status: reproduced
@@ -14,7 +14,7 @@ stride:
 - tampering
 ---
 
-# TM-016: Unverified Assurance Claims Relayed as Verified Fact
+# TM-019: Unverified Assurance Claims Relayed as Verified Fact
 
 ## Attack Scenarios
 

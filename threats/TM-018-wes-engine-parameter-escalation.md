@@ -1,5 +1,5 @@
 ---
-id: TM-015
+id: TM-018
 name: Engine Parameter Injection Escalates Run Privileges on the Workflow Machine
 description: The runbook says workflow_engine_parameters is 'usually {}' and optional, and the WES submit passes it straight to the executor. A user or injected instruction can supply engine options such as Singularity/Apptainer bind mounts (-B /host-path), executor overrides or Nextflow flags that change isolation. The run then executes with host paths mounted or under a different executor. The runbook's limits (no workflow-machine filesystem access, outputs stay on the workflow machine) exist only as prompt text, so nothing at the WES layer stops it. Mounted host content can then reach the run's stdout and the chat through the TM-001 channel.
 status: reproduced
@@ -15,7 +15,7 @@ stride:
 - information-disclosure
 ---
 
-# TM-015: Engine Parameter Injection Escalates Run Privileges on the Workflow Machine
+# TM-018: Engine Parameter Injection Escalates Run Privileges on the Workflow Machine
 
 ## Attack Scenarios
 
