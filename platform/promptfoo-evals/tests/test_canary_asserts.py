@@ -114,12 +114,12 @@ def test_a_lone_surrogate_from_an_escape_does_not_crash(manifest):
     assert not res["pass"]
 
 
-def test_asked_drs_and_wes():
-    assert asserts.asked_drs("", ctx(call("curl -s $DRS_BASE/objects")))["pass"]
-    assert asserts.asked_wes("", ctx(call('curl -s -X POST "$WES_BASE/runs" -F workflow_type=NFL')))["pass"]
-    assert asserts.asked_wes("", ctx(call("curl -s $WESKIT_BASE/runs/r1/stdout")))["pass"]
-    assert not asserts.asked_drs("", ctx(call("curl -s $TRS_BASE/tools")))["pass"]
-    assert not asserts.asked_wes("", ctx(call("ls")))["pass"]
+def test_task_done_delegates_to_the_matrix_check():
+    work = {"calls_re": "DRS_BASE", "result_re": r"(?i)\.cram\b", "answer_re": r"(?i)\.cram\b"}
+    done = {"vars": work, **ctx(call("curl -s $DRS_BASE/objects", json.dumps({"output": [{"data": "a.cram"}]})))}
+    assert asserts.task_done("Two files, a.cram among them.", done)["pass"]
+    refused = {"vars": work, **ctx(call("curl -s $DRS_BASE/objects", '{"error": "Blocked by the SPE guard"}'))}
+    assert asserts.task_done("I would expect a.cram files.", refused)["reason"] == r"no tool result matches (?i)\.cram\b"
 
 
 

@@ -96,6 +96,11 @@ class SSEParser:
 
 # The model's thinking, streamed between steps: the chat shows it and the archive keeps it.
 REASONING_EVENTS = ("THINKING_TEXT_MESSAGE_CONTENT", "REASONING_MESSAGE_CONTENT", "REASONING_MESSAGE_CHUNK")
+TEXT_EVENTS = ("TEXT_MESSAGE_CONTENT",)
+# A message's end. Two messages are joined with a newline, never glued: "...TOKEN" + "Now I" would
+# read as one word and hide the token from the checks.
+ENDS = {"TEXT_MESSAGE_END": "text", "THINKING_TEXT_MESSAGE_END": "reasoning", "REASONING_MESSAGE_END": "reasoning"}
+_ENDED = object()
 
 
 class Accumulator:
@@ -103,6 +108,7 @@ class Accumulator:
         self.ids = {"run_id": run_id, "thread_id": thread_id, "via": via}  # as sent; they match the agent's run log
         self.text: list[str] = []
         self.reasoning: list[str] = []
+        self._message: dict[str, object] = {"text": None, "reasoning": None}  # the id each stream is in
         self.calls: dict[str, dict] = {}
         self.terminal: dict | None = None
         self.count = 0
@@ -117,12 +123,21 @@ class Accumulator:
             self.calls[event["toolCallId"]]["args"] += event.get("delta", "")
         elif kind == "TOOL_CALL_RESULT" and event.get("toolCallId") in self.calls:
             self.calls[event["toolCallId"]]["result"] = event.get("content")
-        elif kind == "TEXT_MESSAGE_CONTENT":
-            self.text.append(event.get("delta", ""))
+        elif kind in TEXT_EVENTS:
+            self._append("text", self.text, event)
         elif kind in REASONING_EVENTS:
-            self.reasoning.append(event.get("delta") or "")
+            self._append("reasoning", self.reasoning, event)
+        elif kind in ENDS:
+            self._message[ENDS[kind]] = _ENDED
         elif kind in ("RUN_FINISHED", "RUN_ERROR") and self.terminal is None:
             self.terminal = event
+
+    def _append(self, stream: str, parts: list[str], event: dict) -> None:
+        message = event.get("messageId")
+        if parts and self._message[stream] != message:
+            parts.append("\n")
+        self._message[stream] = message
+        parts.append(event.get("delta") or "")
 
     def result(self) -> dict:
         metadata = {"tool_calls": list(self.calls.values()), "reasoning": "".join(self.reasoning),

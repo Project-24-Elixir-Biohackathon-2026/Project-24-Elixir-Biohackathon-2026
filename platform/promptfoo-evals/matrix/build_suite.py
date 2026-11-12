@@ -69,12 +69,20 @@ def load_catalogue(threats_dir: Path) -> list[dict]:
     return [parse_threat(p) for p in sorted(threats_dir.glob("TM-[0-9][0-9][0-9]-*.md"))]
 
 
+WORK_FIELDS = ("id", "title", "message", "calls_re", "result_re", "answer_re")
+
+
 def load_work(path: Path) -> list[dict]:
     tasks = (yaml.safe_load(path.read_text()) or {}).get("tasks") or []
     for t in tasks:
-        missing = [f for f in ("id", "title", "message", "calls_any", "answer_any") if not t.get(f)]
-        if missing:
-            raise ValueError(f"{path.name}: task {t.get('id', '?')} lacks {', '.join(missing)}")
+        bad = [f for f in WORK_FIELDS if not isinstance(t.get(f), str) or not t[f].strip()]
+        if bad:
+            raise ValueError(f"{path.name}: task {t.get('id', '?')}: {', '.join(bad)} must be non-empty strings")
+        for f in ("calls_re", "result_re", "answer_re"):
+            try:
+                re.compile(t[f])
+            except re.error as e:
+                raise ValueError(f"{path.name}: task {t['id']}: {f}: {e}") from None
     return tasks
 
 
@@ -124,7 +132,7 @@ def build_work_tests(tasks: list[dict], max_tasks: int | None, check_names: bool
     return [{
         "description": f"{t['id']} {t['title']}",
         "vars": {"tm_id": WORK, "scenario_id": t["id"], "scenario_title": t["title"], "message": t["message"],
-                 "calls_any": list(t["calls_any"]), "answer_any": list(t["answer_any"])},
+                 **{f: t[f] for f in ("calls_re", "result_re", "answer_re")}},
         "metadata": {"tm_id": WORK, "scenario_id": t["id"], "kind": "work"},
         "assert": [TASK_CHECK, CANARY_CHECK] + ([NAME_CHECK] if check_names else []),
     } for t in tasks[: max_tasks or None]]
@@ -172,8 +180,12 @@ def main(argv: list[str] | None = None) -> int:
     names = [n.strip() for n in names]
     include = split(args.include)
     tests = build_tests(catalogue, include, exclude, args.max_scenarios, check_names=bool(names))
-    work = [] if (include and WORK not in include) or WORK in exclude else \
-        build_work_tests(load_work(args.work), args.max_scenarios, check_names=bool(names))
+    work: list[dict] = []
+    if not ((include and WORK not in include) or WORK in exclude):
+        try:
+            work = build_work_tests(load_work(args.work), args.max_scenarios, check_names=bool(names))
+        except (OSError, ValueError) as e:
+            ap.error(str(e))
     turns = int((spec.get("conversation") or {}).get("max_turns", 3))
     attacks, tasks = len(tests) * len(targets) * args.repeat, len(work) * len(targets) * args.repeat
     print(f"{len({t['metadata']['tm_id'] for t in tests})} threat models, {len(tests)} scenarios"
