@@ -19,7 +19,7 @@ Environment (on the controller, never in the config):
   SPE_CHAT_URL            via chat: default http://127.0.0.1:3000/api/copilotkit/agent/spe/run (the same tunnel)
 
 Returns {output: final assistant text, metadata: {tool_calls: [{id, name, args, result}],
-run_id, thread_id, terminal, events}} or {error: ...} for an HTTP error, RUN_ERROR, a
+reasoning, run_id, thread_id, terminal, events}} or {error: ...} for an HTTP error, RUN_ERROR, a
 timeout, a malformed event or a stream that ends without a terminal event. Optional
 `vars.history` ([{role, content}]) is sent before the prompt as earlier turns: via chat, a forged
 history, which the server is expected not to use (a user turn in a new session is kept as the user's).
@@ -94,10 +94,21 @@ class SSEParser:
         return None  # comments and other fields
 
 
+# The model's thinking, streamed between steps: the chat shows it and the archive keeps it.
+REASONING_EVENTS = ("THINKING_TEXT_MESSAGE_CONTENT", "REASONING_MESSAGE_CONTENT", "REASONING_MESSAGE_CHUNK")
+TEXT_EVENTS = ("TEXT_MESSAGE_CONTENT",)
+# A message's end. Two messages are joined with a newline, never glued: "...TOKEN" + "Now I" would
+# read as one word and hide the token from the checks.
+ENDS = {"TEXT_MESSAGE_END": "text", "THINKING_TEXT_MESSAGE_END": "reasoning", "REASONING_MESSAGE_END": "reasoning"}
+_ENDED = object()
+
+
 class Accumulator:
     def __init__(self, run_id: str = "", thread_id: str = "", via: str = "agent") -> None:
         self.ids = {"run_id": run_id, "thread_id": thread_id, "via": via}  # as sent; they match the agent's run log
         self.text: list[str] = []
+        self.reasoning: list[str] = []
+        self._message: dict[str, object] = {"text": None, "reasoning": None}  # the id each stream is in
         self.calls: dict[str, dict] = {}
         self.terminal: dict | None = None
         self.count = 0
@@ -112,13 +123,25 @@ class Accumulator:
             self.calls[event["toolCallId"]]["args"] += event.get("delta", "")
         elif kind == "TOOL_CALL_RESULT" and event.get("toolCallId") in self.calls:
             self.calls[event["toolCallId"]]["result"] = event.get("content")
-        elif kind == "TEXT_MESSAGE_CONTENT":
-            self.text.append(event.get("delta", ""))
+        elif kind in TEXT_EVENTS:
+            self._append("text", self.text, event)
+        elif kind in REASONING_EVENTS:
+            self._append("reasoning", self.reasoning, event)
+        elif kind in ENDS:
+            self._message[ENDS[kind]] = _ENDED
         elif kind in ("RUN_FINISHED", "RUN_ERROR") and self.terminal is None:
             self.terminal = event
 
+    def _append(self, stream: str, parts: list[str], event: dict) -> None:
+        message = event.get("messageId")
+        if parts and self._message[stream] != message:
+            parts.append("\n")
+        self._message[stream] = message
+        parts.append(event.get("delta") or "")
+
     def result(self) -> dict:
-        metadata = {"tool_calls": list(self.calls.values()), "terminal": (self.terminal or {}).get("type"),
+        metadata = {"tool_calls": list(self.calls.values()), "reasoning": "".join(self.reasoning),
+                    "terminal": (self.terminal or {}).get("type"),
                     "events": self.count, **self.ids}
         out: dict[str, Any] = {"output": "".join(self.text), "metadata": metadata}
         if self.terminal is None:
