@@ -4,7 +4,7 @@ import type { ThreatScore } from "./threat.ts";
 
 export type ThreatState = {
   /** `off`: the instance has no threat score (the server said so once); nothing is asked again. */
-  status: "idle" | "loading" | "ready" | "off";
+  status: "idle" | "loading" | "ready" | "failed" | "off";
   /** The last score; while `loading` it belongs to an earlier text and is shown dimmed. */
   score: ThreatScore | null;
 };
@@ -84,11 +84,11 @@ export class ThreatWatcher {
       this.set({ status: "ready", score });
     } catch {
       if (controller.signal.aborted || text !== this.wanted) return;
-      // Unavailable for this draft: no indicator, and the next change asks again.
+      // Unavailable for this draft: the indicator says so, and the next change asks again.
       this.inFlight = null;
       this.scored = "";
       this.wanted = "";
-      this.set({ status: "idle", score: null });
+      this.set({ status: "failed", score: null });
     }
   }
 

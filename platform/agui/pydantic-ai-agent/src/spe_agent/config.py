@@ -86,7 +86,7 @@ class ThreatScoreCfg(_Strict):
     # Off unless configured: it needs an embeddings endpoint that serves the model threat_model.json was trained on.
     enabled: bool = False
     embedding_model: str = "vllm/BAAI/bge-m3"
-    # Unset: model.base_url. The LLM key is sent to it either way.
+    # Unset: model.base_url. The endpoint gets SPE_THREAT_API_KEY, or the LLM key when that is unset.
     base_url: str | None = None
 
 
@@ -102,10 +102,9 @@ class Config(_Strict):
 
     @model_validator(mode="after")
     def _check_threat_score(self) -> "Config":
-        if self.threat_score.enabled and self.model.provider != "openai_compatible":
-            # The LLM key is sent to the embeddings endpoint: only where that key belongs to it.
-            raise ValueError("threat_score.enabled needs model.provider openai_compatible (its endpoint and key "
-                             "serve threat_score.embedding_model)")
+        if self.threat_score.enabled and self.model.provider != "openai_compatible" and not self.threat_score.base_url:
+            raise ValueError("threat_score.enabled needs threat_score.base_url, or model.provider openai_compatible "
+                             "(whose endpoint then serves threat_score.embedding_model)")
         return self
 
 
@@ -113,9 +112,10 @@ class Secrets(BaseModel):
     agent_api_key: str
     sandbox_api_key: str
     llm_api_key: str
+    threat_api_key: str | None = None   # the embeddings endpoint's own key, when it is not the LLM's
 
     def values(self) -> list[str]:
-        return [self.agent_api_key, self.sandbox_api_key, self.llm_api_key]
+        return [k for k in (self.agent_api_key, self.sandbox_api_key, self.llm_api_key, self.threat_api_key) if k]
 
 
 def load_config(path: Path) -> Config:
@@ -132,4 +132,10 @@ def load_secrets(cfg: Config, environ: Mapping[str, str]) -> Secrets:
     missing = [var for var in names.values() if not environ.get(var)]
     if missing:
         raise ConfigError(f"missing environment variables: {', '.join(missing)}")
-    return Secrets(**{field: environ[var] for field, var in names.items()})
+    threat_key = environ.get("SPE_THREAT_API_KEY") or None
+    if cfg.threat_score.enabled and cfg.threat_score.base_url and not threat_key and (
+            cfg.model.provider != "openai_compatible"
+            or cfg.threat_score.base_url.rstrip("/") != (cfg.model.base_url or "").rstrip("/")):
+        # Without it the LLM key would go to an endpoint it does not belong to.
+        raise ConfigError("threat_score.base_url is another endpoint than the model's: set SPE_THREAT_API_KEY")
+    return Secrets(**{field: environ[var] for field, var in names.items()}, threat_api_key=threat_key)

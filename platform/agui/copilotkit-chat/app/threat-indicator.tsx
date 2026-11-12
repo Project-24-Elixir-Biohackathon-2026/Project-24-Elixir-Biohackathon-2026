@@ -126,6 +126,7 @@ export function ThreatIndicator() {
         </button>
       )}
       {!score && state.status === "loading" && <span className="spe-threat-wait">Scoring…</span>}
+      {!score && state.status === "failed" && <span className="spe-threat-wait">Threat score unavailable</span>}
       {shown && <Details score={score} id={panelId} place={place} />}
     </div>
   );

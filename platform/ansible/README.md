@@ -152,9 +152,12 @@ de.NBI's model and null for others (set it, or only a provider's "too long" erro
 triggers it); `spe_agent_compaction_enabled`, `spe_agent_compaction_trigger_ratio`
 (0.8), `spe_agent_compaction_summary_max_tokens` (4096). `spe_agent_title_generation`
 (true) lets the agent title a session from its first question, as its first run starts.
-`spe_agent_threat_score` (true, `openai_compatible` only) shows a threat score under the chat
-input while typing; `spe_agent_threat_embedding_model` (`vllm/BAAI/bge-m3`) is the embedding
-model the endpoint must serve for it (`../agui/threat-score/README.md`).
+`spe_agent_threat_score` (true) shows a threat score under the chat input while typing;
+`spe_agent_threat_embedding_model` (`vllm/BAAI/bge-m3`) is the embedding model its endpoint must
+serve (`../agui/threat-score/README.md`). The endpoint and its key come from the controller's
+environment: `SPE_THREAT_BASE_URL` and `SPE_THREAT_API_KEY`, or the portal's
+`BI_DENBI_LLM_BASE_URL` and `BI_DENBI_LLM_API_KEY`. Without them the LLM endpoint and key are
+used (`openai_compatible` only), and de.NBI's internal endpoint does not serve bge-m3.
 
 Checks, at the end of `create.yml` and in `verify.yml`, without a model call: health,
 the chat UI, 401 without or with a wrong key, the session API, the chat UI's

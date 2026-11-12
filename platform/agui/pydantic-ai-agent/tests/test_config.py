@@ -85,6 +85,24 @@ def test_secrets_by_provider(tmp_path):
     assert sorted(sec.values()) == ["a", "o", "s"]
 
 
+def test_threat_score_endpoint_with_its_own_key(tmp_path):
+    other = {**VALID, "threat_score": {"enabled": True, "base_url": "https://embed.example/v1"}}
+    env = {"SPE_AGENT_API_KEY": "a", "SANDBOX_API_KEY": "s", "OPENAI_API_KEY": "o"}
+    cfg = load_config(write(tmp_path, other))
+    with pytest.raises(ConfigError, match="SPE_THREAT_API_KEY"):   # the LLM key must not go to another endpoint
+        load_secrets(cfg, env)
+    sec = load_secrets(cfg, {**env, "SPE_THREAT_API_KEY": "t"})
+    assert sec.threat_api_key == "t" and sorted(sec.values()) == ["a", "o", "s", "t"]
+    same = {**VALID, "threat_score": {"enabled": True, "base_url": VALID["model"]["base_url"] + "/"}}
+    assert load_secrets(load_config(write(tmp_path, same)), env).threat_api_key is None
+    anthropic = {**VALID, "model": {"provider": "anthropic", "name": "claude-haiku-5-5"}}
+    with pytest.raises(ConfigError, match="base_url"):
+        load_config(write(tmp_path, {**anthropic, "threat_score": {"enabled": True}}))
+    cfg = load_config(write(tmp_path, {**anthropic, "threat_score": {"enabled": True, "base_url": "https://embed.example/v1"}}))
+    with pytest.raises(ConfigError, match="SPE_THREAT_API_KEY"):
+        load_secrets(cfg, {"SPE_AGENT_API_KEY": "a", "SANDBOX_API_KEY": "s", "ANTHROPIC_API_KEY": "x"})
+
+
 def test_missing_secret_names_the_variable(tmp_path):
     cfg = load_config(write(tmp_path, {**VALID, "model": {"provider": "anthropic", "name": "claude-haiku-5-5"}}))
     with pytest.raises(ConfigError, match="ANTHROPIC_API_KEY"):

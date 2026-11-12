@@ -179,6 +179,8 @@ spe_local_vars:
   - spe_agent_title_generation
   - spe_agent_threat_score
   - spe_agent_threat_embedding_model
+  - spe_agent_threat_base_url
+  - spe_agent_threat_key
   - spe_webui_auth
 spe_local_vars_extra: []     # instance files add their own overrides here
 spe_frontend_webui_image: ghcr.io/open-webui/open-webui:v0.13.0
@@ -290,9 +292,15 @@ spe_agent_compaction_summary_max_tokens: 4096
 # earlier title). Off: sessions keep the chat-UI default (untitled, or the first message).
 spe_agent_title_generation: true
 # Threat score: the chat shows, while typing, how much the draft resembles known adversarial
-# prompts (advisory, nothing is blocked). The agent embeds the draft with this model on the
-# LLM endpoint and scores it with its packaged classifier, which was trained on that model's
-# embeddings. openai_compatible only; an endpoint without the model just shows no score.
+# prompts (advisory, nothing is blocked). The agent embeds the draft with this model and scores
+# it with its packaged classifier, which was trained on that model's embeddings. An endpoint
+# without the model just shows no score.
+# The embeddings endpoint and its key come from the controller's environment, like the LLM key:
+# SPE_THREAT_BASE_URL and SPE_THREAT_API_KEY, or the portal's BI_DENBI_LLM_BASE_URL and
+# BI_DENBI_LLM_API_KEY (the de.NBI endpoint that serves bge-m3; spe_llm_base_url does not).
+# Both empty: the LLM endpoint and key (openai_compatible only). One without the other is refused.
 spe_agent_threat_score: true
 spe_agent_threat_embedding_model: vllm/BAAI/bge-m3
+spe_agent_threat_base_url: "{{ lookup('ansible.builtin.env', 'SPE_THREAT_BASE_URL') or lookup('ansible.builtin.env', 'BI_DENBI_LLM_BASE_URL') }}"
+spe_agent_threat_key: "{{ lookup('ansible.builtin.env', 'SPE_THREAT_API_KEY') or lookup('ansible.builtin.env', 'BI_DENBI_LLM_API_KEY') }}"
 spe_agent_api_key: "{{ (spe_seed | string ~ ':agent-api') | hash('sha256') }}"

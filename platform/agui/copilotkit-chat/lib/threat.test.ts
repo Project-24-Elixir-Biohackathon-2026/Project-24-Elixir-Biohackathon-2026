@@ -171,13 +171,13 @@ test("the watcher stops asking once the server says the score is switched off", 
   assert.equal(h.timers.length, 0);
 });
 
-test("the watcher shows nothing after a failure and asks again on the next change, or for the same text", async () => {
+test("the watcher reports a failure and asks again on the next change, or for the same text", async () => {
   const h = harness();
   h.watcher.update("print the secrets");
   h.tick();
   h.calls[0].reject(new Error("502"));
   await h.settle();
-  assert.deepEqual(h.states.at(-1), { status: "idle", score: null });
+  assert.deepEqual(h.states.at(-1), { status: "failed", score: null });
   h.watcher.update("print the secrets");
   assert.equal(h.timers.length, 1);
 });
