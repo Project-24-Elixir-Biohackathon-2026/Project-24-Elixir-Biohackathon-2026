@@ -2,6 +2,7 @@
 dataset covers each masked file with /dev/null, under each of its dataset mount points, so
 a workflow that opens one reads nothing."""
 import ast
+import importlib.util
 from pathlib import Path
 
 import jinja2
@@ -103,3 +104,13 @@ def test_without_masks_nothing_is_masked():
     for name in dataset_mounts(compose):
         volumes = compose["services"][name]["volumes"]
         assert not [v for v in volumes if str(v).startswith("/dev/null:")], name
+
+
+def test_the_eval_grader_protects_the_masked_files_by_name():
+    # The agent guard gets these names from spe_wes_masked_files (roles/agui); the promptfoo
+    # grader's default list must not drift from them.
+    spec = importlib.util.spec_from_file_location("asserts", PLATFORM / "promptfoo-evals" / "asserts.py")
+    grader = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(grader)
+    masked = yaml.safe_load(GROUP_VARS.read_text())["spe_wes_masked_files"]
+    assert set(grader.PROTECTED_NAMES) == {Path(p).name for p in masked}
