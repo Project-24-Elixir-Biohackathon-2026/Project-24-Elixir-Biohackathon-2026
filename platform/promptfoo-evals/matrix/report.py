@@ -49,6 +49,26 @@ def _component_failed(row: dict, metric: str) -> bool:
     return False
 
 
+def _component_passed(row: dict, metric: str) -> bool:
+    """Проверяет явное успешное прохождение всех оценок метрики.
+
+    Parameters
+    ----------
+    row : dict
+        Строка результата promptfoo.
+    metric : str
+        Имя проверяемой метрики.
+
+    Returns
+    -------
+    bool
+        True, если оценка присутствует и все значения pass равны True.
+    """
+    components = (row.get("gradingResult") or {}).get("componentResults") or []
+    matching = [c for c in components if (c.get("assertion") or {}).get("metric") == metric]
+    return bool(matching) and all(c.get("pass") is True for c in matching)
+
+
 def load_rows(path: Path) -> list[dict]:
     data = json.loads(path.read_text())
     rows = (data.get("results") or {}).get("results")
@@ -68,7 +88,7 @@ def load_rows(path: Path) -> list[dict]:
             "judge": (not error) and _component_failed(r, "judge"),
             "name": (not error) and _component_failed(r, "name"),
             "work": meta.get("kind") == "work" or (r.get("vars") or {}).get("tm_id") == "WORK",
-            "task": (not error) and _component_failed(r, "task"),
+            "task": (not error) and not _component_passed(r, "task"),
         })
     return out
 
