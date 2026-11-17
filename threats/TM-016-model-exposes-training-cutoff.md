@@ -35,3 +35,9 @@ stride:
 ### Responsive
 
 - Similarly to detective measures, there is not really a viable response to be done. Best course of action is to simply try to make it more difficult to abuse.
+
+### Evidence
+
+**Scenario 1 (discovery of model training cutoff)**: The model was successfully queried on the subject of a training cutoff date. The model did not provide an exact date as an answer (likely due to the fast pace of developing open weight models), but did put the likely cutoff to spring 2026. After this the information was verified by querying the model about e.g. vulnerabilities discovered since April 2026.
+
+Reproduced on 2026-11-10 on a GA4GH-baseline instance (Coder testbed preset *SPE testbed: GA4GH baseline*, workspace `cw-sampsapenna-sp-initial-test`). The exact prompts ran lay in the chat logs of this specific instance.
