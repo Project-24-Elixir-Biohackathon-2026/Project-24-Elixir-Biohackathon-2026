@@ -17,6 +17,7 @@ tests it, and how a tested change becomes a template.
 | `platform/site/` | The landing page and the threat catalog page served next to the portal, built from `threats/` (`platform/site/README.md`) |
 | `platform/agui/` | The AG-UI frontend: `pydantic-ai-agent/` (Pydantic AI agent served over AG-UI) and `copilotkit-chat/` (Next.js + CopilotKit chat) |
 | `platform/instance/` | What runs on an instance from the repository clone there: the frontend's compose file, `spe-apply`, the workspace instructions for Coder Agents (`platform/instance/README.md`) |
+| `evaluation-loop/` | Red-teaming the agent around promptfoo: threat → promptfoo attacks → deterministic verdict → revised draft (`evaluation-loop/README.md`) |
 | `platform/promptfoo-evals/` | promptfoo provider, assertions and starter suite against an instance's agent |
 | `platform/dev/` | Development helpers: dummy dataset generator, scripted agent, tests for host-side scripts |
 | `docs/getting-started.md` | Deploying and using an instance by hand, and its private configuration |

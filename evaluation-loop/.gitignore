@@ -1,0 +1,12 @@
+# Local only: run transcripts (hold canaries), the instance config, generated drafts/variants.
+runs/
+reports/
+scenarios/
+drafts/
+generated/
+lab.yaml
+canaries.json
+*.env
+.venv/
+__pycache__/
+.pytest_cache/

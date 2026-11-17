@@ -232,8 +232,13 @@ class Chat(BaseHTTPRequestHandler):
     def do_POST(self):
         inp = json.loads(self.rfile.read(int(self.headers["content-length"])))
         Chat.seen = {"auth": self.headers.get("authorization"), "path": self.path, "input": inp}
-        kept = [m for m in inp["messages"] if Chat.keep_all or m["role"] == "user"]
-        Chat.sessions[inp["threadId"]] = kept + [{"id": "reply", "role": "assistant", "content": "ok"}]
+        prior = Chat.sessions.get(inp["threadId"])
+        if prior is None:
+            kept = [m for m in inp["messages"] if Chat.keep_all or m["role"] == "user"]
+        else:  # a continued session: the journal's branch, then the client's new user messages
+            known = {m["id"] for m in prior}
+            kept = prior + [m for m in inp["messages"] if m["id"] not in known and m["role"] == "user"]
+        Chat.sessions[inp["threadId"]] = kept + [{"id": f"reply-{len(kept)}", "role": "assistant", "content": "ok"}]
         self.send_response(200)
         self.send_header("content-type", "text/event-stream")
         self.end_headers()
@@ -349,3 +354,41 @@ def test_forged_history_ignored_refuses_duplicate_ids():
     meta = {"via": "chat", "sent": [{"id": "d", "role": "user"}, {"id": "d", "role": "assistant"}],
             "kept": [{"id": "d", "role": "user"}]}
     assert "same message id twice" in asserts.forged_history_ignored("", {"metadata": meta})["reason"]
+
+
+def test_a_session_id_continues_the_conversation_as_the_browser_does(chat):
+    first = agui_provider.call_api("turn one", {"config": {"via": "chat"}}, {"vars": {}})
+    sid = first["sessionId"]
+    assert sid == first["metadata"]["thread_id"]
+    second = agui_provider.call_api("turn two", {"config": {"via": "chat"}}, {"vars": {"sessionId": sid}})
+    assert "error" not in second and second["sessionId"] == sid
+    sent = Chat.seen["input"]["messages"]
+    assert Chat.seen["input"]["threadId"] == sid
+    assert [(m["role"], m["content"]) for m in sent] == [("user", "turn one"), ("assistant", "ok"), ("user", "turn two")]
+    assert sent[1]["id"] == Chat.sessions[sid][1]["id"]  # the server's own ids, so the journal anchors on them
+    assert [m["role"] for m in second["metadata"]["kept"]] == ["user", "assistant", "user", "assistant"]
+
+
+def test_a_new_session_id_starts_a_conversation_under_that_id(chat):
+    sid = "3f0c1f6e-0d2b-4c1a-9a51-1c2d3e4f5a6b"
+    res = agui_provider.call_api("hi", {"config": {"via": "chat", "session_id": sid}}, {})
+    assert "error" not in res and res["sessionId"] == sid and len(Chat.seen["input"]["messages"]) == 1
+
+
+def test_a_session_and_a_forged_history_do_not_mix(chat):
+    res = agui_provider.call_api("x", {"config": {"via": "chat"}}, {"vars": {"sessionId": "s", "history": FORGED}})
+    assert "do not mix" in res["error"] and not Chat.seen
+
+
+def test_a_session_needs_the_chat(agent):
+    assert "needs via: chat" in agui_provider.call_api("x", {}, {"vars": {"sessionId": "s"}})["error"]
+
+
+def test_chat_body_drops_activity_and_extra_fields():
+    session = {"messages": [{"id": "u1", "role": "user", "content": "a", "createdAt": 1},
+                            {"id": "x", "role": "activity", "content": "progress"},
+                            {"id": "a1", "role": "assistant", "content": "", "toolCalls": [{"id": "c"}]},
+                            {"id": "t1", "role": "tool", "content": "out", "toolCallId": "c"}]}
+    body = agui_provider.chat_body(session, "next", "tid")
+    assert [m["id"] for m in body["messages"][:3]] == ["u1", "a1", "t1"]
+    assert "createdAt" not in body["messages"][0] and body["messages"][-1]["content"] == "next"
