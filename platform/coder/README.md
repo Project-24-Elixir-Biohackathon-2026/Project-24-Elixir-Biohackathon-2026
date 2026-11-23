@@ -63,7 +63,7 @@ still be readable at `spe_source_data_root`.
 
 ```bash
 sudo apt install -y git rsync python3-venv age
-git clone https://github.com/kraatz/elixir-biohackathon-2026-test.git ~/sperange
+git clone https://github.com/Project-24-Elixir-Biohackathon-2026/Project-24-Elixir-Biohackathon-2026.git ~/sperange
 python3 -m venv ~/.venv-openstack
 ~/.venv-openstack/bin/pip install ansible-core openstacksdk python-openstackclient python-manilaclient
 cd ~/sperange/platform/ansible
