@@ -24,7 +24,7 @@ report: its archive says "missing".
 
 **On the controller**
 
-- This repository (`git clone git@github.com:kraatz/elixir-biohackathon-2026-test.git`).
+- This repository (`git clone git@github.com:Project-24-Elixir-Biohackathon-2026/Project-24-Elixir-Biohackathon-2026.git`).
 - `ansible-core` with the collections in `platform/ansible/requirements.yml` (a system
   Ansible package usually ships them; otherwise
   `ansible-galaxy collection install -r platform/ansible/requirements.yml -p platform/ansible/collections`).

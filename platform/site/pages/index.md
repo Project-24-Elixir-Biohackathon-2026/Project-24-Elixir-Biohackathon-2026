@@ -4,4 +4,4 @@ This is a catalog of threat models for AI agents operating in Secure Processing 
 
 ![Overview of the SPE Range setup](assets/images/overview.svg){ .figure }
 
-Entries are Markdown files in the [GitHub repository](https://github.com/kraatz/elixir-biohackathon-2026-test/tree/main/threats). To change or add one, edit it there; merged changes appear here within minutes.
+Entries are Markdown files in the [GitHub repository](https://github.com/Project-24-Elixir-Biohackathon-2026/Project-24-Elixir-Biohackathon-2026/tree/main/threats). To change or add one, edit it there; merged changes appear here within minutes.

@@ -19,7 +19,7 @@ Example: "check every workflow before it is registered in TRS". The SPE agent re
 
 ## Layout
 
-- `~/sperange`: a git clone of the repository (github.com/kraatz/elixir-biohackathon-2026-test), the source of everything below, checked out at the commit the workspace was built from (a detached HEAD until you create a branch). Edit here.
+- `~/sperange`: a git clone of the repository (github.com/Project-24-Elixir-Biohackathon-2026/Project-24-Elixir-Biohackathon-2026), the source of everything below, checked out at the commit the workspace was built from (a detached HEAD until you create a branch). Edit here.
 - `~/spe-frontend`: the chat frontend's compose project. Written by Ansible when the instance was built: `.env` (which frontends, image names, ports), `agent.yaml`, secret env files, the instance CA (`spe-ca.crt`). `docker-compose.yml` is a link to `~/sperange/platform/instance/compose.yml`. Do not edit the secret files; do not print them.
 - `~/workflow-stack`: the GA4GH services (compose project `workflow-stack`); `/opt/spe`: the installers Ansible ran at creation and the workflow catalog they installed; `/data-share`: the seeded dataset.
 
@@ -74,7 +74,7 @@ git push -u origin template/<name>
 
 If this workspace was itself built from a branch template, continue on that branch instead of creating one: `git branch -r --contains HEAD` shows it, then `git switch template/<name>`.
 
-Then tell the person: the template `spe-<name>` appears in "Create workspace" within five minutes; a workspace from it has the change built in from the start. When the person wants the change in the main template, give them the pull request link, `https://github.com/kraatz/elixir-biohackathon-2026-test/pull/new/template/<name>`; merging updates the main template within minutes, and existing workspaces pick it up on their next start. You cannot open the pull request yourself.
+Then tell the person: the template `spe-<name>` appears in "Create workspace" within five minutes; a workspace from it has the change built in from the start. When the person wants the change in the main template, give them the pull request link, `https://github.com/Project-24-Elixir-Biohackathon-2026/Project-24-Elixir-Biohackathon-2026/pull/new/template/<name>`; merging updates the main template within minutes, and existing workspaces pick it up on their next start. You cannot open the pull request yourself.
 
 Pushes go over SSH with the git key the portal holds for the person (origin's push URL; fetches stay anonymous over https). If the push is refused with "Permission denied (publickey)", the message shows that public key and the link to add it: tell the person to add exactly that key to their GitHub account (Settings, SSH and GPG keys) and to make sure they may push to the repository, then push again when they say so. The key is public, quoting it is fine. Do not try tokens, other remotes, or pushing through the SPE agent.
 

@@ -1,0 +1,36 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata from this file."
+type: software
+title: "SPE Range: threat models for agents in Secure Processing Environments"
+abstract: >-
+  LLM agents that run workflows and read data inside a Secure Processing Environment (SPE)
+  open new ways to leak or damage what the SPE protects. This repository holds a catalog of
+  those threats and the source of the platform that lets you try them: per-participant SPE
+  instances with GA4GH services, planted canaries and an AI agent, the run archive and
+  report service, and a prompt threat-score classifier. Developed as Project 24 of
+  BioHackathon Europe 2026.
+authors:
+  - family-names: Kraatz
+    given-names: Landfried
+    orcid: "https://orcid.org/0009-0009-5215-825X"
+    affiliation: "Charité - Universitätsmedizin Berlin, Berlin, Germany"
+  - family-names: Sisodiya
+    given-names: Tammy
+    orcid: "https://orcid.org/0009-0004-4831-8971"
+    affiliation: "MIT Media Lab, Massachusetts Institute of Technology, Cambridge, MA, United States; LifeFabs Institute, London, United Kingdom"
+  - family-names: Penna
+    given-names: Sampsa
+    orcid: "https://orcid.org/0009-0002-9647-3111"
+    affiliation: "CSC - IT Center for Science, Espoo, Finland"
+repository-code: "https://github.com/Project-24-Elixir-Biohackathon-2026/Project-24-Elixir-Biohackathon-2026"
+url: "https://sperange.bihealth.org/"
+license: MIT
+keywords:
+  - secure processing environment
+  - trusted research environment
+  - sensitive data
+  - LLM agents
+  - threat modelling
+  - prompt injection
+  - GA4GH
+  - BioHackathon Europe 2026
